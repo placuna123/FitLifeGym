@@ -13,6 +13,28 @@ use Illuminate\Support\Facades\Validator;
  */
 class PlatformAuthController extends Controller
 {
+    public function changePassword(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'current_password' => 'required|string',
+            'new_password' => 'required|string|min:8',
+            'new_password_confirmation' => 'required|string|same:new_password',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'message' => $validator->errors()->first()], 422);
+        }
+
+        $user = Auth::user();
+        if (! \Illuminate\Support\Facades\Hash::check($request->current_password, $user->password)) {
+            return response()->json(['success' => false, 'message' => 'Current password is incorrect'], 422);
+        }
+
+        $user->update(['password' => \Illuminate\Support\Facades\Hash::make($request->new_password)]);
+        \App\Support\Email::passwordChanged($user);
+
+        return response()->json(['success' => true, 'message' => 'Password changed successfully']);
+    }
+
     public function login(Request $request)
     {
         $normalizedEmail = strtolower(trim((string) $request->input('email', '')));

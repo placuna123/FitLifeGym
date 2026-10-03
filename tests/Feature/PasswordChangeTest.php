@@ -84,6 +84,24 @@ class PasswordChangeTest extends TestCase
         $this->assertLoginWorksOnlyWithNewPassword('member.login', 'member@example.com');
     }
 
+    public function test_super_admin_new_password_works_and_old_one_does_not(): void
+    {
+        $superAdmin = User::factory()->create([
+            'role' => 'SuperAdmin',
+            'email' => 'superadmin@example.com',
+            'password' => 'old-password',
+            'gym_id' => null,
+        ]);
+
+        $this->actingAs($superAdmin)->postJson(route('platform.change-password'), [
+            'current_password' => 'old-password',
+            'new_password' => 'new-password-123',
+            'new_password_confirmation' => 'new-password-123',
+        ])->assertOk()->assertJsonPath('success', true);
+
+        $this->assertLoginWorksOnlyWithNewPassword('platform.login', 'superadmin@example.com');
+    }
+
     public function test_wrong_current_password_is_rejected_and_password_unchanged(): void
     {
         $member = $this->user('Member', 'member@example.com');

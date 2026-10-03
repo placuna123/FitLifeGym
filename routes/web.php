@@ -174,6 +174,7 @@ Route::post('api/gyms/signup', [App\Http\Controllers\GymSignupController::class,
 Route::post('api/platform/login', [App\Http\Controllers\PlatformAuthController::class, 'login'])->name('platform.login');
 Route::get('api/platform/user', [App\Http\Controllers\PlatformAuthController::class, 'user'])->name('platform.user');
 Route::post('api/platform/logout', [App\Http\Controllers\PlatformAuthController::class, 'logout'])->name('platform.logout');
+Route::post('api/platform/change-password', [App\Http\Controllers\PlatformAuthController::class, 'changePassword'])->middleware(['auth', 'role:SuperAdmin'])->name('platform.change-password');
 Route::get('api/platform/gyms', [App\Http\Controllers\PlatformGymController::class, 'index'])->middleware(['auth', 'role:SuperAdmin'])->name('platform.gyms.index');
 Route::post('api/platform/gyms', [App\Http\Controllers\PlatformGymController::class, 'store'])->middleware(['auth', 'role:SuperAdmin'])->name('platform.gyms.store');
 Route::get('api/platform/gyms/{id}', [App\Http\Controllers\PlatformGymController::class, 'show'])->middleware(['auth', 'role:SuperAdmin'])->name('platform.gyms.show');

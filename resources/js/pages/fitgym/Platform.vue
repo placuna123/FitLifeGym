@@ -194,6 +194,38 @@ async function deleteGym(gymId: number, name: unknown) {
   }
 }
 
+const showPasswordModal = ref(false);
+const passwordForm = ref({ current_password: '', new_password: '', new_password_confirmation: '' });
+const passwordSaving = ref(false);
+const passwordError = ref('');
+const accountNotice = ref('');
+
+function openPasswordModal() {
+  passwordForm.value = { current_password: '', new_password: '', new_password_confirmation: '' };
+  passwordError.value = '';
+  showPasswordModal.value = true;
+}
+
+async function submitPasswordChange() {
+  if (passwordSaving.value) return;
+  if (passwordForm.value.new_password !== passwordForm.value.new_password_confirmation) {
+    passwordError.value = 'New passwords do not match.';
+    return;
+  }
+  passwordSaving.value = true;
+  passwordError.value = '';
+  try {
+    await platformAuth.changePassword({ ...passwordForm.value });
+    showPasswordModal.value = false;
+    accountNotice.value = 'Password changed successfully. Use your new password the next time you sign in.';
+  } catch (err: unknown) {
+    const ax = err as { response?: { data?: { message?: string } } };
+    passwordError.value = ax.response?.data?.message || 'Failed to change password.';
+  } finally {
+    passwordSaving.value = false;
+  }
+}
+
 function openAddGymModal() {
   addGymForm.value = { name: '', admin_name: '', admin_email: '', admin_password: '' };
   addGymError.value = '';
@@ -284,11 +316,15 @@ onMounted(checkAuth);
         </div>
         <div class="header-actions">
           <span :style="{ color: portal.textDim }">{{ user?.name }}</span>
+          <button type="button" class="ghost-btn" :style="{ borderColor: portal.border, color: portal.textDim }" @click="openPasswordModal">
+            Change Password
+          </button>
           <button type="button" class="ghost-btn" :style="{ borderColor: portal.border, color: portal.textDim }" @click="handleLogout">
             Sign Out
           </button>
         </div>
       </header>
+      <p v-if="accountNotice" class="account-notice" role="status">{{ accountNotice }}</p>
 
       <nav class="tab-nav" :style="{ borderColor: portal.border }">
         <button
@@ -481,6 +517,45 @@ onMounted(checkAuth);
           </table>
         </div>
       </section>
+    </div>
+
+    <!-- Change Password modal -->
+    <div v-if="showPasswordModal" class="modal-overlay" @click.self="showPasswordModal = false">
+      <div class="modal-card" :style="{ backgroundColor: portal.dark3, borderColor: portal.border }">
+        <h3>Change Password</h3>
+        <div v-if="passwordError" class="entry-error" role="alert">{{ passwordError }}</div>
+        <form @submit.prevent="submitPasswordChange">
+          <div class="field">
+            <label for="sa-current" :style="{ color: portal.textDim }">Current Password</label>
+            <div class="fg-password-field">
+              <input id="sa-current" v-model="passwordForm.current_password" :type="pw.type('current')" required autocomplete="current-password" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }" />
+              <PasswordToggle :shown="pw.isShown('current')" @toggle="pw.toggle('current')" />
+            </div>
+          </div>
+          <div class="field">
+            <label for="sa-new" :style="{ color: portal.textDim }">New Password (at least 8 characters)</label>
+            <div class="fg-password-field">
+              <input id="sa-new" v-model="passwordForm.new_password" :type="pw.type('new')" required minlength="8" autocomplete="new-password" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }" />
+              <PasswordToggle :shown="pw.isShown('new')" @toggle="pw.toggle('new')" />
+            </div>
+          </div>
+          <div class="field">
+            <label for="sa-confirm" :style="{ color: portal.textDim }">Confirm New Password</label>
+            <div class="fg-password-field">
+              <input id="sa-confirm" v-model="passwordForm.new_password_confirmation" :type="pw.type('confirm')" required minlength="8" autocomplete="new-password" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }" />
+              <PasswordToggle :shown="pw.isShown('confirm')" @toggle="pw.toggle('confirm')" />
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="ghost-btn" :style="{ borderColor: portal.border, color: portal.textDim }" @click="showPasswordModal = false">
+              Cancel
+            </button>
+            <button type="submit" class="primary-btn" :style="{ backgroundColor: portal.purple }" :disabled="passwordSaving">
+              {{ passwordSaving ? 'Saving…' : 'Change Password' }}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
 
     <!-- Add Branch modal -->
@@ -838,6 +913,16 @@ th, td {
 
 .header-actions span {
   overflow-wrap: anywhere;
+}
+
+.account-notice {
+  margin: 0 0 1rem;
+  border: 1px solid rgba(141, 255, 0, 0.35);
+  border-radius: 0.6rem;
+  background: rgba(141, 255, 0, 0.1);
+  padding: 0.6rem 0.85rem;
+  color: #8dff00;
+  font-size: 0.85rem;
 }
 
 @media (max-width: 639.98px) {

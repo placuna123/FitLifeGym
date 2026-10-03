@@ -195,6 +195,8 @@ export const platformAuth = {
     login: (data: { email: string; password: string; remember?: boolean }) => api.post('/platform/login', data),
     logout: () => api.post('/platform/logout'),
     user: () => api.get('/platform/user'),
+    changePassword: (data: { current_password: string; new_password: string; new_password_confirmation: string }) =>
+        api.post('/platform/change-password', data),
 };
 
 export const platformGyms = {
