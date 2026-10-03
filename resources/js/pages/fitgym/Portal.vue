@@ -2,7 +2,9 @@
 import { Head } from '@inertiajs/vue3';
 import { computed, onMounted, ref } from 'vue';
 import { adminAuth, gymSignup, gymsPublic, memberAuth, members, portalAuth, trainerAuth } from '@/api/fitgym';
+import PasswordToggle from '@/components/PasswordToggle.vue';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
+import { usePasswordVisibility } from '@/composables/usePasswordVisibility';
 import {
   appBaseUrl,
   portalUrl,
@@ -11,6 +13,8 @@ import {
   toPortalRole,
   type PortalRole,
 } from '@/lib/portal';
+
+const pw = usePasswordVisibility();
 
 // Same palette as the Admin / Trainer / Member portals — nothing new introduced.
 const portal = {
@@ -672,15 +676,18 @@ onMounted(async () => {
                 <label for="entry-password" :style="{ color: portal.textDim }">Password</label>
                 <a href="/forgot-password" :style="{ color: portal.purpleLight }">Forgot Password?</a>
               </div>
-              <input
-                id="entry-password"
-                v-model="loginForm.password"
-                type="password"
-                required
-                autocomplete="current-password"
-                placeholder="Enter your password"
-                :style="{ backgroundColor: portal.dark2, borderColor: portal.border }"
-              />
+              <div class="fg-password-field">
+                <input
+                  id="entry-password"
+                  v-model="loginForm.password"
+                  :type="pw.type('login')"
+                  required
+                  autocomplete="current-password"
+                  placeholder="Enter your password"
+                  :style="{ backgroundColor: portal.dark2, borderColor: portal.border }"
+                />
+                <PasswordToggle :shown="pw.isShown('login')" @toggle="pw.toggle('login')" />
+              </div>
             </div>
 
             <label class="entry-remember" :style="{ color: portal.textDim }">
@@ -769,7 +776,10 @@ onMounted(async () => {
 
               <div class="entry-field">
                 <label :style="{ color: portal.textDim }">Password *</label>
-                <input v-model="registerForm.password" type="password" required :style="{ backgroundColor: portal.dark2, borderColor: portal.border }" />
+                <div class="fg-password-field">
+                  <input v-model="registerForm.password" :type="pw.type('register')" required autocomplete="new-password" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }" />
+                  <PasswordToggle :shown="pw.isShown('register')" @toggle="pw.toggle('register')" />
+                </div>
                 <p class="entry-hint" :style="{ color: portal.textDim }">Minimum 8 characters required</p>
               </div>
 
@@ -858,7 +868,10 @@ onMounted(async () => {
 
             <div class="entry-field">
               <label :style="{ color: portal.textDim }">Password *</label>
-              <input v-model="gymSignupForm.admin_password" type="password" required :style="{ backgroundColor: portal.dark2, borderColor: portal.border }" />
+              <div class="fg-password-field">
+                <input v-model="gymSignupForm.admin_password" :type="pw.type('gym')" required autocomplete="new-password" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }" />
+                <PasswordToggle :shown="pw.isShown('gym')" @toggle="pw.toggle('gym')" />
+              </div>
               <p class="entry-hint" :style="{ color: portal.textDim }">Minimum 8 characters required</p>
             </div>
 

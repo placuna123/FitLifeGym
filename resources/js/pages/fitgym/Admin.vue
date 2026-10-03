@@ -16,13 +16,16 @@ import {
   adminNotifications,
   gymClasses,
 } from '@/api/fitgym';
+import PasswordToggle from '@/components/PasswordToggle.vue';
 import { useMobileNav } from '@/composables/useMobileNav';
+import { usePasswordVisibility } from '@/composables/usePasswordVisibility';
 import { useQrCheckinScanner } from '@/composables/useQrCheckinScanner';
 import { useSessionGuard } from '@/composables/useSessionGuard';
 import { goToEntry } from '@/lib/portal';
 
 const currentView = ref('dashboard');
 const { mobileNavOpen, closeMobileNav } = useMobileNav();
+const pw = usePasswordVisibility();
 let adminPortalRefreshTimer: number | null = null;
 const user = ref<{ id: number; name: string; email: string; role: string } | null>(null);
 const loading = ref(true);
@@ -2853,7 +2856,10 @@ onUnmounted(() => {
           </div>
           <div class="form-group">
             <label>Password</label>
-            <input v-model="trainerForm.password" type="password" class="form-input" placeholder="Password" />
+            <div class="fg-password-field">
+              <input v-model="trainerForm.password" :type="pw.type('staff')" class="form-input" placeholder="Password" autocomplete="new-password" />
+              <PasswordToggle :shown="pw.isShown('staff')" @toggle="pw.toggle('staff')" />
+            </div>
           </div>
           <div class="form-group">
             <label>Phone</label>
@@ -2994,15 +3000,24 @@ onUnmounted(() => {
         <div class="modal-form">
           <div class="form-group">
             <label>Current Password</label>
-            <input v-model="passwordForm.current_password" type="password" class="form-input" placeholder="Current password" />
+            <div class="fg-password-field">
+              <input v-model="passwordForm.current_password" :type="pw.type('current')" class="form-input" placeholder="Current password" autocomplete="current-password" />
+              <PasswordToggle :shown="pw.isShown('current')" @toggle="pw.toggle('current')" />
+            </div>
           </div>
           <div class="form-group">
             <label>New Password</label>
-            <input v-model="passwordForm.new_password" type="password" class="form-input" placeholder="New password" />
+            <div class="fg-password-field">
+              <input v-model="passwordForm.new_password" :type="pw.type('new')" class="form-input" placeholder="New password" autocomplete="new-password" />
+              <PasswordToggle :shown="pw.isShown('new')" @toggle="pw.toggle('new')" />
+            </div>
           </div>
           <div class="form-group">
             <label>Confirm New Password</label>
-            <input v-model="passwordForm.confirm_password" type="password" class="form-input" placeholder="Confirm" />
+            <div class="fg-password-field">
+              <input v-model="passwordForm.confirm_password" :type="pw.type('confirm')" class="form-input" placeholder="Confirm" autocomplete="new-password" />
+              <PasswordToggle :shown="pw.isShown('confirm')" @toggle="pw.toggle('confirm')" />
+            </div>
           </div>
           <p v-if="formError" class="error-message">{{ formError }}</p>
           <div class="modal-actions">

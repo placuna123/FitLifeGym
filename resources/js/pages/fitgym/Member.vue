@@ -3,7 +3,9 @@ import { Head } from '@inertiajs/vue3';
 import { Menu, X } from 'lucide-vue-next';
 import { ref, onMounted, onUnmounted, watch, computed } from 'vue';
 import { memberAuth, memberAttendance, membershipPlans, memberPayments, memberNotifications, memberClasses, memberProgress, gymInfo } from '@/api/fitgym';
+import PasswordToggle from '@/components/PasswordToggle.vue';
 import { useMobileNav } from '@/composables/useMobileNav';
+import { usePasswordVisibility } from '@/composables/usePasswordVisibility';
 import { useSessionGuard } from '@/composables/useSessionGuard';
 import { goToEntry } from '@/lib/portal';
 import QRCode from 'qrcode';
@@ -226,6 +228,7 @@ const profileNotice = ref('');
 const showChangePassword = ref(false);
 const passwordForm = ref({ current_password: '', new_password: '', new_password_confirmation: '' });
 const passwordSaving = ref(false);
+const pw = usePasswordVisibility();
 const passwordError = ref('');
 const showEditProfile = ref(false);
 
@@ -1859,16 +1862,25 @@ onUnmounted(() => {
               <form class="space-y-4" @submit.prevent="submitChangePassword">
                 <div>
                   <label for="member-current-password" class="mb-1 block text-sm font-medium" :style="{ color: portal.textDim }">Current Password</label>
-                  <input id="member-current-password" v-model="passwordForm.current_password" type="password" required autocomplete="current-password" class="w-full rounded-lg border p-3 text-white" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }" />
+                  <div class="fg-password-field">
+                    <input id="member-current-password" v-model="passwordForm.current_password" :type="pw.type('current')" required autocomplete="current-password" class="w-full rounded-lg border p-3 text-white" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }" />
+                    <PasswordToggle :shown="pw.isShown('current')" @toggle="pw.toggle('current')" />
+                  </div>
                 </div>
                 <div>
                   <label for="member-new-password" class="mb-1 block text-sm font-medium" :style="{ color: portal.textDim }">New Password</label>
-                  <input id="member-new-password" v-model="passwordForm.new_password" type="password" required minlength="8" autocomplete="new-password" class="w-full rounded-lg border p-3 text-white" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }" />
+                  <div class="fg-password-field">
+                    <input id="member-new-password" v-model="passwordForm.new_password" :type="pw.type('new')" required minlength="8" autocomplete="new-password" class="w-full rounded-lg border p-3 text-white" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }" />
+                    <PasswordToggle :shown="pw.isShown('new')" @toggle="pw.toggle('new')" />
+                  </div>
                   <p class="mt-1 text-xs" :style="{ color: portal.textDim }">At least 8 characters.</p>
                 </div>
                 <div>
                   <label for="member-confirm-password" class="mb-1 block text-sm font-medium" :style="{ color: portal.textDim }">Confirm New Password</label>
-                  <input id="member-confirm-password" v-model="passwordForm.new_password_confirmation" type="password" required minlength="8" autocomplete="new-password" class="w-full rounded-lg border p-3 text-white" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }" />
+                  <div class="fg-password-field">
+                    <input id="member-confirm-password" v-model="passwordForm.new_password_confirmation" :type="pw.type('confirm')" required minlength="8" autocomplete="new-password" class="w-full rounded-lg border p-3 text-white" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }" />
+                    <PasswordToggle :shown="pw.isShown('confirm')" @toggle="pw.toggle('confirm')" />
+                  </div>
                 </div>
                 <p v-if="passwordError" class="rounded-lg border px-3 py-2 text-sm text-red-300" role="alert" :style="{ borderColor: portal.pink, backgroundColor: 'rgba(255, 107, 107, 0.12)' }">{{ passwordError }}</p>
                 <div class="flex space-x-3 pt-2">

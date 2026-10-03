@@ -14,12 +14,15 @@ import {
   gymInfo,
 } from '@/api/fitgym';
 import { Chart, type ChartConfiguration } from 'chart.js/auto';
+import PasswordToggle from '@/components/PasswordToggle.vue';
 import { useMobileNav } from '@/composables/useMobileNav';
+import { usePasswordVisibility } from '@/composables/usePasswordVisibility';
 import { useQrCheckinScanner } from '@/composables/useQrCheckinScanner';
 import { useSessionGuard } from '@/composables/useSessionGuard';
 import { goToEntry } from '@/lib/portal';
 
 const { mobileNavOpen, closeMobileNav } = useMobileNav();
+const pw = usePasswordVisibility();
 const isLoggedIn = ref(false);
 const loading = ref(true);
 const loginLoading = ref(false);
@@ -1411,14 +1414,17 @@ onUnmounted(() => {
               <label class="block text-sm font-medium text-white">Password</label>
               <a href="/forgot-password" class="trainer-auth-link text-sm hover:underline">Forgot password?</a>
             </div>
-            <input
-              v-model="loginForm.password"
-              type="password"
-              required
-              autocomplete="current-password"
-              class="w-full rounded-lg border px-3 py-3 text-white placeholder-gray-500"
-              placeholder="Enter your password"
-            />
+            <div class="fg-password-field">
+              <input
+                v-model="loginForm.password"
+                :type="pw.type('login')"
+                required
+                autocomplete="current-password"
+                class="w-full rounded-lg border px-3 py-3 text-white placeholder-gray-500"
+                placeholder="Enter your password"
+              />
+              <PasswordToggle :shown="pw.isShown('login')" @toggle="pw.toggle('login')" />
+            </div>
           </div>
           <div class="flex items-center">
             <input v-model="loginForm.remember" type="checkbox" value="1" class="h-4 w-4 rounded border" />
@@ -2311,15 +2317,24 @@ onUnmounted(() => {
         <div class="space-y-4">
           <div>
             <label class="block text-sm font-medium text-gray-300">Current Password</label>
-            <input v-model="passwordForm.current_password" type="password" class="mt-1 w-full rounded border border-gray-600 bg-[#1A2035] px-3 py-2 text-white" placeholder="Current password" />
+            <div class="fg-password-field mt-1">
+              <input v-model="passwordForm.current_password" :type="pw.type('current')" class="w-full rounded border border-gray-600 bg-[#1A2035] px-3 py-2 text-white" placeholder="Current password" autocomplete="current-password" />
+              <PasswordToggle :shown="pw.isShown('current')" @toggle="pw.toggle('current')" />
+            </div>
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-300">New Password</label>
-            <input v-model="passwordForm.new_password" type="password" class="mt-1 w-full rounded border border-gray-600 bg-[#1A2035] px-3 py-2 text-white" placeholder="New password" />
+            <div class="fg-password-field mt-1">
+              <input v-model="passwordForm.new_password" :type="pw.type('new')" class="w-full rounded border border-gray-600 bg-[#1A2035] px-3 py-2 text-white" placeholder="New password" autocomplete="new-password" />
+              <PasswordToggle :shown="pw.isShown('new')" @toggle="pw.toggle('new')" />
+            </div>
           </div>
           <div>
             <label class="block text-sm font-medium text-gray-300">Confirm New Password</label>
-            <input v-model="passwordForm.new_password_confirmation" type="password" class="mt-1 w-full rounded border border-gray-600 bg-[#1A2035] px-3 py-2 text-white" placeholder="Confirm" />
+            <div class="fg-password-field mt-1">
+              <input v-model="passwordForm.new_password_confirmation" :type="pw.type('confirm')" class="w-full rounded border border-gray-600 bg-[#1A2035] px-3 py-2 text-white" placeholder="Confirm" autocomplete="new-password" />
+              <PasswordToggle :shown="pw.isShown('confirm')" @toggle="pw.toggle('confirm')" />
+            </div>
           </div>
         </div>
         <p v-if="formError" class="mt-2 text-sm text-red-400">{{ formError }}</p>

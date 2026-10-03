@@ -2,6 +2,10 @@
 import { Head } from '@inertiajs/vue3';
 import { onMounted, ref } from 'vue';
 import { platformAnalytics, platformAuditLogs, platformAuth, platformGyms } from '@/api/fitgym';
+import PasswordToggle from '@/components/PasswordToggle.vue';
+import { usePasswordVisibility } from '@/composables/usePasswordVisibility';
+
+const pw = usePasswordVisibility();
 
 // Same palette as the Admin / Trainer / Member portals — nothing new introduced.
 const portal = {
@@ -260,7 +264,10 @@ onMounted(checkAuth);
           </div>
           <div class="field">
             <label :style="{ color: portal.textDim }">Password</label>
-            <input v-model="loginForm.password" type="password" required :style="{ backgroundColor: portal.dark2, borderColor: portal.border }" />
+            <div class="fg-password-field">
+              <input v-model="loginForm.password" :type="pw.type('login')" required autocomplete="current-password" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }" />
+              <PasswordToggle :shown="pw.isShown('login')" @toggle="pw.toggle('login')" />
+            </div>
           </div>
           <button type="submit" class="primary-btn" :style="{ backgroundColor: portal.purple }" :disabled="loginLoading">
             {{ loginLoading ? 'Signing In…' : 'Sign In' }}
@@ -496,7 +503,10 @@ onMounted(checkAuth);
           </div>
           <div class="field">
             <label :style="{ color: portal.textDim }">Admin Password</label>
-            <input v-model="addGymForm.admin_password" type="password" required minlength="8" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }" />
+            <div class="fg-password-field">
+              <input v-model="addGymForm.admin_password" :type="pw.type('branch')" required minlength="8" autocomplete="new-password" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }" />
+              <PasswordToggle :shown="pw.isShown('branch')" @toggle="pw.toggle('branch')" />
+            </div>
           </div>
           <div class="modal-actions">
             <button type="button" class="ghost-btn" :style="{ borderColor: portal.border, color: portal.textDim }" @click="showAddGymModal = false">

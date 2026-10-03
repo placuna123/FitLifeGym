@@ -264,4 +264,10 @@ defineProps<{
     line-height: 1.5;
 }
 
+.fg-auth .fg-inline-link {
+    color: #a78bfa;
+    font-weight: 600;
+    text-decoration: underline;
+}
+
 </style>

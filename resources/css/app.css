@@ -264,3 +264,36 @@
         transition: none;
     }
 }
+
+/* Password field with a show/hide eye button (components/PasswordToggle.vue) */
+.fg-password-field {
+    position: relative;
+    display: block;
+}
+
+.fg-password-field > input {
+    /* the wrapper replaces the input as the stretched form item, so the input fills it */
+    width: 100%;
+    /* room for the eye button; !important so each page's own input padding can't cover it */
+    padding-right: 2.75rem !important;
+}
+
+.fg-password-toggle {
+    position: absolute;
+    top: 0;
+    right: 0;
+    display: inline-flex;
+    width: 2.75rem;
+    height: 100%;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    background: transparent;
+    color: #a0a0a0;
+    cursor: pointer;
+}
+
+.fg-password-toggle:hover,
+.fg-password-toggle:focus-visible {
+    color: #ffffff;
+}
