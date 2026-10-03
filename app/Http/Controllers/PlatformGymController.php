@@ -115,6 +115,10 @@ class PlatformGymController extends Controller
 
             AuditLog::record('gym.created', "Super Admin created gym {$gym->name}", ['type' => 'Gym', 'id' => $gym->id]);
 
+            if ($admin = User::find($gym->owner_user_id)) {
+                \App\Support\Email::send($admin, new \App\Notifications\AccountInvite('Admin', $gym->name, \App\Support\Email::setPasswordUrl($admin)));
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Gym created successfully',

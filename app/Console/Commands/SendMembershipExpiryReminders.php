@@ -2,14 +2,17 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Gym;
 use App\Models\Member;
 use App\Models\Notification;
+use App\Notifications\MembershipExpiring;
 use App\Services\SmsService;
+use App\Support\Email;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * Daily job: SMS + in-app notification for members whose membership expires
+ * Daily job: SMS + email + in-app notification for members whose membership expires
  * in 3 days. Guarded by a per-member/per-day cache marker so a manual re-run
  * on the same day (e.g. while testing) doesn't double-send.
  */
@@ -40,6 +43,11 @@ class SendMembershipExpiryReminders extends Command
             $message = "Hi {$member->full_name}, your gym membership will expire on {$targetDate}. Please renew soon to keep your access active.";
 
             $sms->send($member->phone, $message, $member->gym_id);
+
+            Email::to($member->email, new MembershipExpiring(
+                Gym::find($member->gym_id)?->name ?? 'your gym',
+                now()->addDays(3)->format('M d, Y')
+            ));
 
             try {
                 Notification::create([

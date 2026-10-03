@@ -261,6 +261,8 @@ class MemberController extends Controller
             // Approval must still succeed even if the SMS send fails.
         }
 
+        \App\Support\Email::to($member->email, new \App\Notifications\MemberApproved(Gym::find($member->gym_id)?->name ?? 'your gym'));
+
         \App\Models\AuditLog::record('member.approved', "Approved member {$member->full_name}", ['type' => 'Member', 'id' => $member->id]);
 
         return response()->json([
@@ -443,6 +445,7 @@ class MemberController extends Controller
             $this->createNewMemberNotification($fullName, $gymId);
             $this->createMemberNotification($member->id, 'Welcome!', "Welcome to the gym, {$fullName}! Complete your GCash payment (or pay at the front desk) to activate your membership.", 'green', $gymId);
             DB::commit();
+            \App\Support\Email::to($member->email, new \App\Notifications\MemberWelcome(Gym::find($gymId)?->name ?? 'your gym'));
             return response()->json([
                 'success' => true,
                 'message' => 'Account created! You can sign in now. An admin or staff member will approve your account before you can check in at the gym.',

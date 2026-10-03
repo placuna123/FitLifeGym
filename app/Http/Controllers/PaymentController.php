@@ -383,6 +383,13 @@ class PaymentController extends Controller
         } catch (\Throwable $exception) {
             // Payment recording must still succeed even if the SMS send fails.
         }
+
+        \App\Support\Email::to($payment->member->email, new \App\Notifications\PaymentVerified(
+            \App\Models\Gym::find($payment->member->gym_id)?->name ?? 'your gym',
+            number_format((float) $payment->amount, 2),
+            (string) $payment->invoice_number,
+            $newExpiry->format('M d, Y')
+        ));
     }
 
     private function generateInvoiceNumber(): string

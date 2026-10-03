@@ -255,6 +255,7 @@ class MemberAuthController extends Controller
         }
 
         $user->update(['password' => Hash::make($request->new_password)]);
+        \App\Support\Email::passwordChanged($user);
 
         return response()->json(['success' => true, 'message' => 'Password changed successfully']);
     }

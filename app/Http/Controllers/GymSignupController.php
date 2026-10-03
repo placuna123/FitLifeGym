@@ -103,6 +103,11 @@ class GymSignupController extends Controller
                 return $gym;
             });
 
+            \App\Support\Email::send(
+                User::find($result->owner_user_id),
+                new \App\Notifications\GymWelcome($result->name, $result->subscription_expires_at?->format('M d, Y'))
+            );
+
             return response()->json([
                 'success' => true,
                 'message' => 'Your gym is ready! Your free trial runs until ' . $result->subscription_expires_at?->format('M d, Y') . '. You can now sign in as its Admin.',

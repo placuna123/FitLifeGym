@@ -112,6 +112,12 @@ class TrainerController extends Controller
 
             \App\Models\AuditLog::record('trainer.created', "Created trainer {$trainer->full_name}", ['type' => 'Staff', 'id' => $trainer->id]);
 
+            \App\Support\Email::send($user, new \App\Notifications\AccountInvite(
+                'Staff',
+                \App\Models\Gym::find($trainer->gym_id)?->name ?? 'your gym',
+                \App\Support\Email::setPasswordUrl($user)
+            ));
+
             return response()->json([
                 'success' => true,
                 'message' => 'Staff created successfully',

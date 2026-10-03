@@ -170,6 +170,7 @@ class TrainerProfileController extends Controller
             return response()->json(['success' => false, 'message' => 'Current password is incorrect'], 422);
         }
         $user->update(['password' => Hash::make($request->new_password)]);
+        \App\Support\Email::passwordChanged($user);
         return response()->json(['success' => true, 'message' => 'Password changed successfully']);
     }
 }
