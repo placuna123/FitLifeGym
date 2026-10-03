@@ -104,9 +104,9 @@ Route::post('api/member/notifications/{notification}/read', [App\Http\Controller
 
 // Gym classes (Admin/Trainer-managed weekly schedule) + Member bookings
 Route::get('api/gym-classes', [App\Http\Controllers\GymClassController::class, 'index'])->middleware(['auth', 'tenant'])->name('gym-classes.index');
-Route::post('api/gym-classes', [App\Http\Controllers\GymClassController::class, 'store'])->middleware(['auth', 'tenant', 'role:Admin'])->name('gym-classes.store');
-Route::put('api/gym-classes/{id}', [App\Http\Controllers\GymClassController::class, 'update'])->middleware(['auth', 'tenant', 'role:Admin'])->name('gym-classes.update');
-Route::delete('api/gym-classes/{id}', [App\Http\Controllers\GymClassController::class, 'destroy'])->middleware(['auth', 'tenant', 'role:Admin'])->name('gym-classes.destroy');
+Route::post('api/gym-classes', [App\Http\Controllers\GymClassController::class, 'store'])->middleware(['auth', 'tenant', 'role:Admin,Staff'])->name('gym-classes.store');
+Route::put('api/gym-classes/{id}', [App\Http\Controllers\GymClassController::class, 'update'])->middleware(['auth', 'tenant', 'role:Admin,Staff'])->name('gym-classes.update');
+Route::delete('api/gym-classes/{id}', [App\Http\Controllers\GymClassController::class, 'destroy'])->middleware(['auth', 'tenant', 'role:Admin,Staff'])->name('gym-classes.destroy');
 
 Route::get('api/member/classes', [App\Http\Controllers\ClassBookingController::class, 'index'])->middleware(['auth', 'tenant'])->name('member.classes.index');
 Route::post('api/member/classes/book', [App\Http\Controllers\ClassBookingController::class, 'store'])->middleware(['auth', 'tenant'])->name('member.classes.book');

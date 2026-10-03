@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ClassBooking;
 use App\Models\GymClass;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
@@ -12,17 +14,41 @@ use Illuminate\Support\Facades\Validator;
  */
 class GymClassController extends Controller
 {
-    public function index()
+    private const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+    /**
+     * Weekly classes. Each class also carries its date in the week of `?date=`
+     * (default: this week) and how many members booked that occurrence.
+     */
+    public function index(Request $request)
     {
+        $weekStart = Carbon::parse($request->query('date', now()->toDateString()))->startOfWeek(Carbon::MONDAY);
+
         $classes = GymClass::where('is_archived', 0)
             ->with('trainer')
-            ->orderByRaw("FIELD(day_of_week, 'Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday')")
-            ->orderBy('start_time')
-            ->get();
+            ->get()
+            ->sortBy(fn (GymClass $c) => sprintf('%d-%s', array_search($c->day_of_week, self::DAYS, true), $c->start_time))
+            ->values();
+
+        $dates = $classes->mapWithKeys(fn (GymClass $c) => [
+            $c->id => $weekStart->copy()->addDays((int) array_search($c->day_of_week, self::DAYS, true))->toDateString(),
+        ]);
+
+        $bookedCounts = ClassBooking::whereIn('gym_class_id', $classes->pluck('id'))
+            ->where('status', 'Booked')
+            ->whereBetween('class_date', [$weekStart->toDateString(), $weekStart->copy()->addDays(6)->toDateString()])
+            ->get(['gym_class_id', 'class_date'])
+            ->filter(fn ($b) => $b->class_date?->toDateString() === ($dates[$b->gym_class_id] ?? null))
+            ->countBy('gym_class_id');
 
         return response()->json([
             'success' => true,
-            'classes' => $classes->map(fn (GymClass $c) => $this->toPayload($c)),
+            'week_start' => $weekStart->toDateString(),
+            'classes' => $classes->map(fn (GymClass $c) => [
+                ...$this->toPayload($c),
+                'class_date' => $dates[$c->id],
+                'booked_count' => (int) ($bookedCounts[$c->id] ?? 0),
+            ]),
         ]);
     }
 

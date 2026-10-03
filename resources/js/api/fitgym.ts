@@ -126,7 +126,7 @@ export const memberPayments = {
 };
 
 export const gymClasses = {
-    list: () => api.get('/gym-classes'),
+    list: (params?: { date?: string }) => api.get('/gym-classes', { params }),
     create: (data: Record<string, unknown>) => api.post('/gym-classes', data),
     update: (id: string | number, data: Record<string, unknown>) => api.put(`/gym-classes/${id}`, data),
     delete: (id: string | number) => api.delete(`/gym-classes/${id}`),

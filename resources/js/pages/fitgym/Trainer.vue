@@ -12,6 +12,8 @@ import {
   reports,
   trainerProfile,
   gymInfo,
+  gymClasses,
+  trainer,
 } from '@/api/fitgym';
 import { Chart, type ChartConfiguration } from 'chart.js/auto';
 import PasswordToggle from '@/components/PasswordToggle.vue';
@@ -86,7 +88,7 @@ const showViewPaymentModal = ref(false);
 const selectedPaymentForView = ref<Record<string, unknown> | null>(null);
 const selectedPaymentForEdit = ref<Record<string, unknown> | null>(null);
 const showScheduleModal = ref(false);
-const selectedManagedClassForEdit = ref<string | null>(null);
+const selectedManagedClassForEdit = ref<number | null>(null);
 const checkinForm = ref({ member_id: '' });
 const paymentForm = ref({
   member_id: '',
@@ -105,9 +107,9 @@ const scheduleClassForm = ref({
   name: '',
   trainer_id: '',
   days: [] as string[],
-  timeStart: '09:00',
+  start_time: '09:00',
+  end_time: '10:00',
   capacity: '10',
-  status: 'Active',
 });
 const formLoading = ref(false);
 const formError = ref('');
@@ -142,33 +144,25 @@ const trainerRoleLabel = computed(() => {
 });
 const trainerCheckinsToday = computed(() => Number(reportAttendance.value?.today_checkins ?? recentCheckins.value.length ?? 0));
 
-// Schedule (same data structure as laravel-blade-app trainer Schedule)
+// Schedule: the branch's real weekly classes — the same ones Admin manages and members book.
+type ScheduleClass = {
+  id: number;
+  name: string;
+  trainer_id: number | null;
+  trainer_name: string | null;
+  day_of_week: string;
+  start_time: string;
+  end_time: string;
+  capacity: number;
+  class_date: string;
+  booked_count: number;
+};
 const scheduleViewTab = ref<'Calendar' | 'TrainerAvailability' | 'ClassManagement'>('Calendar');
 const scheduleDate = ref(new Date().toISOString().slice(0, 10));
-const scheduleTrainers = ref<Array<{ id: string; name: string; avatar: string }>>([
-  { id: '1', name: 'John D.', avatar: 'https://i.pravatar.cc/150?u=john' },
-  { id: '2', name: 'Jane S.', avatar: 'https://i.pravatar.cc/150?u=jane' },
-  { id: '3', name: 'Mike R.', avatar: 'https://i.pravatar.cc/150?u=mike' },
-  { id: '4', name: 'Emily C.', avatar: 'https://i.pravatar.cc/150?u=emily' },
-]);
-const scheduleManagedClasses = ref<Array<{
-  id: string;
-  name: string;
-  trainer_id: string;
-  trainer_name: string;
-  time: string;
-  timeStart: string;
-  days: string[];
-  capacity: number;
-  enrolled: number;
-  status: string;
-}>>([
-  { id: 'mc1', name: 'Spinning', trainer_id: '1', trainer_name: 'John D.', time: '09:00 - 10:00', timeStart: '09:00', days: ['Monday', 'Wednesday', 'Friday'], capacity: 20, enrolled: 18, status: 'Active' },
-  { id: 'mc2', name: 'Yoga', trainer_id: '2', trainer_name: 'Jane S.', time: '09:00 - 10:00', timeStart: '09:00', days: ['Tuesday', 'Thursday', 'Saturday'], capacity: 15, enrolled: 15, status: 'Full' },
-  { id: 'mc3', name: 'HIIT', trainer_id: '3', trainer_name: 'Mike R.', time: '10:00 - 11:00', timeStart: '10:00', days: ['Monday', 'Wednesday', 'Friday'], capacity: 10, enrolled: 9, status: 'Active' },
-  { id: 'mc4', name: 'Strength', trainer_id: '4', trainer_name: 'Emily C.', time: '11:00 - 12:00', timeStart: '11:00', days: ['Tuesday', 'Thursday', 'Saturday'], capacity: 12, enrolled: 11, status: 'Active' },
-  { id: 'mc5', name: 'Advanced Pilates', trainer_id: '2', trainer_name: 'Jane S.', time: '13:00 - 14:00', timeStart: '13:00', days: ['Monday', 'Friday'], capacity: 10, enrolled: 0, status: 'Cancelled' },
-]);
+const scheduleClasses = ref<ScheduleClass[]>([]);
+const scheduleStaff = ref<Array<{ id: number; name: string }>>([]);
+const scheduleLoading = ref(false);
+const scheduleError = ref('');
 
 async function checkAuth() {
   // Stay on the loading screen while navigating away, so the old portal-local
@@ -1145,132 +1139,136 @@ function planFeatures(plan: Record<string, unknown>): string[] {
 }
 
 const SCHEDULE_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-const SCHEDULE_TIMES = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00'];
 
-// Schedule: get class at (day, time) for calendar grid (same logic as Blade)
-function getCalendarSlot(day: string, time: string): { name: string; trainer_name: string; enrolled: number; capacity: number } | null {
-  const cls = scheduleManagedClasses.value.find(
-    (c) => c.days.includes(day) && c.timeStart === time && c.status !== 'Cancelled'
-  );
-  if (!cls) return null;
-  return { name: cls.name, trainer_name: cls.trainer_name, enrolled: cls.enrolled, capacity: cls.capacity };
+function firstApiError(err: unknown, fallback: string): string {
+  const data = (err as { response?: { data?: { message?: string; errors?: Record<string, string[]> } } }).response?.data;
+  const first = data?.errors ? Object.values(data.errors).flat()[0] : undefined;
+  return first || data?.message || fallback;
 }
 
-// Precomputed calendar grid for template (avoids repeated getCalendarSlot calls)
+async function loadScheduleData() {
+  scheduleLoading.value = true;
+  scheduleError.value = '';
+  try {
+    const [classesRes, staffRes] = await Promise.all([
+      gymClasses.list({ date: scheduleDate.value }),
+      trainer.list().catch(() => ({ data: { trainer: [] } })),
+    ]);
+    scheduleClasses.value = (classesRes.data as { classes?: ScheduleClass[] }).classes ?? [];
+    const staffRaw = (staffRes.data as { trainer?: Array<{ id: number; full_name?: string }> }).trainer ?? [];
+    scheduleStaff.value = staffRaw.map((s) => ({ id: Number(s.id), name: String(s.full_name || 'Staff') }));
+  } catch (err: unknown) {
+    scheduleClasses.value = [];
+    scheduleError.value = firstApiError(err, 'Failed to load the class schedule.');
+  } finally {
+    scheduleLoading.value = false;
+  }
+}
+
+// Calendar grid: one row per start time that has a class this week.
 const scheduleCalendarRows = computed(() => {
-  return SCHEDULE_TIMES.map((time) => ({
+  const times = [...new Set(scheduleClasses.value.map((c) => c.start_time))].sort();
+  return times.map((time) => ({
     time,
-    cells: SCHEDULE_DAYS.map((day) => ({ day, slot: getCalendarSlot(day, time) })),
+    cells: SCHEDULE_DAYS.map((day) => ({
+      day,
+      classes: scheduleClasses.value.filter((c) => c.day_of_week === day && c.start_time === time),
+    })),
   }));
 });
 
-// Trainer availability: is (trainer_id, day, time) booked?
-function isTrainerBooked(trainerId: string, day: string, time: string): boolean {
-  return scheduleManagedClasses.value.some(
-    (c) => c.trainer_id === trainerId && c.days.includes(day) && c.timeStart === time
-  );
+function classesTaughtBy(staffId: number | null, day: string): ScheduleClass[] {
+  return scheduleClasses.value.filter((c) => (c.trainer_id ?? null) === staffId && c.day_of_week === day);
 }
 
-function scheduleTimeLabel(start: string): string {
-  const [hStr, mStr] = start.split(':');
-  const h = Number(hStr);
-  if (Number.isNaN(h)) return `${start} - ${start}`;
-  const end = `${String((h + 1) % 24).padStart(2, '0')}:${mStr ?? '00'}`;
-  return `${start} - ${end}`;
+const hasUnassignedClasses = computed(() => scheduleClasses.value.some((c) => !c.trainer_id));
+
+function staffInitials(name: string): string {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p.charAt(0).toUpperCase()).join('') || 'S';
+}
+
+function classIsFull(cls: ScheduleClass): boolean {
+  return cls.booked_count >= cls.capacity;
+}
+
+function formatClassDate(date: string): string {
+  const d = new Date(`${date}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? date : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
 function openAddClassModal() {
   selectedManagedClassForEdit.value = null;
-  scheduleClassForm.value = {
-    name: '',
-    trainer_id: scheduleTrainers.value[0]?.id || '',
-    days: ['Monday', 'Wednesday', 'Friday'],
-    timeStart: '09:00',
-    capacity: '10',
-    status: 'Active',
-  };
+  scheduleClassForm.value = { name: '', trainer_id: '', days: ['Monday'], start_time: '09:00', end_time: '10:00', capacity: '10' };
   formError.value = '';
   showScheduleModal.value = true;
 }
 
-function openEditClassModal(cls: {
-  id: string;
-  name: string;
-  trainer_id: string;
-  days: string[];
-  timeStart: string;
-  capacity: number;
-  status: string;
-}) {
+function openEditClassModal(cls: ScheduleClass) {
   selectedManagedClassForEdit.value = cls.id;
   scheduleClassForm.value = {
     name: cls.name,
-    trainer_id: cls.trainer_id,
-    days: [...cls.days],
-    timeStart: cls.timeStart,
+    trainer_id: cls.trainer_id ? String(cls.trainer_id) : '',
+    days: [cls.day_of_week],
+    start_time: cls.start_time,
+    end_time: cls.end_time,
     capacity: String(cls.capacity),
-    status: cls.status === 'Cancelled' ? 'Cancelled' : 'Active',
   };
   formError.value = '';
   showScheduleModal.value = true;
 }
 
 async function submitManagedClass() {
-  const name = scheduleClassForm.value.name.trim();
-  const trainerId = scheduleClassForm.value.trainer_id;
-  const days = scheduleClassForm.value.days;
-  const timeStart = scheduleClassForm.value.timeStart;
-  const capacity = Number(scheduleClassForm.value.capacity);
+  const form = scheduleClassForm.value;
+  const name = form.name.trim();
+  const capacity = Number(form.capacity);
 
-  if (!name || !trainerId || days.length === 0 || !timeStart || !Number.isFinite(capacity) || capacity <= 0) {
-    formError.value = 'Please complete class name, trainer, days, time, and valid capacity.';
+  if (!name || form.days.length === 0 || !form.start_time || !form.end_time || !Number.isInteger(capacity) || capacity < 1) {
+    formError.value = 'Please complete the class name, day, start and end time, and a valid capacity.';
+    return;
+  }
+  if (form.end_time <= form.start_time) {
+    formError.value = 'End time must be after the start time.';
     return;
   }
 
-  const trainer = scheduleTrainers.value.find((t) => t.id === trainerId);
-  if (!trainer) {
-    formError.value = 'Selected trainer not found.';
-    return;
-  }
-
-  const classIndex = selectedManagedClassForEdit.value
-    ? scheduleManagedClasses.value.findIndex((c) => c.id === selectedManagedClassForEdit.value)
-    : -1;
-
-  const existingEnrolled = classIndex >= 0 ? scheduleManagedClasses.value[classIndex].enrolled : 0;
-  const safeEnrolled = Math.min(existingEnrolled, capacity);
-  const baseStatus = scheduleClassForm.value.status === 'Cancelled'
-    ? 'Cancelled'
-    : (safeEnrolled >= capacity ? 'Full' : 'Active');
-
-  const item = {
-    id: classIndex >= 0 ? scheduleManagedClasses.value[classIndex].id : `mc${Date.now()}`,
+  const base = {
     name,
-    trainer_id: trainer.id,
-    trainer_name: trainer.name,
-    time: scheduleTimeLabel(timeStart),
-    timeStart,
-    days: [...days],
+    trainer_id: form.trainer_id ? Number(form.trainer_id) : null,
+    start_time: form.start_time,
+    end_time: form.end_time,
     capacity,
-    enrolled: safeEnrolled,
-    status: baseStatus,
   };
 
-  if (classIndex >= 0) {
-    scheduleManagedClasses.value[classIndex] = item;
-  } else {
-    scheduleManagedClasses.value.push(item);
+  formLoading.value = true;
+  formError.value = '';
+  try {
+    if (selectedManagedClassForEdit.value !== null) {
+      await gymClasses.update(selectedManagedClassForEdit.value, { ...base, day_of_week: form.days[0] });
+    } else {
+      // One weekly class per selected day.
+      for (const day of form.days) {
+        await gymClasses.create({ ...base, day_of_week: day });
+      }
+    }
+    showScheduleModal.value = false;
+    selectedManagedClassForEdit.value = null;
+    await loadScheduleData();
+  } catch (err: unknown) {
+    formError.value = firstApiError(err, 'Failed to save the class.');
+    await loadScheduleData();
+  } finally {
+    formLoading.value = false;
   }
-
-  showScheduleModal.value = false;
-  selectedManagedClassForEdit.value = null;
 }
 
-async function deleteManagedClass(classId: string) {
-  const cls = scheduleManagedClasses.value.find((c) => c.id === classId);
-  if (!cls) return;
-  if (!confirm(`Delete class "${cls.name}"?`)) return;
-  scheduleManagedClasses.value = scheduleManagedClasses.value.filter((c) => c.id !== classId);
+async function deleteManagedClass(cls: ScheduleClass) {
+  if (!confirm(`Delete "${cls.name}" on ${cls.day_of_week}s? Members will no longer be able to book it.`)) return;
+  try {
+    await gymClasses.delete(cls.id);
+    await loadScheduleData();
+  } catch (err: unknown) {
+    scheduleError.value = firstApiError(err, 'Failed to delete the class.');
+  }
 }
 
 function openAddPlan() {
@@ -1352,7 +1350,12 @@ watch(currentView, (view) => {
   }
   if (view === 'memberships') loadMembershipsData();
   if (view === 'profile') loadProfileData();
+  if (view === 'schedule') loadScheduleData();
   startTrainerPortalAutoRefresh();
+});
+
+watch(scheduleDate, () => {
+  if (isLoggedIn.value && currentView.value === 'schedule') loadScheduleData();
 });
 
 watch(isLoggedIn, (loggedIn) => {
@@ -1860,7 +1863,7 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- Schedule (same data & layout as laravel-blade-app trainer Schedule) -->
+          <!-- Schedule: the branch's real weekly classes (same as Admin > Classes; members book these) -->
           <div v-if="currentView === 'schedule'" class="space-y-6">
             <div class="flex flex-wrap justify-between items-center gap-4">
               <h2 class="sr-only">Schedule Calendar</h2>
@@ -1872,92 +1875,121 @@ onUnmounted(() => {
               <button type="button" :class="['px-4 py-2 font-medium rounded-md transition-colors', scheduleViewTab === 'Calendar' ? 'bg-blue-600 text-white' : 'bg-[#2A3042] text-gray-300 hover:bg-gray-700']" @click="scheduleViewTab = 'Calendar'">Calendar View</button>
               <button type="button" :class="['px-4 py-2 font-medium rounded-md transition-colors', scheduleViewTab === 'TrainerAvailability' ? 'bg-blue-600 text-white' : 'bg-[#2A3042] text-gray-300 hover:bg-gray-700']" @click="scheduleViewTab = 'TrainerAvailability'">Trainer Availability</button>
               <button type="button" :class="['px-4 py-2 font-medium rounded-md transition-colors', scheduleViewTab === 'ClassManagement' ? 'bg-blue-600 text-white' : 'bg-[#2A3042] text-gray-300 hover:bg-gray-700']" @click="scheduleViewTab = 'ClassManagement'">Class Management</button>
-              <div class="relative ml-auto">
+              <label class="relative ml-auto flex items-center gap-2 text-gray-300">
+                <span class="text-xs">Week of</span>
                 <input v-model="scheduleDate" type="date" class="rounded border border-gray-600 bg-[#2A3042] text-white px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500" />
-              </div>
+              </label>
             </div>
+            <p v-if="scheduleError" class="rounded border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm text-red-300" role="alert">{{ scheduleError }}</p>
             <div class="rounded-lg bg-[#2A3042] p-6 shadow">
-              <!-- Calendar View -->
-              <div v-show="scheduleViewTab === 'Calendar'" class="overflow-x-auto">
-                <div class="grid text-white min-w-[800px]" style="grid-template-columns: auto repeat(7, 1fr);">
-                  <div class="p-2 text-center font-semibold text-gray-400">Time</div>
-                  <div v-for="d in SCHEDULE_DAYS" :key="d" class="p-2 text-center font-semibold">{{ d.slice(0, 3) }}</div>
-                  <template v-for="row in scheduleCalendarRows" :key="row.time">
-                    <div class="p-2 text-center font-semibold text-gray-400 border-t border-gray-700">{{ row.time }}</div>
-                    <div v-for="cell in row.cells" :key="cell.day" class="border border-gray-700 p-1 h-24 min-h-[6rem]">
-                      <div v-if="cell.slot" class="bg-blue-600 text-white rounded p-2 h-full flex flex-col justify-between text-xs">
-                        <p class="font-bold">{{ cell.slot.name }}</p>
-                        <p>{{ cell.slot.trainer_name }}</p>
-                        <p class="text-right">{{ cell.slot.enrolled }}/{{ cell.slot.capacity }}</p>
+              <p v-if="scheduleLoading && scheduleClasses.length === 0" class="py-6 text-center text-gray-400">Loading classes...</p>
+              <div v-else-if="scheduleClasses.length === 0" class="py-8 text-center text-gray-400">
+                <p class="mb-3">No classes scheduled yet. Add one so members can book it.</p>
+                <button type="button" class="rounded bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:opacity-90" @click="openAddClassModal">Add Class</button>
+              </div>
+              <template v-else>
+                <!-- Calendar View -->
+                <div v-show="scheduleViewTab === 'Calendar'" class="overflow-x-auto">
+                  <div class="grid text-white min-w-[800px]" style="grid-template-columns: auto repeat(7, 1fr);">
+                    <div class="p-2 text-center font-semibold text-gray-400">Time</div>
+                    <div v-for="d in SCHEDULE_DAYS" :key="d" class="p-2 text-center font-semibold">{{ d.slice(0, 3) }}</div>
+                    <template v-for="row in scheduleCalendarRows" :key="row.time">
+                      <div class="p-2 text-center font-semibold text-gray-400 border-t border-gray-700">{{ row.time }}</div>
+                      <div v-for="cell in row.cells" :key="cell.day" class="border border-gray-700 p-1 min-h-[6rem] space-y-1">
+                        <button
+                          v-for="cls in cell.classes"
+                          :key="cls.id"
+                          type="button"
+                          :class="['w-full text-left text-white rounded p-2 flex flex-col justify-between gap-1 text-xs hover:opacity-90', classIsFull(cls) ? 'bg-amber-600' : 'bg-blue-600']"
+                          :title="'Edit ' + cls.name"
+                          @click="openEditClassModal(cls)"
+                        >
+                          <span class="font-bold">{{ cls.name }}</span>
+                          <span>{{ cls.trainer_name || 'TBA' }}</span>
+                          <span class="flex justify-between"><span>{{ cls.start_time }}–{{ cls.end_time }}</span><span>{{ cls.booked_count }}/{{ cls.capacity }}</span></span>
+                        </button>
                       </div>
-                    </div>
-                  </template>
+                    </template>
+                  </div>
                 </div>
-              </div>
-              <!-- Trainer Availability -->
-              <div v-show="scheduleViewTab === 'TrainerAvailability'" class="overflow-x-auto">
-                <table class="w-full text-left text-gray-300">
-                  <thead class="border-b border-gray-700">
-                    <tr>
-                      <th class="py-3 px-4">Trainer</th>
-                      <th v-for="d in SCHEDULE_DAYS" :key="d" class="py-3 px-4 text-center">{{ d.slice(0, 3) }}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="trainer in scheduleTrainers" :key="trainer.id" class="border-b border-gray-800">
-                      <td class="py-4 px-4 flex items-center">
-                        <img :src="trainer.avatar" :alt="trainer.name" class="w-10 h-10 rounded-full mr-4" />
-                        <span class="text-white font-medium">{{ trainer.name }}</span>
-                      </td>
-                      <td v-for="day in SCHEDULE_DAYS" :key="day" class="py-4 px-4">
-                        <div class="flex flex-col space-y-1">
-                          <div v-for="time in ['08:00', '09:00', '10:00', '11:00']" :key="time" :class="['px-2 py-1 text-xs rounded', isTrainerBooked(trainer.id, day, time) ? 'bg-blue-500/20 text-blue-300' : 'bg-green-500/20 text-green-300']">
-                            {{ time }} - {{ isTrainerBooked(trainer.id, day, time) ? 'Booked' : 'Available' }}
+                <!-- Trainer Availability -->
+                <div v-show="scheduleViewTab === 'TrainerAvailability'" class="overflow-x-auto">
+                  <table class="w-full min-w-[800px] text-left text-gray-300">
+                    <thead class="border-b border-gray-700">
+                      <tr>
+                        <th class="py-3 px-4">Trainer</th>
+                        <th v-for="d in SCHEDULE_DAYS" :key="d" class="py-3 px-4 text-center">{{ d.slice(0, 3) }}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="staff in scheduleStaff" :key="staff.id" class="border-b border-gray-800">
+                        <td class="py-4 px-4">
+                          <div class="flex items-center gap-3">
+                            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-purple-600 text-sm font-bold text-white">{{ staffInitials(staff.name) }}</span>
+                            <span class="text-white font-medium">{{ staff.name }}</span>
                           </div>
-                        </div>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              <!-- Class Management -->
-              <div v-show="scheduleViewTab === 'ClassManagement'" class="overflow-x-auto">
-                <table class="w-full text-left text-gray-300">
-                  <thead class="border-b border-gray-700">
-                    <tr>
-                      <th class="py-3 px-4">Class Name</th>
-                      <th class="py-3 px-4">Trainer</th>
-                      <th class="py-3 px-4">Schedule</th>
-                      <th class="py-3 px-4 text-center">Enrolled/Capacity</th>
-                      <th class="py-3 px-4 text-center">Status</th>
-                      <th class="py-3 px-4 text-center">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="cls in scheduleManagedClasses" :key="cls.id" class="border-b border-gray-800 hover:bg-gray-800/50">
-                      <td class="py-4 px-4 font-medium text-white">{{ cls.name }}</td>
-                      <td class="py-4 px-4 flex items-center">
-                        <img :src="scheduleTrainers.find(t => t.id === cls.trainer_id)?.avatar" :alt="cls.trainer_name" class="w-8 h-8 rounded-full mr-3" />
-                        {{ cls.trainer_name }}
-                      </td>
-                      <td class="py-4 px-4">
-                        <div class="text-sm">{{ cls.days.join(', ') }}</div>
-                        <div class="text-xs text-gray-400">{{ cls.time }}</div>
-                      </td>
-                      <td class="py-4 px-4 text-center">{{ cls.enrolled }} / {{ cls.capacity }}</td>
-                      <td class="py-4 px-4 text-center">
-                        <span :class="['px-3 py-1 text-xs rounded-full', cls.status === 'Active' ? 'bg-green-500/20 text-green-300' : cls.status === 'Full' ? 'bg-yellow-500/20 text-yellow-300' : 'bg-red-500/20 text-red-400']">{{ cls.status }}</span>
-                      </td>
-                      <td class="py-4 px-4">
-                        <div class="flex justify-center gap-2">
-                          <button type="button" class="px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700" @click="openEditClassModal(cls)">Edit</button>
-                          <button type="button" class="px-3 py-1 text-xs font-medium text-white bg-red-600 rounded-md hover:bg-red-700" @click="deleteManagedClass(cls.id)">Delete</button>
-                        </div>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
+                        </td>
+                        <td v-for="day in SCHEDULE_DAYS" :key="day" class="py-4 px-2 align-top">
+                          <div class="flex flex-col space-y-1">
+                            <div v-for="cls in classesTaughtBy(staff.id, day)" :key="cls.id" class="px-2 py-1 text-xs rounded bg-blue-500/20 text-blue-300">
+                              {{ cls.start_time }} {{ cls.name }}
+                            </div>
+                            <div v-if="classesTaughtBy(staff.id, day).length === 0" class="px-2 py-1 text-xs rounded bg-green-500/20 text-green-300">Free</div>
+                          </div>
+                        </td>
+                      </tr>
+                      <tr v-if="hasUnassignedClasses" class="border-b border-gray-800">
+                        <td class="py-4 px-4 text-gray-400 italic">Unassigned (TBA)</td>
+                        <td v-for="day in SCHEDULE_DAYS" :key="day" class="py-4 px-2 align-top">
+                          <div class="flex flex-col space-y-1">
+                            <div v-for="cls in classesTaughtBy(null, day)" :key="cls.id" class="px-2 py-1 text-xs rounded bg-yellow-500/20 text-yellow-300">
+                              {{ cls.start_time }} {{ cls.name }}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                      <tr v-if="scheduleStaff.length === 0">
+                        <td :colspan="SCHEDULE_DAYS.length + 1" class="py-4 px-4 text-center text-gray-400">No staff accounts yet. The Admin can add them under Staff.</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <!-- Class Management -->
+                <div v-show="scheduleViewTab === 'ClassManagement'" class="overflow-x-auto">
+                  <table class="w-full min-w-[720px] text-left text-gray-300">
+                    <thead class="border-b border-gray-700">
+                      <tr>
+                        <th class="py-3 px-4">Class Name</th>
+                        <th class="py-3 px-4">Trainer</th>
+                        <th class="py-3 px-4">Schedule</th>
+                        <th class="py-3 px-4 text-center">Booked / Capacity</th>
+                        <th class="py-3 px-4 text-center">Status</th>
+                        <th class="py-3 px-4 text-center">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="cls in scheduleClasses" :key="cls.id" class="border-b border-gray-800 hover:bg-gray-800/50">
+                        <td class="py-4 px-4 font-medium text-white">{{ cls.name }}</td>
+                        <td class="py-4 px-4">{{ cls.trainer_name || 'TBA' }}</td>
+                        <td class="py-4 px-4">
+                          <div class="text-sm">{{ cls.day_of_week }} <span class="text-xs text-gray-400">({{ formatClassDate(cls.class_date) }})</span></div>
+                          <div class="text-xs text-gray-400">{{ cls.start_time }} - {{ cls.end_time }}</div>
+                        </td>
+                        <td class="py-4 px-4 text-center">{{ cls.booked_count }} / {{ cls.capacity }}</td>
+                        <td class="py-4 px-4 text-center">
+                          <span :class="['px-3 py-1 text-xs rounded-full', classIsFull(cls) ? 'bg-yellow-500/20 text-yellow-300' : 'bg-green-500/20 text-green-300']">{{ classIsFull(cls) ? 'Full' : 'Open' }}</span>
+                        </td>
+                        <td class="py-4 px-4">
+                          <div class="flex justify-center gap-2">
+                            <button type="button" class="px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700" @click="openEditClassModal(cls)">Edit</button>
+                            <button type="button" class="px-3 py-1 text-xs font-medium text-white bg-red-600 rounded-md hover:bg-red-700" @click="deleteManagedClass(cls)">Delete</button>
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </template>
             </div>
           </div>
 
@@ -2258,21 +2290,28 @@ onUnmounted(() => {
     <!-- Schedule (Add/Edit Class) modal -->
     <div v-if="showScheduleModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" @click.self="showScheduleModal = false">
       <div class="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-lg bg-[#2A3042] p-6 shadow-xl" @click.stop>
-        <h3 class="mb-4 text-xl font-bold text-white">{{ selectedManagedClassForEdit ? 'Edit Class' : 'Add Class' }}</h3>
+        <h3 class="mb-4 text-xl font-bold text-white">{{ selectedManagedClassForEdit !== null ? 'Edit Class' : 'Add Class' }}</h3>
         <div class="space-y-4">
           <div>
-            <label class="block text-sm font-medium text-gray-300">Class Name</label>
-            <input v-model="scheduleClassForm.name" type="text" class="mt-1 w-full rounded border border-gray-600 bg-[#1A2035] px-3 py-2 text-white" placeholder="Class name" />
+            <label for="class-name" class="block text-sm font-medium text-gray-300">Class Name</label>
+            <input id="class-name" v-model="scheduleClassForm.name" type="text" maxlength="100" class="mt-1 w-full rounded border border-gray-600 bg-[#1A2035] px-3 py-2 text-white" placeholder="e.g. Morning Yoga" />
           </div>
           <div>
-            <label class="block text-sm font-medium text-gray-300">Trainer</label>
-            <select v-model="scheduleClassForm.trainer_id" class="mt-1 w-full rounded border border-gray-600 bg-[#1A2035] px-3 py-2 text-white">
-              <option value="">Select trainer</option>
-              <option v-for="t in scheduleTrainers" :key="t.id" :value="t.id">{{ t.name }}</option>
+            <label for="class-trainer" class="block text-sm font-medium text-gray-300">Trainer</label>
+            <select id="class-trainer" v-model="scheduleClassForm.trainer_id" class="mt-1 w-full rounded border border-gray-600 bg-[#1A2035] px-3 py-2 text-white">
+              <option value="">TBA / Unassigned</option>
+              <option v-for="s in scheduleStaff" :key="s.id" :value="String(s.id)">{{ s.name }}</option>
             </select>
           </div>
-          <div>
-            <label class="block text-sm font-medium text-gray-300">Days</label>
+          <div v-if="selectedManagedClassForEdit !== null">
+            <label for="class-day" class="block text-sm font-medium text-gray-300">Day</label>
+            <select id="class-day" v-model="scheduleClassForm.days[0]" class="mt-1 w-full rounded border border-gray-600 bg-[#1A2035] px-3 py-2 text-white">
+              <option v-for="d in SCHEDULE_DAYS" :key="d" :value="d">{{ d }}</option>
+            </select>
+          </div>
+          <div v-else>
+            <span class="block text-sm font-medium text-gray-300">Days</span>
+            <p class="text-xs text-gray-400">A weekly class is added for each day you pick.</p>
             <div class="mt-2 grid grid-cols-2 gap-2 text-sm">
               <label v-for="d in SCHEDULE_DAYS" :key="d" class="flex items-center gap-2 text-gray-300">
                 <input :value="d" type="checkbox" class="rounded border-gray-600 bg-[#1A2035]" v-model="scheduleClassForm.days" />
@@ -2282,29 +2321,24 @@ onUnmounted(() => {
           </div>
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="block text-sm font-medium text-gray-300">Start Time</label>
-              <select v-model="scheduleClassForm.timeStart" class="mt-1 w-full rounded border border-gray-600 bg-[#1A2035] px-3 py-2 text-white">
-                <option v-for="tm in SCHEDULE_TIMES" :key="tm" :value="tm">{{ tm }}</option>
-              </select>
+              <label for="class-start" class="block text-sm font-medium text-gray-300">Start Time</label>
+              <input id="class-start" v-model="scheduleClassForm.start_time" type="time" class="mt-1 w-full rounded border border-gray-600 bg-[#1A2035] px-3 py-2 text-white" />
             </div>
             <div>
-              <label class="block text-sm font-medium text-gray-300">Capacity</label>
-              <input v-model="scheduleClassForm.capacity" type="number" min="1" class="mt-1 w-full rounded border border-gray-600 bg-[#1A2035] px-3 py-2 text-white" placeholder="10" />
+              <label for="class-end" class="block text-sm font-medium text-gray-300">End Time</label>
+              <input id="class-end" v-model="scheduleClassForm.end_time" type="time" class="mt-1 w-full rounded border border-gray-600 bg-[#1A2035] px-3 py-2 text-white" />
             </div>
           </div>
           <div>
-            <label class="block text-sm font-medium text-gray-300">Status</label>
-            <select v-model="scheduleClassForm.status" class="mt-1 w-full rounded border border-gray-600 bg-[#1A2035] px-3 py-2 text-white">
-              <option value="Active">Active</option>
-              <option value="Cancelled">Cancelled</option>
-            </select>
+            <label for="class-capacity" class="block text-sm font-medium text-gray-300">Capacity</label>
+            <input id="class-capacity" v-model="scheduleClassForm.capacity" type="number" min="1" max="200" class="mt-1 w-full rounded border border-gray-600 bg-[#1A2035] px-3 py-2 text-white" placeholder="10" />
           </div>
         </div>
-        <p v-if="formError" class="mt-2 text-sm text-red-400">{{ formError }}</p>
+        <p v-if="formError" class="mt-2 text-sm text-red-400" role="alert">{{ formError }}</p>
         <div class="mt-4 flex gap-2">
           <button type="button" class="flex-1 rounded bg-gray-600 py-2 text-white hover:bg-gray-500" @click="showScheduleModal = false">Cancel</button>
-          <button type="button" class="flex-1 rounded bg-[#A3E635] py-2 font-semibold text-black hover:opacity-90" @click="submitManagedClass">
-            {{ selectedManagedClassForEdit ? 'Update Class' : 'Add Class' }}
+          <button type="button" class="flex-1 rounded bg-[#A3E635] py-2 font-semibold text-black hover:opacity-90 disabled:opacity-50" :disabled="formLoading" @click="submitManagedClass">
+            {{ formLoading ? 'Saving...' : selectedManagedClassForEdit !== null ? 'Update Class' : 'Add Class' }}
           </button>
         </div>
       </div>
