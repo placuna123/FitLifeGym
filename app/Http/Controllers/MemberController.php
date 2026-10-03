@@ -67,7 +67,10 @@ class MemberController extends Controller
             'address' => 'nullable|string',
         ]);
         if ($validator->fails()) {
-            return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
+            return response()->json(['success' => false, 'message' => $validator->errors()->first(), 'errors' => $validator->errors()], 422);
+        }
+        if ($conflict = \App\Support\MemberAccount::emailConflict($request->email, (int) $gymId)) {
+            return response()->json(['success' => false, 'message' => $conflict, 'errors' => ['email' => [$conflict]]], 422);
         }
         try {
             DB::beginTransaction();
@@ -90,7 +93,9 @@ class MemberController extends Controller
                 'is_archived' => 0,
             ]);
             $this->createNewMemberNotification($member->full_name);
+            $login = \App\Support\MemberAccount::createLogin($member->full_name, $member->email, (int) $gymId);
             DB::commit();
+            \App\Support\MemberAccount::invite($login, (int) $gymId);
             \App\Models\AuditLog::record('member.created', "Created member {$member->full_name}", ['type' => 'Member', 'id' => $member->id]);
             return response()->json([
                 'success' => true,

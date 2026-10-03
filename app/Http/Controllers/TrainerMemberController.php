@@ -34,9 +34,13 @@ class TrainerMemberController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Validation failed',
+                'message' => $validator->errors()->first(),
                 'errors' => $validator->errors()
             ], 422);
+        }
+        $gymId = (int) Tenancy::gymId();
+        if ($conflict = \App\Support\MemberAccount::emailConflict($request->email, $gymId)) {
+            return response()->json(['success' => false, 'message' => $conflict, 'errors' => ['email' => [$conflict]]], 422);
         }
 
         try {
@@ -101,6 +105,11 @@ class TrainerMemberController extends Controller
             } catch (\Throwable $notifyEx) {
                 // Don't block member creation if notifications fail.
             }
+
+            \App\Support\MemberAccount::invite(
+                \App\Support\MemberAccount::createLogin($member->full_name, $member->email, $gymId),
+                $gymId
+            );
 
             return response()->json([
                 'success' => true,

@@ -104,7 +104,7 @@ function addPlanFeature() {
 function removePlanFeature(index: number) {
   planForm.value.features.splice(index, 1);
 }
-const paymentForm = ref({ member_id: '', amount: '', payment_date: '', payment_method: 'Cash' });
+const paymentForm = ref({ member_id: '', membership_plan_id: '', amount: '', payment_date: '', payment_method: 'Cash' });
 const trainerForm = ref({ full_name: '', email: '', phone: '', position: '', department: '', hire_date: '', password: '', status: 'Active' });
 const passwordForm = ref({ current_password: '', new_password: '', confirm_password: '' });
 const adminProfileForm = ref({ name: '', address: '', phone: '' });
@@ -636,15 +636,39 @@ async function deactivatePlan(plan: Record<string, unknown>) {
   }
 }
 
+/** The member's current plan, so a renewal payment defaults to it. */
+function planIdForMember(memberId: string): string {
+  const member = membersList.value.find((m) => String((m as Record<string, unknown>).id) === memberId) as Record<string, unknown> | undefined;
+  const plan = plansList.value.find((p) => String((p as Record<string, unknown>).name) === String(member?.membership_plan ?? '')) as Record<string, unknown> | undefined;
+  return plan ? String(plan.id) : '';
+}
+
+function planPrice(planId: string): string {
+  const plan = plansList.value.find((p) => String((p as Record<string, unknown>).id) === planId) as Record<string, unknown> | undefined;
+  return plan ? String(Number(plan.price) || 0) : '';
+}
+
 function openAddPayment() {
+  const memberId = membersList.value[0] ? String((membersList.value[0] as Record<string, unknown>).id) : '';
+  const planId = planIdForMember(memberId);
   paymentForm.value = {
-    member_id: membersList.value[0] ? String((membersList.value[0] as Record<string, unknown>).id) : '',
-    amount: '',
+    member_id: memberId,
+    membership_plan_id: planId,
+    amount: planPrice(planId),
     payment_date: new Date().toISOString().slice(0, 10),
     payment_method: 'Cash',
   };
   showAddPaymentModal.value = true;
   formError.value = '';
+}
+
+function onPaymentMemberChange() {
+  paymentForm.value.membership_plan_id = planIdForMember(paymentForm.value.member_id);
+  onPaymentPlanChange();
+}
+
+function onPaymentPlanChange() {
+  if (paymentForm.value.membership_plan_id) paymentForm.value.amount = planPrice(paymentForm.value.membership_plan_id);
 }
 
 function openAddTrainer() {
@@ -848,6 +872,7 @@ async function submitAddPayment() {
   try {
     await payments.create({
       member_id: Number(paymentForm.value.member_id),
+      membership_plan_id: paymentForm.value.membership_plan_id ? Number(paymentForm.value.membership_plan_id) : null,
       amount: Number(paymentForm.value.amount) || 0,
       payment_date: paymentForm.value.payment_date,
       payment_method: paymentForm.value.payment_method || 'Cash',
@@ -2806,14 +2831,23 @@ onUnmounted(() => {
         <div class="modal-form">
           <div class="form-group">
             <label>Member</label>
-            <select v-model="paymentForm.member_id" class="form-input" required>
+            <select v-model="paymentForm.member_id" class="form-input" required @change="onPaymentMemberChange">
               <option value="">Select member</option>
               <option v-for="m in membersList" :key="String(m.id)" :value="String(m.id)">{{ m.full_name }} ({{ m.member_id }})</option>
             </select>
           </div>
           <div class="form-group">
+            <label>Membership Plan</label>
+            <select v-model="paymentForm.membership_plan_id" class="form-input" @change="onPaymentPlanChange">
+              <option value="">No plan (other payment)</option>
+              <option v-for="p in plansList" :key="String(p.id)" :value="String(p.id)">{{ p.name }} — {{ p.type }}</option>
+            </select>
+            <p class="entry-hint" style="margin-top: 4px; color: #9CA3AF;">Approving the payment extends the membership by this plan (Monthly, Quarterly or Annual).</p>
+          </div>
+          <div class="form-group">
             <label>Amount</label>
-            <input v-model="paymentForm.amount" type="number" class="form-input" placeholder="0" step="0.01" required />
+            <input v-model="paymentForm.amount" type="number" class="form-input" placeholder="0" step="0.01" required :readonly="!!paymentForm.membership_plan_id" />
+            <p v-if="paymentForm.membership_plan_id" class="entry-hint" style="margin-top: 4px; color: #9CA3AF;">Set from the plan's price.</p>
           </div>
           <div class="form-group">
             <label>Payment Date</label>
