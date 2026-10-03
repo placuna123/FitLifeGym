@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    'textbee' => [
+        'api_key' => env('TEXTBEE_API_KEY'),
+        'device_id' => env('TEXTBEE_DEVICE_ID'),
+        'sim_subscription_id' => env('TEXTBEE_SIM_SUBSCRIPTION_ID'),
+    ],
+
 ];

@@ -73,7 +73,16 @@ return [
     |
     */
 
-    'home' => '/dashboard',
+    // FitGym's real navigation hub is the unified Admin/Trainer/Member entry
+    // page, not the generic Breeze dashboard — otherwise a password reset
+    // dead-ends users on an unrelated blank page instead of back in the app.
+    'home' => '/fitgym',
+
+    // After a password reset, send people to the FitGym sign-in page (not the
+    // generic /login screen) with a note that their new password is ready.
+    'redirects' => [
+        'password-reset' => '/?reason=password-reset',
+    ],
 
     /*
     |--------------------------------------------------------------------------

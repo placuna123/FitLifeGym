@@ -1,4 +1,3 @@
-import { wayfinder } from '@laravel/vite-plugin-wayfinder';
 import tailwindcss from '@tailwindcss/vite';
 import vue from '@vitejs/plugin-vue';
 import laravel from 'laravel-vite-plugin';
@@ -12,9 +11,9 @@ export default defineConfig({
             refresh: true,
         }),
         tailwindcss(),
-        wayfinder({
-            formVariants: true,
-        }),
+        // Wayfinder disabled in Vite to avoid "wayfinder:generate" failing on Windows (path/filesystem).
+        // Run manually when routes change: php artisan wayfinder:generate --with-form
+        // wayfinder({ formVariants: true }),
         vue({
             template: {
                 transformAssetUrls: {
