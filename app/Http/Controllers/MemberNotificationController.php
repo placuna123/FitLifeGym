@@ -6,7 +6,10 @@ use App\Models\Member;
 use App\Models\Notification;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class MemberNotificationController extends Controller
 {
@@ -54,6 +57,42 @@ class MemberNotificationController extends Controller
             ->update(['is_read' => 1, 'read_at' => now()]);
 
         return response()->json(['success' => true]);
+    }
+
+    public const SUPPORT_SUBJECTS = ['Equipment Issue', 'Billing Inquiry', 'Membership Question', 'General Feedback'];
+
+    /**
+     * A member's support ticket lands in their branch's Admin notification center.
+     */
+    public function submitSupportTicket(Request $request): JsonResponse
+    {
+        $member = $this->resolveAuthenticatedMember();
+        if (! $member) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'subject' => ['required', Rule::in(self::SUPPORT_SUBJECTS)],
+            'message' => 'required|string|max:2000',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'message' => $validator->errors()->first()], 422);
+        }
+
+        $contact = trim(implode(' · ', array_filter([$member->member_id ? "ID {$member->member_id}" : null, $member->phone, $member->email])));
+
+        Notification::create([
+            'gym_id' => $member->gym_id,
+            'member_id' => null,
+            'title' => 'Support Ticket: ' . $request->subject,
+            'message' => "From {$member->full_name} ({$contact}):\n" . trim($request->message),
+            'type' => 'pink',
+            'is_read' => 0,
+            'read_at' => null,
+            'is_archived' => 0,
+        ]);
+
+        return response()->json(['success' => true, 'message' => 'Ticket submitted. The gym staff will get back to you.']);
     }
 
     private function toPayload(Notification $n): array

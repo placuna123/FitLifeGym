@@ -28,6 +28,27 @@ const isLoggedIn = ref(false);
 const loading = ref(true);
 const gymInfoData = ref<Record<string, unknown> | null>(null);
 const gymDisplayName = computed(() => String(gymInfoData.value?.name || 'FitGym'));
+const WEEK_DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+const gymContact = computed(() => {
+  const gym = gymInfoData.value ?? {};
+  const rawHours = gym.operating_hours;
+  const dayIndex = (day: string) => {
+    const i = WEEK_DAYS.indexOf(day.toLowerCase());
+    return i === -1 ? WEEK_DAYS.length : i;
+  };
+  const hours = rawHours && typeof rawHours === 'object'
+    ? Object.entries(rawHours as Record<string, unknown>)
+        .filter(([, value]) => String(value ?? '').trim() !== '')
+        .sort(([a], [b]) => dayIndex(a) - dayIndex(b))
+        .map(([day, value]) => `${day}: ${String(value)}`)
+    : [];
+  return {
+    phone: String(gym.phone ?? '').trim(),
+    email: String(gym.email ?? '').trim(),
+    address: String(gym.address ?? '').trim(),
+    hours,
+  };
+});
 
 async function loadGymInfo() {
   try {
@@ -50,6 +71,7 @@ const member = ref<{
   expiry_date?: string;
   membership_plan?: string;
   payment_status?: string;
+  membership_plan_id?: number | null;
   fitness_goal?: string | null;
   created_at?: string;
 } | null>(null);
@@ -174,7 +196,8 @@ async function cancelBooking(cls: ScheduleClass) {
 }
 
 // Payments (same as Blade: methods + plans + history)
-const paymentPlans = ref<{ id: number; name: string; type?: string; price: string; period?: string; description?: string }[]>([]);
+const paymentPlans = ref<{ id: number; name: string; type?: string; price: string; period?: string; description?: string; features: string[] }[]>([]);
+const currentPlan = computed(() => paymentPlans.value.find((p) => p.id === Number(member.value?.membership_plan_id)) ?? null);
 const paymentHistory = ref<{ id: number; plan_name: string; amount: string; payment_method: string; payment_date_formatted?: string; payment_date?: string; status: string }[]>([]);
 const selectedPaymentMethod = ref('GCash');
 const selectedPlanId = ref<number | null>(null);
@@ -204,18 +227,14 @@ const showChangePassword = ref(false);
 const passwordForm = ref({ current_password: '', new_password: '', new_password_confirmation: '' });
 const passwordSaving = ref(false);
 const passwordError = ref('');
-const profilePaymentMethods = ref<string[]>(['Visa **** **** **** 1234', 'GCash - 0917****5678']);
 const showEditProfile = ref(false);
-const showAddPaymentModal = ref(false);
-const addPaymentType = ref('');
-const emailNotifications = ref(true);
-const smsReminders = ref(true);
-const marketingUpdates = ref(false);
 
 // Support (same as Blade: Contact form + success state)
 const supportSubmitted = ref(false);
 const supportSubject = ref('Equipment Issue');
 const supportMessage = ref('');
+const supportSending = ref(false);
+const supportError = ref('');
 
 // Notifications dropdown
 const showNotificationsPanel = ref(false);
@@ -666,7 +685,7 @@ watch(currentPage, (page) => {
   if (page === 'Attendance' && isLoggedIn.value && member.value?.id) {
     loadAttendanceData();
   }
-  if (page === 'Payments' && isLoggedIn.value) {
+  if ((page === 'Payments' || page === 'Membership') && isLoggedIn.value) {
     loadPaymentsData();
   }
   if (page === 'Progress' && isLoggedIn.value && member.value?.id) {
@@ -698,13 +717,14 @@ async function loadPaymentsData() {
     ]);
     const plansRaw = Array.isArray(plansRes.data) ? plansRes.data : (plansRes.data as { plans?: unknown[] })?.plans;
     if (Array.isArray(plansRaw)) {
-      paymentPlans.value = plansRaw.map((p: { id: number; name: string; type?: string; price: string | number; period?: string; description?: string }) => ({
+      paymentPlans.value = plansRaw.map((p: { id: number; name: string; type?: string; price: string | number; period?: string; description?: string; features?: unknown[] }) => ({
         id: p.id,
         name: p.name,
         type: p.type,
         price: String(p.price ?? 0),
         period: p.period,
         description: p.description,
+        features: Array.isArray(p.features) ? p.features.map(String).filter(Boolean) : [],
       }));
       if (paymentPlans.value.length && !selectedPlanId.value) {
         selectedPlanId.value = paymentPlans.value[0].id;
@@ -862,34 +882,6 @@ async function handleEditProfile(event: Event) {
   }
 }
 
-function handleAddPaymentMethod(event: Event) {
-  event.preventDefault();
-  const form = event.target as HTMLFormElement;
-  const paymentTypeVal = (form.querySelector('[name="paymentType"]') as HTMLSelectElement)?.value;
-  const cardNumber = (form.querySelector('[name="cardNumber"]') as HTMLInputElement)?.value?.trim();
-  const gcashNumber = (form.querySelector('[name="gcashNumber"]') as HTMLInputElement)?.value?.trim();
-  const cardType = (form.querySelector('[name="cardType"]') as HTMLSelectElement)?.value || 'Card';
-  let newPayment = '';
-  if (paymentTypeVal === 'Card' && cardNumber && cardNumber.length >= 16) {
-    const last4 = cardNumber.slice(-4);
-    newPayment = `${cardType} **** **** **** ${last4}`;
-  } else if (paymentTypeVal === 'GCash' && gcashNumber && gcashNumber.length >= 10) {
-    const masked = gcashNumber.slice(0, 4) + '****' + gcashNumber.slice(-4);
-    newPayment = `GCash - ${masked}`;
-  }
-  if (newPayment) {
-    profilePaymentMethods.value = [...profilePaymentMethods.value, newPayment];
-    showAddPaymentModal.value = false;
-    addPaymentType.value = '';
-    form.reset();
-    alert('Payment method added successfully!');
-  } else if (paymentTypeVal === 'Card') {
-    alert('Please enter a valid card number (16 digits).');
-  } else if (paymentTypeVal === 'GCash') {
-    alert('Please enter a valid GCash number (10-11 digits).');
-  }
-}
-
 function profileInitials() {
   const n = profileData.value.name.trim();
   if (!n) return '?';
@@ -898,12 +890,22 @@ function profileInitials() {
   return n.slice(0, 2).toUpperCase();
 }
 
-function handleSupportSubmit(event: Event) {
+async function handleSupportSubmit(event: Event) {
   event.preventDefault();
-  if (!supportMessage.value.trim()) return;
-  supportSubmitted.value = true;
-  supportMessage.value = '';
-  supportSubject.value = 'Equipment Issue';
+  if (!supportMessage.value.trim() || supportSending.value) return;
+  supportSending.value = true;
+  supportError.value = '';
+  try {
+    await memberAuth.submitSupportTicket({ subject: supportSubject.value, message: supportMessage.value.trim() });
+    supportSubmitted.value = true;
+    supportMessage.value = '';
+    supportSubject.value = 'Equipment Issue';
+  } catch (err: unknown) {
+    const ax = err as { response?: { data?: { message?: string } } };
+    supportError.value = ax.response?.data?.message || 'Failed to send your ticket. Please try again.';
+  } finally {
+    supportSending.value = false;
+  }
 }
 
 function closeNotificationsPanel() {
@@ -1202,31 +1204,21 @@ onUnmounted(() => {
               <h2 class="mb-4 text-xl font-bold text-white">Membership Benefits</h2>
               <div class="space-y-4">
                 <div class="rounded-lg border p-4" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }">
-                  <h3 class="mb-3 flex items-center text-lg font-semibold text-white">⭐ Premium Features</h3>
-                  <ul class="list-inside list-disc space-y-2 text-sm leading-relaxed text-white">
-                    <li>Unlimited gym access</li>
-                    <li>All group classes included</li>
-                    <li>Personal trainer sessions</li>
-                    <li>Nutrition consultation</li>
-                    <li>Priority booking</li>
+                  <h3 class="mb-1 flex items-center text-lg font-semibold text-white">⭐ {{ currentPlan?.name || member?.membership_plan || 'Your Plan' }}</h3>
+                  <p v-if="currentPlan?.description" class="mb-3 text-sm" :style="{ color: portal.textDim }">{{ currentPlan.description }}</p>
+                  <ul v-if="currentPlan?.features.length" class="list-inside list-disc space-y-2 text-sm leading-relaxed text-white">
+                    <li v-for="feature in currentPlan.features" :key="feature">{{ feature }}</li>
                   </ul>
+                  <p v-else-if="paymentsLoading" class="text-sm" :style="{ color: portal.textDim }">Loading plan details...</p>
+                  <p v-else class="text-sm" :style="{ color: portal.textDim }">Your gym hasn't listed the features of this plan yet. Ask the front desk for details.</p>
                 </div>
                 <div class="rounded-lg border p-4" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }">
-                  <h3 class="mb-3 flex items-center text-lg font-semibold text-white">📊 Progress Tracking</h3>
+                  <h3 class="mb-3 flex items-center text-lg font-semibold text-white">📱 Included With Every Membership</h3>
                   <ul class="list-inside list-disc space-y-2 text-sm leading-relaxed text-white">
-                    <li>Advanced analytics</li>
-                    <li>Personalized workout plans</li>
-                    <li>Achievement badges</li>
-                    <li>Monthly progress review</li>
-                  </ul>
-                </div>
-                <div class="rounded-lg border p-4" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }">
-                  <h3 class="mb-3 flex items-center text-lg font-semibold text-white">👑 Exclusive Access</h3>
-                  <ul class="list-inside list-disc space-y-2 text-sm leading-relaxed text-white">
-                    <li>VIP lounge access</li>
-                    <li>Special events</li>
-                    <li>Guest passes</li>
-                    <li>Equipment priority</li>
+                    <li>QR code check-in and attendance history</li>
+                    <li>Class schedule and online class booking</li>
+                    <li>Weight, BMI, and goal progress tracking</li>
+                    <li>Online GCash payments with receipt upload</li>
                   </ul>
                 </div>
               </div>
@@ -1696,34 +1688,25 @@ onUnmounted(() => {
                   <ul class="space-y-2 text-sm" :style="{ color: portal.textDim }">
                     <li><button type="button" class="cursor-pointer transition-colors hover:text-white" @click="openChangePassword">Change Password</button></li>
                     <li><button type="button" class="cursor-pointer transition-colors hover:text-white" @click="openEditProfile">Update Email</button></li>
-                    <li class="cursor-pointer transition-colors hover:text-white">Privacy Settings</li>
                   </ul>
                 </div>
                 <div class="rounded-lg p-4" :style="{ backgroundColor: portal.dark2 }">
-                  <h3 class="mb-3 text-lg font-semibold text-white">Notification Preferences</h3>
-                  <div class="space-y-2">
-                    <label class="flex items-center space-x-3 text-sm">
-                      <input v-model="emailNotifications" type="checkbox" class="h-4 w-4 rounded border" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }" />
-                      <span :style="{ color: portal.textDim }">Email Notifications</span>
-                    </label>
-                    <label class="flex items-center space-x-3 text-sm">
-                      <input v-model="smsReminders" type="checkbox" class="h-4 w-4 rounded border" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }" />
-                      <span :style="{ color: portal.textDim }">SMS Reminders</span>
-                    </label>
-                    <label class="flex items-center space-x-3 text-sm">
-                      <input v-model="marketingUpdates" type="checkbox" class="h-4 w-4 rounded border" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }" />
-                      <span :style="{ color: portal.textDim }">Marketing Updates</span>
-                    </label>
-                  </div>
+                  <h3 class="mb-3 text-lg font-semibold text-white">Notifications</h3>
+                  <p class="text-sm [overflow-wrap:anywhere]" :style="{ color: portal.textDim }">
+                    Payment, approval, and class booking updates appear in your Notifications and are sent by SMS to
+                    <span class="text-white">{{ profileData.phone || 'your phone number on file' }}</span>.
+                    Keep your phone number up to date in Edit Profile.
+                  </p>
                 </div>
                 <div class="rounded-lg p-4" :style="{ backgroundColor: portal.dark2 }">
                   <h3 class="mb-3 text-lg font-semibold text-white">Payment Methods</h3>
-                  <div class="space-y-2 text-sm" :style="{ color: portal.textDim }">
-                    <p v-for="(method, idx) in profilePaymentMethods" :key="idx">{{ method }}</p>
-                    <button type="button" class="cursor-pointer hover:underline" :style="{ color: portal.purpleLight }" @click="showAddPaymentModal = true">
-                      + Add Payment Method
-                    </button>
-                  </div>
+                  <ul class="mb-3 list-inside list-disc space-y-1 text-sm" :style="{ color: portal.textDim }">
+                    <li><span class="text-white">GCash</span> — pay online and upload your receipt on the Payments page</li>
+                    <li><span class="text-white">Cash</span> — pay at the front desk; staff will record it for you</li>
+                  </ul>
+                  <button type="button" class="cursor-pointer text-sm hover:underline" :style="{ color: portal.purpleLight }" @click="currentPage = 'Payments'">
+                    Go to Payments →
+                  </button>
                 </div>
               </div>
             </div>
@@ -1736,7 +1719,7 @@ onUnmounted(() => {
                 <span class="text-2xl">✓</span>
               </div>
               <h2 class="mb-2 text-2xl font-bold text-white">Ticket Submitted!</h2>
-              <p class="mb-6 text-sm" :style="{ color: portal.textDim }">Our support team will get back to you within 24 hours. Thank you for your patience.</p>
+              <p class="mb-6 text-sm" :style="{ color: portal.textDim }">The gym staff has been notified and will get back to you. Thank you for your patience.</p>
               <button
                 type="button"
                 class="rounded-lg py-2 px-6 font-semibold text-white transition-opacity hover:opacity-90"
@@ -1771,24 +1754,36 @@ onUnmounted(() => {
                     rows="5"
                     required
                     placeholder="Describe your issue..."
+                    maxlength="2000"
                     class="w-full rounded-lg border p-2.5 text-white placeholder-gray-500"
                     :style="{ backgroundColor: portal.dark2, borderColor: portal.border }"
                   />
                 </div>
+                <p v-if="supportError" class="rounded-lg border px-3 py-2 text-sm text-red-300" role="alert" :style="{ borderColor: portal.pink, backgroundColor: 'rgba(255, 107, 107, 0.12)' }">{{ supportError }}</p>
                 <button
                   type="submit"
-                  class="w-full rounded-lg py-3 font-semibold transition-opacity hover:opacity-90"
+                  class="w-full rounded-lg py-3 font-semibold transition-opacity hover:opacity-90 disabled:opacity-50"
                   :style="{ backgroundColor: portal.purple, color: portal.primaryText }"
+                  :disabled="supportSending"
                 >
-                  Submit Ticket
+                  {{ supportSending ? 'Sending...' : 'Submit Ticket' }}
                 </button>
               </form>
               <div class="mt-6 border-t pt-6" :style="{ borderColor: portal.border }">
-                <h3 class="mb-3 text-lg font-semibold text-white">Quick Contact</h3>
-                <div class="space-y-2 text-sm" :style="{ color: portal.textDim }">
-                  <p class="flex items-center">📞 Phone: (121) 0123-4567</p>
-                  <p class="flex items-center">✉️ Email: support@thebestgym.com</p>
-                  <p class="flex items-center">🕒 Hours: Mon-Fri: 9AM - 5PM</p>
+                <h3 class="mb-3 text-lg font-semibold text-white">Quick Contact — {{ gymDisplayName }}</h3>
+                <div class="space-y-2 text-sm [overflow-wrap:anywhere]" :style="{ color: portal.textDim }">
+                  <p v-if="gymContact.phone">📞 Phone: {{ gymContact.phone }}</p>
+                  <p v-if="gymContact.email">✉️ Email: {{ gymContact.email }}</p>
+                  <p v-if="gymContact.address">📍 Address: {{ gymContact.address }}</p>
+                  <div v-if="gymContact.hours.length">
+                    <p>🕒 Hours:</p>
+                    <ul class="mt-1 ml-6 list-disc space-y-0.5">
+                      <li v-for="line in gymContact.hours" :key="line">{{ line }}</li>
+                    </ul>
+                  </div>
+                  <p v-if="!gymContact.phone && !gymContact.email && !gymContact.address && !gymContact.hours.length">
+                    Contact details haven't been set up yet. Please ask at the front desk.
+                  </p>
                 </div>
               </div>
             </div>
@@ -1879,56 +1874,6 @@ onUnmounted(() => {
                 <div class="flex space-x-3 pt-2">
                   <button type="submit" class="flex-1 rounded-lg py-3 font-semibold transition-opacity hover:opacity-90 disabled:opacity-50" :style="{ backgroundColor: portal.purple, color: portal.primaryText }" :disabled="passwordSaving">{{ passwordSaving ? 'Saving...' : 'Change Password' }}</button>
                   <button type="button" class="flex-1 rounded-lg py-3 font-semibold text-white transition-opacity hover:opacity-90" :style="{ backgroundColor: portal.dark2 }" @click="showChangePassword = false">Cancel</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </Teleport>
-
-        <!-- Add Payment Method modal -->
-        <Teleport to="body">
-          <div
-            v-if="showAddPaymentModal"
-            class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-            @click.self="showAddPaymentModal = false"
-          >
-            <div class="mx-4 max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-xl border p-4 sm:p-6" :style="{ backgroundColor: portal.dark3, borderColor: portal.border }" @click.stop>
-              <div class="mb-4 flex items-center justify-between">
-                <h2 class="text-xl font-bold text-white">Add Payment Method</h2>
-                <button type="button" class="text-2xl hover:text-white" :style="{ color: portal.textDim }" @click="showAddPaymentModal = false">×</button>
-              </div>
-              <form @submit="handleAddPaymentMethod" class="space-y-4">
-                <div>
-                  <label class="mb-1 block text-sm font-medium" :style="{ color: portal.textDim }">Payment Type</label>
-                  <select name="paymentType" required class="w-full rounded-lg border p-3 text-white" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }" @change="addPaymentType = ($event.target as HTMLSelectElement).value">
-                    <option value="">Select Payment Type</option>
-                    <option value="Card">Card</option>
-                    <option value="GCash">GCash</option>
-                  </select>
-                </div>
-                <template v-if="addPaymentType === 'Card'">
-                  <div>
-                    <label class="mb-1 block text-sm font-medium" :style="{ color: portal.textDim }">Card Type</label>
-                    <select name="cardType" class="w-full rounded-lg border p-3 text-white" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }">
-                      <option value="Visa">Visa</option>
-                      <option value="Mastercard">Mastercard</option>
-                      <option value="American Express">American Express</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label class="mb-1 block text-sm font-medium" :style="{ color: portal.textDim }">Card Number</label>
-                    <input name="cardNumber" type="text" placeholder="1234 5678 9012 3456" maxlength="19" class="w-full rounded-lg border p-3 text-white" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }" />
-                  </div>
-                </template>
-                <template v-if="addPaymentType === 'GCash'">
-                  <div>
-                    <label class="mb-1 block text-sm font-medium" :style="{ color: portal.textDim }">GCash Number</label>
-                    <input name="gcashNumber" type="tel" placeholder="09171234567" maxlength="11" class="w-full rounded-lg border p-3 text-white" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }" />
-                  </div>
-                </template>
-                <div class="flex space-x-3 pt-4">
-                  <button type="submit" class="flex-1 rounded-lg py-3 font-semibold transition-opacity hover:opacity-90" :style="{ backgroundColor: portal.purple, color: portal.primaryText }">Add Payment Method</button>
-                  <button type="button" class="flex-1 rounded-lg py-3 font-semibold text-white transition-opacity hover:opacity-90" :style="{ backgroundColor: portal.dark2 }" @click="showAddPaymentModal = false">Cancel</button>
                 </div>
               </form>
             </div>

@@ -19,6 +19,10 @@ class TrainerMemberController extends Controller
      */
     public function store(Request $request)
     {
+        if ($limited = $this->planLimitResponse(\App\Models\Gym::forCurrentUser(), 'members')) {
+            return $limited;
+        }
+
         $validator = Validator::make($request->all(), [
             'full_name' => 'required|string|max:255',
             'email' => ['required', 'email', 'max:255', Rule::unique('members', 'email')->where('gym_id', Tenancy::gymId())],

@@ -125,6 +125,11 @@ class MemberAuthController extends Controller
             ], 403);
         }
 
+        if ($blocked = $this->blockedGymResponse($user)) {
+            Auth::logout();
+            return $blocked;
+        }
+
         $member = Member::where('email', $user->email)->where('is_archived', 0)->first();
         if (! $member) {
             $member = $this->ensureMemberRecordExists($user);
@@ -270,6 +275,10 @@ class MemberAuthController extends Controller
         $user = Auth::user();
         if (($user->role ?? null) !== 'Member') {
             return response()->json(['success' => false, 'message' => 'Not a member account'], 403);
+        }
+        if ($blocked = $this->blockedGymResponse($user)) {
+            Auth::logout();
+            return $blocked;
         }
         $member = Member::where('email', $user->email)->where('is_archived', 0)->with('membershipPlan')->first();
         if (!$member) {

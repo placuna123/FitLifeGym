@@ -55,6 +55,9 @@ class MemberController extends Controller
     public function store(Request $request)
     {
         $gymId = Tenancy::gymId();
+        if ($limited = $this->planLimitResponse(Gym::forCurrentUser(), 'members')) {
+            return $limited;
+        }
 
         $validator = Validator::make($request->all(), [
             'full_name' => 'required|string|max:255',
@@ -312,6 +315,9 @@ class MemberController extends Controller
         }
 
         $gymId = (int) $request->gym_id;
+        if ($closed = $this->registrationClosedResponse(Gym::find($gymId))) {
+            return $closed;
+        }
         $phone = $request->phone;
         $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
 
@@ -357,6 +363,9 @@ class MemberController extends Controller
         }
 
         $gymId = (int) $request->gym_id;
+        if ($closed = $this->registrationClosedResponse(Gym::find($gymId))) {
+            return $closed;
+        }
 
         $otpKey = $this->otpCacheKey($gymId, $request->phone);
         $otpEntry = Cache::get($otpKey);

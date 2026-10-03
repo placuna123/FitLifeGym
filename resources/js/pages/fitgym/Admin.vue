@@ -2646,27 +2646,30 @@ onUnmounted(() => {
                 </div>
               </div>
               <div v-show="settingsTab === 'notifications'" class="settings-tab-content">
-                <h3>Notification Preferences</h3>
+                <h3>Notifications</h3>
                 <div class="notification-settings">
                   <div class="settings-section">
-                    <h4>Notification Channels</h4>
-                    <div class="toggle-item">
-                      <div>
-                        <i class="fas fa-envelope"></i>
-                        <div>
-                          <p>Email Notifications</p>
-                          <span>Receive notifications via email</span>
-                        </div>
-                      </div>
-                      <label class="toggle-switch">
-                        <input type="checkbox" checked />
-                        <span class="slider green"></span>
-                      </label>
-                    </div>
+                    <h4>Admin alerts (Notifications page)</h4>
+                    <ul class="notification-info-list">
+                      <li><i class="fas fa-user-plus"></i> New member registrations awaiting approval</li>
+                      <li><i class="fas fa-coins"></i> GCash payments waiting for receipt verification</li>
+                      <li><i class="fas fa-life-ring"></i> Support tickets sent by members</li>
+                    </ul>
+                  </div>
+                  <div class="settings-section">
+                    <h4>SMS to members</h4>
+                    <p class="notification-info-text">
+                      Members get an SMS when their account is approved, a payment is verified, a class is booked,
+                      and when their membership is about to expire. SMS is sent through the gateway set in
+                      <strong>Gym Info → SMS Gateway Device ID</strong>.
+                    </p>
+                    <p class="notification-info-text" :class="gymForm.textbee_device_id ? 'is-ok' : 'is-warn'">
+                      {{ gymForm.textbee_device_id ? 'This branch has its own SMS gateway device set.' : 'This branch uses the platform default SMS gateway.' }}
+                    </p>
                   </div>
                   <div class="settings-actions">
-                    <button type="button" class="btn-save-settings">Save Settings</button>
-                    <button type="button" class="btn-cancel-settings" @click="settingsTab = 'profile'">Cancel</button>
+                    <button type="button" class="btn-save-settings" @click="settingsTab = 'gym'">Open Gym Info</button>
+                    <button type="button" class="btn-cancel-settings" @click="currentView = 'notifications'">View Notifications</button>
                   </div>
                 </div>
               </div>
@@ -4990,6 +4993,37 @@ onUnmounted(() => {
 
 .settings-section {
   margin-bottom: 1.5rem;
+}
+
+.notification-info-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+}
+
+.notification-info-list i {
+  width: 1.25rem;
+  color: var(--accent-green);
+}
+
+.notification-info-text {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  line-height: 1.6;
+  margin-bottom: 0.5rem;
+}
+
+.notification-info-text.is-ok {
+  color: var(--accent-green);
+}
+
+.notification-info-text.is-warn {
+  color: var(--accent-yellow);
 }
 
 .settings-section h4 {

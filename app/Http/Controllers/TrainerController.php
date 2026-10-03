@@ -42,6 +42,10 @@ class TrainerController extends Controller
      */
     public function store(Request $request)
     {
+        if ($limited = $this->planLimitResponse(\App\Models\Gym::forCurrentUser(), 'staff')) {
+            return $limited;
+        }
+
         $normalizedEmail = strtolower(trim((string) $request->input('email', '')));
         $normalizedPassword = trim((string) $request->input('password', ''));
         $request->merge([

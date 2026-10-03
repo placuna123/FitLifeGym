@@ -55,6 +55,16 @@ class PortalController extends Controller
 
         $gym = $user->gym_id ? Gym::find($user->gym_id) : null;
 
+        if ($gym && ! $gym->allowsAccess()) {
+            $this->forgetSession($request);
+
+            return response()->json([
+                'success' => true,
+                'authenticated' => false,
+                'message' => $gym->accessDeniedMessage(),
+            ]);
+        }
+
         return response()->json([
             'success' => true,
             'authenticated' => true,

@@ -92,6 +92,17 @@ class PaymentController extends Controller
                 'receipt_proof_path' => $receiptPath,
                 'is_archived' => 0,
             ]);
+            // Admin alert so the receipt gets verified (member_id null = admin notification center).
+            \App\Models\Notification::create([
+                'gym_id' => $member->gym_id,
+                'member_id' => null,
+                'title' => 'Payment Received',
+                'message' => "{$member->full_name} submitted a GCash payment of PHP " . number_format((float) $plan->price, 2) . " for {$plan->name} ({$invoiceNumber}). Verify the receipt on the Payments page.",
+                'type' => 'green',
+                'is_read' => 0,
+                'read_at' => null,
+                'is_archived' => 0,
+            ]);
             DB::commit();
             return response()->json([
                 'success' => true,

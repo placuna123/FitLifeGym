@@ -147,7 +147,19 @@ async function handleLogout() {
   loginForm.value = { email: '', password: '' };
 }
 
-async function setSubscription(gymId: number, field: 'subscription_plan' | 'subscription_status', value: string) {
+function usage(count: unknown, limit: unknown): string {
+  return limit === null || limit === undefined ? `${Number(count) || 0}` : `${Number(count) || 0} / ${Number(limit)}`;
+}
+
+function isOverLimit(count: unknown, limit: unknown): boolean {
+  return limit !== null && limit !== undefined && (Number(count) || 0) >= Number(limit);
+}
+
+function canActivate(gym: Record<string, unknown>): boolean {
+  return !['active', 'trial'].includes(String(gym.effective_status ?? gym.subscription_status));
+}
+
+async function setSubscription(gymId: number, field: 'subscription_plan' | 'subscription_status' | 'subscription_expires_at', value: string) {
   actionError.value = '';
   try {
     const { data } = await platformGyms.update(gymId, { [field]: value });
@@ -214,6 +226,8 @@ function statusBadgeClass(status: unknown): string {
     case 'suspended':
     case 'cancelled':
       return 'badge-suspended';
+    case 'expired':
+      return 'badge-expired';
     default:
       return 'badge-pending';
   }
@@ -292,6 +306,9 @@ onMounted(checkAuth);
             + Add Branch
           </button>
         </div>
+        <p class="hint-row">
+          Plan limits — Trial: 50 members / 3 staff · Basic: 200 / 10 · Pro: unlimited. A branch is locked out when it is suspended or its end date has passed.
+        </p>
 
         <div class="table-container" :style="{ backgroundColor: portal.dark3, borderColor: portal.border }">
           <table>
@@ -302,6 +319,7 @@ onMounted(checkAuth);
                 <th>Members</th>
                 <th>Staff</th>
                 <th>Plan</th>
+                <th>Ends</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
@@ -310,8 +328,8 @@ onMounted(checkAuth);
               <tr v-for="gym in gyms" :key="String(gym.id)">
                 <td>{{ gym.name }}</td>
                 <td>{{ gym.slug }}</td>
-                <td>{{ gym.member_count }}</td>
-                <td>{{ gym.trainer_count }}</td>
+                <td :class="{ 'over-limit': isOverLimit(gym.member_count, gym.member_limit) }">{{ usage(gym.member_count, gym.member_limit) }}</td>
+                <td :class="{ 'over-limit': isOverLimit(gym.trainer_count, gym.staff_limit) }">{{ usage(gym.trainer_count, gym.staff_limit) }}</td>
                 <td>
                   <select
                     :value="gym.subscription_plan"
@@ -324,11 +342,22 @@ onMounted(checkAuth);
                   </select>
                 </td>
                 <td>
-                  <span :class="['badge', statusBadgeClass(gym.subscription_status)]">{{ gym.subscription_status }}</span>
+                  <input
+                    type="date"
+                    class="date-input"
+                    :value="gym.subscription_expires_at || ''"
+                    :aria-label="`End date for ${gym.name}`"
+                    :title="gym.subscription_expires_at ? 'Trial / subscription end date' : 'No end date'"
+                    :style="{ backgroundColor: portal.dark2, borderColor: portal.border }"
+                    @change="setSubscription(Number(gym.id), 'subscription_expires_at', ($event.target as HTMLInputElement).value)"
+                  />
+                </td>
+                <td>
+                  <span :class="['badge', statusBadgeClass(gym.effective_status ?? gym.subscription_status)]">{{ gym.effective_status ?? gym.subscription_status }}</span>
                 </td>
                 <td class="actions-cell">
                   <button
-                    v-if="gym.subscription_status !== 'suspended'"
+                    v-if="!canActivate(gym)"
                     type="button"
                     class="action-btn suspend"
                     @click="setSubscription(Number(gym.id), 'subscription_status', 'suspended')"
@@ -349,7 +378,7 @@ onMounted(checkAuth);
                 </td>
               </tr>
               <tr v-if="!gymsLoading && gyms.length === 0">
-                <td colspan="7" class="empty-row">No branches yet.</td>
+                <td colspan="8" class="empty-row">No branches yet.</td>
               </tr>
             </tbody>
           </table>
@@ -675,6 +704,28 @@ th, td {
 .badge-trial { background: rgba(0,191,255,0.15); color: #00bfff; }
 .badge-pending { background: rgba(160,160,160,0.15); color: #a0a0a0; }
 .badge-suspended { background: rgba(255,107,107,0.15); color: #ff6b6b; }
+.badge-expired { background: rgba(255,215,0,0.15); color: #ffd700; }
+
+.over-limit {
+  color: #ff6b6b;
+  font-weight: 600;
+}
+
+.date-input {
+  min-width: 9.5rem;
+  border-radius: 0.6rem;
+  border: 1px solid;
+  padding: 0.5rem 0.6rem;
+  color: #ffffff;
+  font-size: 0.85rem;
+  color-scheme: dark;
+}
+
+.hint-row {
+  margin: -0.5rem 0 1rem;
+  font-size: 0.78rem;
+  color: #a0a0a0;
+}
 
 .actions-cell {
   display: flex;

@@ -52,6 +52,10 @@ class TrainerAuthController extends Controller
                     'message' => 'Access denied. Staff account required.'
                 ], 403);
             }
+            if ($blocked = $this->blockedGymResponse($user)) {
+                Auth::logout();
+                return $blocked;
+            }
             $request->session()->regenerate();
             \App\Models\AuditLog::record('auth.login', "Staff {$user->name} logged in");
             return response()->json([
@@ -80,6 +84,10 @@ class TrainerAuthController extends Controller
         // Require role to be exactly "Staff" for the portal.
         if (($user->role ?? null) !== 'Staff') {
             return response()->json(['success' => false, 'message' => 'Not a staff account'], 403);
+        }
+        if ($blocked = $this->blockedGymResponse($user)) {
+            Auth::logout();
+            return $blocked;
         }
         return response()->json([
             'success' => true,

@@ -100,6 +100,11 @@ class AdminNotificationController extends Controller
         $icon = 'fas fa-bell';
         $priority = 'info';
 
+        if (str_starts_with((string) $n->title, 'Support Ticket')) {
+            $icon = 'fas fa-life-ring';
+            $priority = 'high';
+        }
+
         // Match the icon/colors used by `resources/js/pages/fitgym/Admin.vue`
         switch ($n->title) {
             case 'Membership Expiring Soon':

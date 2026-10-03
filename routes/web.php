@@ -99,6 +99,7 @@ Route::get('api/member/payments', [App\Http\Controllers\PaymentController::class
 Route::post('api/member/payments', [App\Http\Controllers\PaymentController::class, 'storeForMember'])->middleware(['auth', 'tenant'])->name('member.payments.store');
 Route::get('api/member/notifications', [App\Http\Controllers\MemberNotificationController::class, 'index'])->middleware(['auth', 'tenant'])->name('member.notifications.index');
 Route::post('api/member/notifications/mark-all-read', [App\Http\Controllers\MemberNotificationController::class, 'markAllRead'])->middleware(['auth', 'tenant'])->name('member.notifications.mark-all-read');
+Route::post('api/member/support-tickets', [App\Http\Controllers\MemberNotificationController::class, 'submitSupportTicket'])->middleware(['auth', 'tenant', 'throttle:10,60'])->name('member.support-tickets.store');
 Route::post('api/member/notifications/{notification}/read', [App\Http\Controllers\MemberNotificationController::class, 'markRead'])->middleware(['auth', 'tenant'])->name('member.notifications.read');
 
 // Gym classes (Admin/Trainer-managed weekly schedule) + Member bookings

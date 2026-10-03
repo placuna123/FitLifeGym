@@ -106,6 +106,7 @@ export const memberAuth = {
     }) => api.put('/member/profile', data),
     changePassword: (data: { current_password: string; new_password: string; new_password_confirmation: string }) =>
         api.post('/member/change-password', data),
+    submitSupportTicket: (data: { subject: string; message: string }) => api.post('/member/support-tickets', data),
 };
 
 export const memberAttendance = {

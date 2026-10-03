@@ -87,11 +87,15 @@ class PlatformGymController extends Controller
                     $slug = $base . '-' . $suffix;
                 }
 
+                $status = $request->subscription_status ?? 'trial';
                 $gym = Gym::create([
                     'name' => $request->name,
                     'slug' => $slug,
                     'subscription_plan' => $request->subscription_plan ?? 'trial',
-                    'subscription_status' => $request->subscription_status ?? 'trial',
+                    'subscription_status' => $status,
+                    'subscription_expires_at' => $status === 'trial'
+                        ? now()->addDays((int) config('fitgym.trial_days', 14))->toDateString()
+                        : null,
                     'is_archived' => 0,
                 ]);
 
@@ -149,8 +153,17 @@ class PlatformGymController extends Controller
                 'address' => $request->address,
                 'subscription_plan' => $request->subscription_plan,
                 'subscription_status' => $request->subscription_status,
-                'subscription_expires_at' => $request->subscription_expires_at,
             ], fn ($value) => $value !== null));
+
+            // The end date can be set or cleared (empty = no end date).
+            if ($request->exists('subscription_expires_at')) {
+                $gym->update(['subscription_expires_at' => $request->input('subscription_expires_at') ?: null]);
+            } elseif (in_array($request->subscription_status, ['active', 'trial'], true)
+                && $gym->subscription_expires_at
+                && $gym->subscription_expires_at->copy()->endOfDay()->isPast()) {
+                // Re-activating a lapsed branch shouldn't leave it locked by its old end date.
+                $gym->update(['subscription_expires_at' => null]);
+            }
 
             // Reassign which User owns/administers this branch.
             if ($request->filled('admin_user_id')) {
@@ -211,7 +224,7 @@ class PlatformGymController extends Controller
                 'id' => $gym->id,
                 'name' => $gym->name,
                 'subscription_plan' => $gym->subscription_plan,
-                'subscription_status' => $gym->subscription_status,
+                'subscription_status' => $gym->effectiveStatus(),
                 'members' => $memberCount,
                 'trainers' => $trainerCount,
                 'revenue' => (float) $revenue,
@@ -242,9 +255,12 @@ class PlatformGymController extends Controller
             'owner_user_id' => $gym->owner_user_id,
             'subscription_plan' => $gym->subscription_plan,
             'subscription_status' => $gym->subscription_status,
-            'subscription_expires_at' => $gym->subscription_expires_at,
-            'member_count' => Member::withoutGlobalScopes()->where('gym_id', $gym->id)->where('is_archived', 0)->count(),
-            'trainer_count' => Trainer::withoutGlobalScopes()->where('gym_id', $gym->id)->where('is_archived', 0)->count(),
+            'effective_status' => $gym->effectiveStatus(),
+            'subscription_expires_at' => $gym->subscription_expires_at?->toDateString(),
+            'member_count' => $gym->activeCount('members'),
+            'trainer_count' => $gym->activeCount('staff'),
+            'member_limit' => $gym->planLimit('members'),
+            'staff_limit' => $gym->planLimit('staff'),
             'created_at' => $gym->created_at,
         ];
     }

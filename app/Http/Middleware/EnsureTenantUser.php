@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Gym;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -25,6 +26,16 @@ class EnsureTenantUser
                 'success' => false,
                 'code' => 'no_gym_session',
                 'message' => 'This page needs a gym branch account. Please sign in again with your branch account.',
+            ], 403);
+        }
+
+        // A suspended, cancelled or expired branch loses access to its data.
+        $gym = Gym::find($user->gym_id);
+        if (! $gym || ! $gym->allowsAccess()) {
+            return response()->json([
+                'success' => false,
+                'code' => 'gym_inactive',
+                'message' => $gym?->accessDeniedMessage() ?? 'This gym branch no longer exists.',
             ], 403);
         }
 

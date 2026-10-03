@@ -44,6 +44,10 @@ class AdminAuthController extends Controller
                     'message' => 'Access denied. Admin privileges required.'
                 ], 403);
             }
+            if ($blocked = $this->blockedGymResponse($user)) {
+                Auth::logout();
+                return $blocked;
+            }
             $request->session()->regenerate();
             \App\Models\AuditLog::record('auth.login', "Admin {$user->name} logged in");
             return response()->json([
@@ -80,6 +84,10 @@ class AdminAuthController extends Controller
                     'success' => false,
                     'message' => 'Admin access only. Please log in with an admin account.',
                 ], 403);
+            }
+            if ($blocked = $this->blockedGymResponse($user)) {
+                Auth::logout();
+                return $blocked;
             }
             return response()->json([
                 'success' => true,

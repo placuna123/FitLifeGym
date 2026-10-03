@@ -27,7 +27,10 @@ class GymSignupController extends Controller
         $gyms = Gym::where('is_archived', 0)
             ->whereNotIn('subscription_status', ['suspended', 'cancelled'])
             ->orderBy('name')
-            ->get(['id', 'name', 'slug']);
+            ->get()
+            ->filter(fn (Gym $gym) => $gym->allowsAccess())
+            ->map(fn (Gym $gym) => ['id' => $gym->id, 'name' => $gym->name, 'slug' => $gym->slug])
+            ->values();
 
         return response()->json([
             'success' => true,
@@ -68,6 +71,7 @@ class GymSignupController extends Controller
                     'slug' => $slug,
                     'subscription_plan' => 'trial',
                     'subscription_status' => 'trial',
+                    'subscription_expires_at' => now()->addDays((int) config('fitgym.trial_days', 14))->toDateString(),
                     'is_archived' => 0,
                 ]);
 
@@ -101,7 +105,7 @@ class GymSignupController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Your gym is ready! You can now sign in as its Admin.',
+                'message' => 'Your gym is ready! Your free trial runs until ' . $result->subscription_expires_at?->format('M d, Y') . '. You can now sign in as its Admin.',
                 'gym' => [
                     'id' => $result->id,
                     'name' => $result->name,
