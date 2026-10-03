@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Gym;
 use App\Models\MembershipPlan;
 use App\Models\Notification;
 use App\Models\User;
@@ -14,9 +15,10 @@ class AdminNotificationTest extends TestCase
 
     public function test_admin_can_view_active_and_history_notifications(): void
     {
-        $admin = User::factory()->create(['role' => 'Admin']);
+        $admin = $this->adminWithGym();
 
         $activeNotification = Notification::create([
+            'gym_id' => $admin->gym_id,
             'title' => 'New Member Joined',
             'message' => 'Jane Doe has successfully registered.',
             'type' => 'yellow',
@@ -25,6 +27,7 @@ class AdminNotificationTest extends TestCase
         ]);
 
         $readNotification = Notification::create([
+            'gym_id' => $admin->gym_id,
             'title' => 'Payment Received',
             'message' => 'Payment posted for member account.',
             'type' => 'purple',
@@ -34,6 +37,7 @@ class AdminNotificationTest extends TestCase
         ]);
 
         $dismissedNotification = Notification::create([
+            'gym_id' => $admin->gym_id,
             'title' => 'System Maintenance',
             'message' => 'Scheduled maintenance was completed.',
             'type' => 'pink',
@@ -59,8 +63,9 @@ class AdminNotificationTest extends TestCase
 
     public function test_marking_a_notification_as_read_moves_it_to_history(): void
     {
-        $admin = User::factory()->create(['role' => 'Admin']);
+        $admin = $this->adminWithGym();
         $notification = Notification::create([
+            'gym_id' => $admin->gym_id,
             'title' => 'New Member Joined',
             'message' => 'John Doe has successfully registered.',
             'type' => 'yellow',
@@ -87,8 +92,9 @@ class AdminNotificationTest extends TestCase
 
     public function test_dismissing_a_notification_moves_it_to_history(): void
     {
-        $admin = User::factory()->create(['role' => 'Admin']);
+        $admin = $this->adminWithGym();
         $notification = Notification::create([
+            'gym_id' => $admin->gym_id,
             'title' => 'Payment Overdue',
             'message' => 'A member payment is overdue.',
             'type' => 'yellow',
@@ -115,8 +121,9 @@ class AdminNotificationTest extends TestCase
 
     public function test_creating_a_member_from_admin_portal_creates_a_notification(): void
     {
-        $admin = User::factory()->create(['role' => 'Admin']);
+        $admin = $this->adminWithGym();
         $plan = MembershipPlan::create([
+            'gym_id' => $admin->gym_id,
             'name' => 'Monthly Starter',
             'type' => 'Monthly',
             'price' => 999,
@@ -141,5 +148,12 @@ class AdminNotificationTest extends TestCase
             'is_read' => 0,
             'is_archived' => 0,
         ]);
+    }
+
+    private function adminWithGym(): User
+    {
+        $gym = Gym::create(['name' => 'Gym A', 'slug' => 'gym-a']);
+
+        return User::factory()->create(['role' => 'Admin', 'gym_id' => $gym->id]);
     }
 }

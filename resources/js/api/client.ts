@@ -94,7 +94,8 @@ api.interceptors.response.use(
                 url.includes('trainer/login') ||
                 url.includes('platform/login');
             if (!isFitGymAuthCheck) {
-                window.location.href = `${appBaseUrl}/login`;
+                // Back to the FitGym sign-in page (not the generic starter /login).
+                window.location.href = `${appBaseUrl}/?reason=session`;
             }
         }
         return Promise.reject(error);

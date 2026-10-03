@@ -5,27 +5,30 @@ namespace Tests\Feature\Auth;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
+/**
+ * The starter-kit self-registration is turned off: FitGym members and gym
+ * owners sign up through the FitGym portal instead (see SaasRulesTest,
+ * EmailNotificationsTest and MemberPendingApprovalTest).
+ */
 class RegistrationTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_registration_screen_can_be_rendered()
+    public function test_starter_registration_page_is_disabled()
     {
-        $response = $this->get(route('register'));
-
-        $response->assertOk();
+        $this->get('/register')->assertNotFound();
     }
 
-    public function test_new_users_can_register()
+    public function test_starter_registration_endpoint_is_disabled()
     {
-        $response = $this->post(route('register.store'), [
+        $this->post('/register', [
             'name' => 'Test User',
             'email' => 'test@example.com',
             'password' => 'password',
             'password_confirmation' => 'password',
-        ]);
+        ])->assertNotFound();
 
-        $this->assertAuthenticated();
-        $response->assertRedirect(route('dashboard', absolute: false));
+        $this->assertGuest();
+        $this->assertDatabaseMissing('users', ['email' => 'test@example.com']);
     }
 }

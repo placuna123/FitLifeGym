@@ -152,8 +152,9 @@ return [
     |
     */
 
+    // Starter-kit self-registration is off: it created accounts with no role or
+    // branch. FitGym has its own sign-ups (members and gym owners) on the portal.
     'features' => [
-        Features::registration(),
         Features::resetPasswords(),
         Features::emailVerification(),
         Features::twoFactorAuthentication([

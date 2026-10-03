@@ -15,9 +15,8 @@ Route::get('welcome', function () {
     ]);
 })->name('welcome');
 
-Route::get('dashboard', function () {
-    return Inertia::render('Dashboard');
-})->middleware(['auth', 'verified'])->name('dashboard');
+// The starter-kit dashboard isn't part of FitGym; send anyone who lands here to the FitGym sign-in.
+Route::get('dashboard', fn () => redirect('/'))->name('dashboard');
 
 // FitGym portals (Vue SPA pages – auth handled in frontend via API)
 Route::get('fitgym/admin', fn () => Inertia::render('fitgym/Admin'))->name('fitgym.admin');

@@ -12,11 +12,9 @@ class AuthenticationTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_login_screen_can_be_rendered()
+    public function test_login_screen_sends_people_to_the_fitgym_sign_in_page()
     {
-        $response = $this->get(route('login'));
-
-        $response->assertOk();
+        $this->get(route('login'))->assertRedirect('/');
     }
 
     public function test_users_can_authenticate_using_the_login_screen()
@@ -29,7 +27,7 @@ class AuthenticationTest extends TestCase
         ]);
 
         $this->assertAuthenticated();
-        $response->assertRedirect(route('dashboard', absolute: false));
+        $response->assertRedirect(config('fortify.home'));
     }
 
     public function test_users_with_two_factor_enabled_are_redirected_to_two_factor_challenge()

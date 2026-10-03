@@ -6,22 +6,23 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
+/**
+ * The starter-kit dashboard isn't part of FitGym: everyone is sent to the
+ * FitGym sign-in page, which routes them to their own portal.
+ */
 class DashboardTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_guests_are_redirected_to_the_login_page()
+    public function test_guests_are_sent_to_the_fitgym_sign_in_page()
     {
-        $response = $this->get(route('dashboard'));
-        $response->assertRedirect(route('login'));
+        $this->get(route('dashboard'))->assertRedirect('/');
     }
 
-    public function test_authenticated_users_can_visit_the_dashboard()
+    public function test_signed_in_users_are_sent_to_the_fitgym_sign_in_page()
     {
-        $user = User::factory()->create();
-        $this->actingAs($user);
+        $this->actingAs(User::factory()->create());
 
-        $response = $this->get(route('dashboard'));
-        $response->assertOk();
+        $this->get(route('dashboard'))->assertRedirect('/');
     }
 }
