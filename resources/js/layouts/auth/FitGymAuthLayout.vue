@@ -1,0 +1,267 @@
+<script setup lang="ts">
+import { Link } from '@inertiajs/vue3';
+import { home } from '@/routes';
+
+defineProps<{
+    title: string;
+    description?: string;
+}>();
+</script>
+
+<template>
+    <div class="fg-auth">
+        <div class="fg-auth-glow fg-auth-glow--one" aria-hidden="true" />
+        <div class="fg-auth-glow fg-auth-glow--two" aria-hidden="true" />
+
+        <div class="fg-auth-shell">
+            <Link :href="home()" class="fg-auth-brand">
+                <span class="fg-auth-logo" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M6.5 6.5 17.5 17.5" />
+                        <path d="M4 8v8" />
+                        <path d="M20 8v8" />
+                        <path d="M7 5v14" />
+                        <path d="M17 5v14" />
+                    </svg>
+                </span>
+                <span>
+                    <span class="fg-auth-eyebrow">FitGym Platform</span>
+                    <span class="fg-auth-wordmark">FitGym</span>
+                </span>
+            </Link>
+
+            <section class="fg-auth-card">
+                <h1 class="fg-auth-title">{{ title }}</h1>
+                <p v-if="description" class="fg-auth-description">{{ description }}</p>
+                <slot />
+            </section>
+
+            <p class="fg-auth-footer">
+                <Link :href="home()">← Back to sign in</Link>
+            </p>
+        </div>
+    </div>
+</template>
+
+<style scoped>
+.fg-auth {
+    position: relative;
+    display: flex;
+    min-height: 100vh;
+    min-height: 100dvh;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    padding: 2rem 1rem;
+    background: #1a1a2e;
+    color: #ffffff;
+    font-family: 'Instrument Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+.fg-auth-glow {
+    position: absolute;
+    width: 26rem;
+    height: 26rem;
+    border-radius: 9999px;
+    filter: blur(120px);
+    opacity: 0.18;
+    pointer-events: none;
+}
+
+.fg-auth-glow--one {
+    top: -8rem;
+    left: -6rem;
+    background: #8a2be2;
+}
+
+.fg-auth-glow--two {
+    right: -6rem;
+    bottom: -10rem;
+    background: #ff6b6b;
+    opacity: 0.12;
+}
+
+.fg-auth-shell {
+    position: relative;
+    display: flex;
+    width: 100%;
+    max-width: 28rem;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.fg-auth-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    color: #ffffff;
+    text-decoration: none;
+}
+
+.fg-auth-logo {
+    display: grid;
+    flex-shrink: 0;
+    width: 3rem;
+    height: 3rem;
+    place-items: center;
+    border-radius: 0.9rem;
+    background: #8a2be2;
+}
+
+.fg-auth-logo svg {
+    width: 1.6rem;
+    height: 1.6rem;
+}
+
+.fg-auth-eyebrow {
+    display: block;
+    color: #a0a0a0;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+}
+
+.fg-auth-wordmark {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 1.6rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.fg-auth-card {
+    border: 1px solid #3a3a5a;
+    border-radius: 1.25rem;
+    background: #2c2c4a;
+    padding: 1.75rem;
+}
+
+.fg-auth-title {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+}
+
+.fg-auth-description {
+    margin: 0.35rem 0 1.4rem;
+    color: #a0a0a0;
+    font-size: 0.875rem;
+}
+
+.fg-auth-footer {
+    margin: 0;
+    text-align: center;
+    font-size: 0.875rem;
+}
+
+.fg-auth-footer a {
+    color: #6a5acd;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.fg-auth-footer a:hover {
+    text-decoration: underline;
+}
+
+@media (max-width: 480px) {
+    .fg-auth-card {
+        padding: 1.35rem;
+    }
+
+    .fg-auth-wordmark {
+        font-size: 1.35rem;
+    }
+}
+</style>
+
+<style>
+/* Form pieces used by the pages rendered inside this layout */
+.fg-auth .fg-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+}
+
+.fg-auth .fg-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.fg-auth .fg-field label {
+    color: #a0a0a0;
+    font-size: 0.82rem;
+    font-weight: 500;
+}
+
+.fg-auth .fg-field input {
+    width: 100%;
+    border: 1px solid #3a3a5a;
+    border-radius: 0.65rem;
+    background: #2a2a4a;
+    padding: 0.75rem;
+    color: #ffffff;
+    font-size: 1rem;
+    outline: none;
+}
+
+.fg-auth .fg-field input::placeholder {
+    color: #6b6b8a;
+}
+
+.fg-auth .fg-field input:focus {
+    border-color: #8a2be2;
+}
+
+.fg-auth .fg-field input[readonly] {
+    color: #a0a0a0;
+}
+
+.fg-auth .fg-error {
+    margin: 0;
+    color: #fca5a5;
+    font-size: 0.82rem;
+}
+
+.fg-auth .fg-status {
+    margin: 0 0 1.1rem;
+    border: 1px solid rgba(141, 255, 0, 0.35);
+    border-radius: 0.7rem;
+    background: rgba(141, 255, 0, 0.1);
+    padding: 0.75rem 0.85rem;
+    color: #8dff00;
+    font-size: 0.875rem;
+}
+
+.fg-auth .fg-primary {
+    width: 100%;
+    border: none;
+    border-radius: 0.7rem;
+    background: #8a2be2;
+    padding: 0.85rem 1rem;
+    color: #ffffff;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.18s ease;
+}
+
+.fg-auth .fg-primary:hover:not(:disabled) {
+    opacity: 0.9;
+}
+
+.fg-auth .fg-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.fg-auth .fg-hint {
+    margin: 0;
+    color: #a0a0a0;
+    font-size: 0.78rem;
+    line-height: 1.5;
+}
+
+</style>
