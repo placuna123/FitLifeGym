@@ -1,7 +1,7 @@
 ﻿<script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
 import { Menu, X } from 'lucide-vue-next';
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { ref, shallowRef, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { Chart, type ChartConfiguration } from 'chart.js/auto';
 import {
   adminAuth,
@@ -134,7 +134,7 @@ const overviewChartCanvas = ref<HTMLCanvasElement | null>(null);
 const attendanceChartCanvas = ref<HTMLCanvasElement | null>(null);
 const membershipChartCanvas = ref<HTMLCanvasElement | null>(null);
 const dashboardChartCanvas = ref<HTMLCanvasElement | null>(null);
-const adminReportCharts = ref<{
+const adminReportCharts = shallowRef<{
   overview?: InstanceType<typeof Chart>;
   attendance?: InstanceType<typeof Chart>;
   membership?: InstanceType<typeof Chart>;
@@ -210,22 +210,22 @@ async function loadData() {
     membersList.value = Array.isArray(memRes.data) ? memRes.data : [];
     plansList.value = Array.isArray(planRes.data) ? planRes.data : [];
     paymentsList.value = Array.isArray((payRes.data as { payments?: unknown[] })?.payments)
-      ? (payRes.data as { payments: unknown[] }).payments
+      ? (payRes.data as { payments: Record<string, unknown>[] }).payments
       : [];
     trainerList.value = Array.isArray((trainerRes.data as { trainer?: unknown[] })?.trainer)
-      ? (trainerRes.data as { trainer: unknown[] }).trainer
+      ? (trainerRes.data as { trainer: Record<string, unknown>[] }).trainer
       : [];
     reportRevenue.value = (revRes.data as Record<string, unknown>) || null;
     reportMembership.value = (memReportRes.data as Record<string, unknown>) || null;
     reportAttendance.value = (attRes.data as Record<string, unknown>) || null;
     attendanceLogs.value = Array.isArray((logsRes.data as { logs?: unknown[] })?.logs)
-      ? (logsRes.data as { logs: unknown[] }).logs
+      ? (logsRes.data as { logs: Record<string, unknown>[] }).logs
       : [];
     recentCheckins.value = Array.isArray((recentRes.data as { checkins?: unknown[] })?.checkins)
-      ? (recentRes.data as { checkins: unknown[] }).checkins
+      ? (recentRes.data as { checkins: Record<string, unknown>[] }).checkins
       : [];
     currentlyInGymList.value = Array.isArray((currentInGymRes.data as { members?: unknown[] })?.members)
-      ? (currentInGymRes.data as { members: unknown[] }).members
+      ? (currentInGymRes.data as { members: Record<string, unknown>[] }).members
       : [];
 
     const notifData = (notifRes.data as { active?: unknown[]; history?: unknown[] }) || {};
@@ -327,7 +327,7 @@ async function loadTrainerAttendance() {
   try {
     const { data } = await adminTrainerAttendance.list({ date: new Date().toISOString().slice(0, 10) });
     trainerAttendanceList.value = Array.isArray((data as { attendance?: unknown[] })?.attendance)
-      ? (data as { attendance: unknown[] }).attendance
+      ? (data as { attendance: Record<string, unknown>[] }).attendance
       : [];
   } catch {
     trainerAttendanceList.value = [];
@@ -404,7 +404,7 @@ async function loadGymInfo() {
       gymForm.value.address = String(gym.address || '');
       gymForm.value.textbee_device_id = String(gym.textbee_device_id || '');
       gymForm.value.textbee_sim_subscription_id = String(gym.textbee_sim_subscription_id || '');
-      gymForm.value.operating_hours = (gym.operating_hours as Record<string, string>) || gymForm.value.operating_hours;
+      gymForm.value.operating_hours = (gym.operating_hours as typeof gymForm.value.operating_hours) || gymForm.value.operating_hours;
     }
   } catch {
     gymInfoData.value = null;

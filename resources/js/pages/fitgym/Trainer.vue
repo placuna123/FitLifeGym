@@ -1,7 +1,7 @@
 ﻿<script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
 import { Menu, X } from 'lucide-vue-next';
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { ref, shallowRef, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import {
   trainerAuth,
   trainerAttendance,
@@ -73,7 +73,7 @@ const showViewMemberModal = ref(false);
 const selectedMemberForView = ref<Record<string, unknown> | null>(null);
 const selectedMemberForEdit = ref<Record<string, unknown> | null>(null);
 const reportsTab = ref<'overview' | 'trends' | 'breakdown'>('overview');
-const reportCharts = ref<{ weekly?: InstanceType<typeof Chart>; growth?: InstanceType<typeof Chart>; planDist?: InstanceType<typeof Chart>; revenue?: InstanceType<typeof Chart> }>({});
+const reportCharts = shallowRef<{ weekly?: InstanceType<typeof Chart>; growth?: InstanceType<typeof Chart>; planDist?: InstanceType<typeof Chart>; revenue?: InstanceType<typeof Chart> }>({});
 const dashboardChartCanvas = ref<HTMLCanvasElement | null>(null);
 let dashboardChart: InstanceType<typeof Chart> | null = null;
 const profileForm = ref({ full_name: '', email: '', phone: '' });
@@ -227,16 +227,16 @@ async function loadDashboardData() {
       payments.list().catch(() => ({ data: { payments: [] } })),
     ]);
     recentCheckins.value = Array.isArray((recentRes.data as { checkins?: unknown[] })?.checkins)
-      ? (recentRes.data as { checkins: unknown[] }).checkins
+      ? (recentRes.data as { checkins: Record<string, unknown>[] }).checkins
       : [];
     paymentsList.value = Array.isArray((paymentsRes.data as { payments?: unknown[] })?.payments)
-      ? (paymentsRes.data as { payments: unknown[] }).payments
+      ? (paymentsRes.data as { payments: Record<string, unknown>[] }).payments
       : [];
     currentlyInGym.value = Array.isArray((inGymRes.data as { members?: unknown[] })?.members)
-      ? (inGymRes.data as { members: unknown[] }).members
+      ? (inGymRes.data as { members: Record<string, unknown>[] }).members
       : [];
     expiringMembers.value = Array.isArray((expiringRes.data as { members?: unknown[] })?.members)
-      ? (expiringRes.data as { members: unknown[] }).members
+      ? (expiringRes.data as { members: Record<string, unknown>[] }).members
       : [];
     reportAttendance.value = (attReportRes.data as Record<string, unknown>) || null;
   } catch {
@@ -296,10 +296,10 @@ async function loadAttendanceData() {
       trainerAttendance.currentlyInGym().catch(() => ({ data: { members: [] } })),
     ]);
     attendanceLogs.value = Array.isArray((logsRes.data as { logs?: unknown[] })?.logs)
-      ? (logsRes.data as { logs: unknown[] }).logs
+      ? (logsRes.data as { logs: Record<string, unknown>[] }).logs
       : [];
     currentlyInGym.value = Array.isArray((inGymRes.data as { members?: unknown[] })?.members)
-      ? (inGymRes.data as { members: unknown[] }).members
+      ? (inGymRes.data as { members: Record<string, unknown>[] }).members
       : [];
   } catch {
     attendanceLogs.value = [];
@@ -398,7 +398,7 @@ async function loadMembersForCheckin() {
   try {
     const { data } = await trainerMembers.active();
     activeMembersForCheckin.value = Array.isArray((data as { members?: unknown[] })?.members)
-      ? (data as { members: unknown[] }).members
+      ? (data as { members: Record<string, unknown>[] }).members
       : [];
     if (activeMembersForCheckin.value.length && !checkinForm.value.member_id) {
       const first = activeMembersForCheckin.value[0] as Record<string, unknown>;
@@ -862,7 +862,7 @@ async function loadPaymentsData() {
   dataLoading.value = true;
   try {
     const res = await payments.list().catch(() => ({ data: { payments: [], summary: null } }));
-    const data = res.data as { payments?: unknown[]; summary?: Record<string, unknown> };
+    const data = res.data as { payments?: Record<string, unknown>[]; summary?: Record<string, unknown> };
     paymentsList.value = Array.isArray(data?.payments) ? data.payments : [];
     paymentSummary.value = data?.summary || null;
   } catch {
@@ -2092,7 +2092,7 @@ onUnmounted(() => {
         <p v-if="formError" class="mb-2 text-sm text-red-400">{{ formError }}</p>
         <div class="flex gap-2">
           <button type="button" class="flex-1 rounded bg-gray-600 py-2 text-white hover:bg-gray-500" @click="stopTrainerQrScanner(); showCheckinModal = false">Cancel</button>
-          <button type="button" class="flex-1 rounded bg-[#A3E635] py-2 font-semibold text-black hover:opacity-90" :disabled="formLoading" @click="submitCheckin">
+          <button type="button" class="flex-1 rounded bg-[#A3E635] py-2 font-semibold text-black hover:opacity-90" :disabled="formLoading" @click="submitCheckin()">
             {{ formLoading ? 'Saving...' : 'Check-in' }}
           </button>
         </div>
