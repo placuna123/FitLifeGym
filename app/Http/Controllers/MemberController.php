@@ -45,7 +45,7 @@ class MemberController extends Controller
             'address' => $member->address,
             'membership_plan' => $member->membershipPlan ? $member->membershipPlan->name : 'N/A',
             'status' => strtolower($member->status),
-            'expiry_date' => $member->expiry_date,
+            'expiry_date' => $member->expiry_date?->format('Y-m-d'),
             'payment_status' => strtolower($member->payment_status),
             'created_at' => $member->created_at,
         ]);
@@ -109,7 +109,7 @@ class MemberController extends Controller
                     'address' => $member->address,
                     'membership_plan' => $plan->name,
                     'status' => strtolower($member->status),
-                    'expiry_date' => $member->expiry_date,
+                    'expiry_date' => $member->expiry_date?->format('Y-m-d'),
                     'payment_status' => strtolower($member->payment_status),
                 ]
             ], 201);
@@ -134,7 +134,7 @@ class MemberController extends Controller
             'address' => $member->address,
             'membership_plan' => $member->membershipPlan ? $member->membershipPlan->name : 'N/A',
             'status' => strtolower($member->status),
-            'expiry_date' => $member->expiry_date,
+            'expiry_date' => $member->expiry_date?->format('Y-m-d'),
             'payment_status' => strtolower($member->payment_status),
             'created_at' => $member->created_at,
         ]);
@@ -188,7 +188,7 @@ class MemberController extends Controller
                     'address' => $member->address,
                     'membership_plan' => $plan->name,
                     'status' => strtolower($member->status),
-                    'expiry_date' => $member->expiry_date,
+                    'expiry_date' => $member->expiry_date?->format('Y-m-d'),
                     'payment_status' => strtolower($member->payment_status),
                 ]
             ]);

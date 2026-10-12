@@ -103,6 +103,30 @@ class AddedMembersAndPaymentsTest extends TestCase
     /**
      * @return array{0: Gym, 1: MembershipPlan}
      */
+    public function test_member_expiry_date_is_sent_as_a_plain_date(): void
+    {
+        [$gym, $plan] = $this->gymWithPlan();
+        $admin = User::factory()->create(['role' => 'Admin', 'gym_id' => $gym->id]);
+        $member = Member::create([
+            'gym_id' => $gym->id,
+            'member_id' => '1234',
+            'full_name' => 'Dated Member',
+            'email' => 'dated@gmail.com',
+            'phone' => '09170000009',
+            'membership_plan_id' => $plan->id,
+            'status' => 'Active',
+            'payment_status' => 'Paid',
+            'expiry_date' => '2026-10-25',
+        ]);
+
+        $this->actingAs($admin)->getJson(route('members.index'))
+            ->assertOk()
+            ->assertJsonPath('0.expiry_date', '2026-10-25');
+        $this->actingAs($admin)->getJson(route('members.show', $member->id))
+            ->assertOk()
+            ->assertJsonPath('expiry_date', '2026-10-25');
+    }
+
     private function gymWithPlan(): array
     {
         $gym = Gym::create(['name' => 'Gym A', 'slug' => 'gym-a']);

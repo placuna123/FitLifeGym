@@ -21,6 +21,7 @@ import { useMobileNav } from '@/composables/useMobileNav';
 import { usePasswordVisibility } from '@/composables/usePasswordVisibility';
 import { useQrCheckinScanner } from '@/composables/useQrCheckinScanner';
 import { useSessionGuard } from '@/composables/useSessionGuard';
+import { mergeMemberStreetAddress, memberStreetAddress as editableStreetAddress, parseMemberAddressMeta } from '@/lib/memberAddress';
 import { goToEntry } from '@/lib/portal';
 
 const currentView = ref('dashboard');
@@ -733,7 +734,7 @@ function editMember(m: Record<string, unknown>) {
     full_name: String(m.full_name || ''),
     email: String(m.email || ''),
     phone: String(m.phone || ''),
-    address: memberEditableStreetAddress(m.address),
+    address: editableStreetAddress(m.address),
     membership_plan_id: plan ? String(plan.id) : '',
   };
   showAddMemberModal.value = true;
@@ -818,7 +819,8 @@ async function submitAddMember() {
       full_name: memberForm.value.full_name,
       email: memberForm.value.email,
       phone: memberForm.value.phone || '',
-      address: memberForm.value.address || '',
+      // keeps a self-registered member's emergency contact and birthday when the address is edited
+      address: mergeMemberStreetAddress(selectedMember.value?.address, memberForm.value.address || ''),
       membership_plan: planName,
     };
     if (selectedMember.value && (selectedMember.value as Record<string, unknown>).id != null) {
@@ -1193,19 +1195,6 @@ function formatCurrency(value: unknown): string {
   })}`;
 }
 
-function parseMemberAddressMeta(address: unknown): Record<string, unknown> | null {
-  if (typeof address !== 'string') return null;
-  const trimmed = address.trim();
-  if (!trimmed.startsWith('{')) return null;
-
-  try {
-    const parsed = JSON.parse(trimmed);
-    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null;
-  } catch {
-    return null;
-  }
-}
-
 function memberEmergencyContact(address: unknown): string {
   const meta = parseMemberAddressMeta(address);
   const contact = meta?.emergency_contact as Record<string, unknown> | undefined;
@@ -1222,22 +1211,7 @@ function memberDateOfBirth(address: unknown): string {
 }
 
 function memberStreetAddress(address: unknown): string {
-  if (typeof address !== 'string') return '-';
-  const trimmed = address.trim();
-  if (!trimmed) return '-';
-  const meta = parseMemberAddressMeta(trimmed);
-  if (!meta) return trimmed;
-  const fromMeta = String(meta.address || '').trim();
-  return fromMeta || '-';
-}
-
-function memberEditableStreetAddress(address: unknown): string {
-  if (typeof address !== 'string') return '';
-  const trimmed = address.trim();
-  if (!trimmed) return '';
-  const meta = parseMemberAddressMeta(trimmed);
-  if (!meta) return trimmed;
-  return String(meta.address || '').trim();
+  return editableStreetAddress(address) || '-';
 }
 
 function revenueMonthly(): string {

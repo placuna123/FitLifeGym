@@ -21,6 +21,7 @@ import { useMobileNav } from '@/composables/useMobileNav';
 import { usePasswordVisibility } from '@/composables/usePasswordVisibility';
 import { useQrCheckinScanner } from '@/composables/useQrCheckinScanner';
 import { useSessionGuard } from '@/composables/useSessionGuard';
+import { mergeMemberStreetAddress, memberStreetAddress } from '@/lib/memberAddress';
 import { goToEntry } from '@/lib/portal';
 
 const { mobileNavOpen, closeMobileNav } = useMobileNav();
@@ -492,7 +493,8 @@ async function submitAddMember() {
     full_name: memberForm.value.full_name,
     email: memberForm.value.email,
     phone: memberForm.value.phone || '',
-    address: memberForm.value.address || '',
+    // keeps a self-registered member's emergency contact and birthday when the address is edited
+    address: mergeMemberStreetAddress(selectedMemberForEdit.value?.address, memberForm.value.address || ''),
     membership_plan: planName,
   };
   try {
@@ -610,7 +612,7 @@ async function editMember(m: Record<string, unknown>) {
     full_name: String(m.full_name || ''),
     email: String(m.email || ''),
     phone: String(m.phone || ''),
-    address: String(m.address || ''),
+    address: memberStreetAddress(m.address),
     membership_plan_id:
       m.membership_plan_id != null
         ? String(m.membership_plan_id)
@@ -625,7 +627,7 @@ async function editMember(m: Record<string, unknown>) {
     try {
       const { data } = await members.get(Number(m.id));
       const full = (data as Record<string, unknown>) || {};
-      memberForm.value.address = String(full.address || memberForm.value.address || '');
+      if (full.address) memberForm.value.address = memberStreetAddress(full.address);
       if (full.membership_plan) {
         const plan = plansList.value.find(
           (p) => String((p as Record<string, unknown>).name || '').toLowerCase() === String(full.membership_plan || '').toLowerCase()
@@ -1767,8 +1769,8 @@ onUnmounted(() => {
                     <td class="px-4 py-4">{{ (m as Record<string, unknown>).member_id || '—' }}</td>
                     <td class="px-4 py-4">{{ (m as Record<string, unknown>).phone || '—' }}</td>
                     <td class="px-4 py-4">
-                      <span class="block max-w-[240px] truncate" :title="String((m as Record<string, unknown>).address || '')">
-                        {{ (m as Record<string, unknown>).address || '—' }}
+                      <span class="block max-w-[240px] truncate" :title="memberStreetAddress((m as Record<string, unknown>).address)">
+                        {{ memberStreetAddress((m as Record<string, unknown>).address) || '—' }}
                       </span>
                     </td>
                     <td class="px-4 py-4">{{ (m as Record<string, unknown>).membership_plan || '—' }}</td>
@@ -2114,7 +2116,7 @@ onUnmounted(() => {
             </div>
           </div>
           <div class="flex justify-between gap-4"><span class="shrink-0 text-gray-400">Phone</span><span class="min-w-0 text-right text-white [overflow-wrap:anywhere]">{{ selectedMemberForView.phone || '-' }}</span></div>
-          <div class="flex justify-between gap-4"><span class="shrink-0 text-gray-400">Address</span><span class="min-w-0 text-right text-white [overflow-wrap:anywhere]">{{ selectedMemberForView.address || '-' }}</span></div>
+          <div class="flex justify-between gap-4"><span class="shrink-0 text-gray-400">Address</span><span class="min-w-0 text-right text-white [overflow-wrap:anywhere]">{{ memberStreetAddress(selectedMemberForView.address) || '-' }}</span></div>
           <div class="flex justify-between gap-4"><span class="shrink-0 text-gray-400">Member ID</span><span class="min-w-0 text-right text-white [overflow-wrap:anywhere]">{{ selectedMemberForView.member_id || '-' }}</span></div>
           <div class="flex justify-between gap-4"><span class="shrink-0 text-gray-400">Membership</span><span class="min-w-0 text-right text-white [overflow-wrap:anywhere]">{{ selectedMemberForView.membership_plan || '-' }}</span></div>
           <div class="flex justify-between items-center">
