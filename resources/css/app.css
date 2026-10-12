@@ -297,3 +297,24 @@
 .fg-password-toggle:focus-visible {
     color: #ffffff;
 }
+
+/* Soft cream-and-gold marble backdrop behind every FitGym page. Only the page background
+   uses it; cards, tables and the sidebar keep their own colors. !important beats the
+   pages' scoped and inline background colors. Fixed so the page frame and the area
+   around it line up as one continuous surface. */
+.fg-marble-bg {
+    background-color: #f6f1e7 !important;
+    background-image:
+        linear-gradient(rgba(255, 252, 245, 0.2), rgba(255, 252, 245, 0.2)),
+        url('../images/fitgym-marble.jpg') !important;
+    background-size: cover !important;
+    background-position: center !important;
+    background-attachment: fixed !important;
+}
+
+/* Text sitting straight on the marble needs dark ink to stay readable. */
+.fg-marble-bg {
+    --fg-ink: #2b2418;
+    --fg-ink-soft: #6b5d45;
+    --fg-gold: #a07a1f;
+}

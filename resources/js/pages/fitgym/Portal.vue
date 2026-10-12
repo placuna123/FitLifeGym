@@ -453,9 +453,7 @@ onMounted(async () => {
 <template>
   <Head title="FitGym - Sign In" />
 
-  <div class="fitgym-entry" :style="{ backgroundColor: portal.dark }">
-    <div class="entry-glow entry-glow--one" :style="{ backgroundColor: portal.purple }" />
-    <div class="entry-glow entry-glow--two" :style="{ backgroundColor: portal.cyan }" />
+  <div class="fitgym-entry fg-marble-bg">
 
     <!-- Faint gym-equipment line art, purely decorative — keeps the page feeling like a gym without a photo asset. -->
     <svg class="entry-deco entry-deco--dumbbell-1" viewBox="0 0 100 40" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
@@ -497,7 +495,7 @@ onMounted(async () => {
           </svg>
         </div>
         <div>
-          <p class="entry-eyebrow" :style="{ color: portal.textDim }">FitGym Platform</p>
+          <p class="entry-eyebrow">FitGym Platform</p>
           <h1 class="entry-wordmark">{{ viewState === 'landing' ? 'Every gym. One platform.' : 'Welcome back' }}</h1>
         </div>
       </header>
@@ -511,25 +509,25 @@ onMounted(async () => {
       <!-- Landing hero: the first thing anyone sees — pick a lane before the role/login form -->
       <section v-else-if="viewState === 'landing'" class="entry-hero">
         <div class="hero-badges">
-          <span class="hero-badge" :style="{ borderColor: portal.border, color: portal.textDim }">
+          <span class="hero-badge">
             <span class="hero-dot" :style="{ backgroundColor: portal.lime }" />
             Multi-gym platform
           </span>
         </div>
         <h2 class="hero-title">Run your gym.<br />Grow every branch.</h2>
-        <p class="hero-subtitle" :style="{ color: portal.textDim }">
+        <p class="hero-subtitle">
           Members, staff, attendance, and payments — one system for every gym on the platform, each fully your own.
         </p>
         <div class="hero-actions">
           <button type="button" class="entry-primary hero-primary" :style="{ backgroundColor: portal.purple }" @click="enterSignIn">
             Sign In
           </button>
-          <button type="button" class="entry-ghost hero-ghost" :style="{ borderColor: portal.lime, color: portal.lime }" @click="enterGymSignup">
+          <button type="button" class="entry-ghost hero-ghost" @click="enterGymSignup">
             Own a Gym? Start Your Free Trial
           </button>
         </div>
-        <p class="hero-footnote" :style="{ color: portal.textDim }">
-          Already a member? <a href="#" :style="{ color: portal.purpleLight }" @click.prevent="enterSignIn">Sign in here</a>.
+        <p class="hero-footnote">
+          Already a member? <a href="#" @click.prevent="enterSignIn">Sign in here</a>.
         </p>
 
         <ul class="hero-features">
@@ -893,7 +891,7 @@ onMounted(async () => {
         </template>
       </section>
 
-      <p v-if="viewState === 'auth'" class="entry-footnote" :style="{ color: portal.textDim }">
+      <p v-if="viewState === 'auth'" class="entry-footnote">
         One sign-in page for Admin, Staff, and Member accounts.
       </p>
     </div>
@@ -913,31 +911,10 @@ onMounted(async () => {
   font-family: 'Instrument Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
-.entry-glow {
-  position: absolute;
-  width: 26rem;
-  height: 26rem;
-  border-radius: 9999px;
-  filter: blur(120px);
-  opacity: 0.18;
-  pointer-events: none;
-}
-
-.entry-glow--one {
-  top: -8rem;
-  left: -6rem;
-}
-
-.entry-glow--two {
-  bottom: -10rem;
-  right: -6rem;
-  opacity: 0.12;
-}
-
 .entry-deco {
   position: absolute;
-  color: #ffffff;
-  opacity: 0.05;
+  color: var(--fg-gold);
+  opacity: 0.22;
   pointer-events: none;
 }
 
@@ -1012,7 +989,9 @@ onMounted(async () => {
   color: #ffffff;
 }
 
+/* Brand, hero and footnote text sit straight on the marble background, so they use dark ink */
 .entry-eyebrow {
+  color: var(--fg-gold);
   margin: 0;
   font-size: 0.75rem;
   font-weight: 600;
@@ -1021,6 +1000,7 @@ onMounted(async () => {
 }
 
 .entry-wordmark {
+  color: var(--fg-ink);
   margin: 0.15rem 0 0;
   font-size: 1.6rem;
   font-weight: 700;
@@ -1043,8 +1023,9 @@ onMounted(async () => {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  border: 1px solid;
+  border: 1px solid rgba(160, 122, 31, 0.45);
   border-radius: 999px;
+  color: var(--fg-ink-soft);
   padding: 0.35rem 0.9rem;
   font-size: 0.75rem;
   font-weight: 600;
@@ -1080,7 +1061,7 @@ onMounted(async () => {
   gap: 0.55rem;
   font-size: 0.88rem;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--fg-ink);
 }
 
 .hero-feature-icon {
@@ -1098,6 +1079,7 @@ onMounted(async () => {
 }
 
 .hero-title {
+  color: var(--fg-ink);
   margin: 0;
   font-size: clamp(2rem, 5vw, 3rem);
   font-weight: 800;
@@ -1106,6 +1088,7 @@ onMounted(async () => {
 }
 
 .hero-subtitle {
+  color: var(--fg-ink-soft);
   margin: 0;
   max-width: 32rem;
   font-size: 1.02rem;
@@ -1127,12 +1110,19 @@ onMounted(async () => {
   padding-right: 1.75rem;
 }
 
+.hero-ghost {
+  border-color: #3f6b00;
+  color: #3f6b00;
+}
+
 .hero-footnote {
+  color: var(--fg-ink-soft);
   margin: 0.2rem 0 0;
   font-size: 0.88rem;
 }
 
 .hero-footnote a {
+  color: #6b3fc4;
   text-decoration: none;
   font-weight: 600;
 }
@@ -1468,6 +1458,7 @@ onMounted(async () => {
 }
 
 .entry-footnote {
+  color: var(--fg-ink-soft);
   margin: 0;
   text-align: center;
   font-size: 0.78rem;

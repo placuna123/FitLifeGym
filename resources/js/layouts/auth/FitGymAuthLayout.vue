@@ -9,9 +9,7 @@ defineProps<{
 </script>
 
 <template>
-    <div class="fg-auth">
-        <div class="fg-auth-glow fg-auth-glow--one" aria-hidden="true" />
-        <div class="fg-auth-glow fg-auth-glow--two" aria-hidden="true" />
+    <div class="fg-auth fg-marble-bg">
 
         <div class="fg-auth-shell">
             <Link :href="home()" class="fg-auth-brand">
@@ -53,32 +51,8 @@ defineProps<{
     justify-content: center;
     overflow: hidden;
     padding: 2rem 1rem;
-    background: #1a1a2e;
     color: #ffffff;
     font-family: 'Instrument Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-}
-
-.fg-auth-glow {
-    position: absolute;
-    width: 26rem;
-    height: 26rem;
-    border-radius: 9999px;
-    filter: blur(120px);
-    opacity: 0.18;
-    pointer-events: none;
-}
-
-.fg-auth-glow--one {
-    top: -8rem;
-    left: -6rem;
-    background: #8a2be2;
-}
-
-.fg-auth-glow--two {
-    right: -6rem;
-    bottom: -10rem;
-    background: #ff6b6b;
-    opacity: 0.12;
 }
 
 .fg-auth-shell {
@@ -94,11 +68,13 @@ defineProps<{
     display: flex;
     align-items: center;
     gap: 0.875rem;
-    color: #ffffff;
+    /* the brand and footer sit straight on the marble background, so they use dark ink */
+    color: var(--fg-ink);
     text-decoration: none;
 }
 
 .fg-auth-logo {
+    color: #ffffff;
     display: grid;
     flex-shrink: 0;
     width: 3rem;
@@ -115,7 +91,7 @@ defineProps<{
 
 .fg-auth-eyebrow {
     display: block;
-    color: #a0a0a0;
+    color: var(--fg-gold);
     font-size: 0.75rem;
     font-weight: 600;
     letter-spacing: 0.16em;
@@ -156,7 +132,7 @@ defineProps<{
 }
 
 .fg-auth-footer a {
-    color: #6a5acd;
+    color: #6b3fc4;
     font-weight: 600;
     text-decoration: none;
 }

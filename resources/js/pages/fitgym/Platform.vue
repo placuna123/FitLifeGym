@@ -279,7 +279,7 @@ onMounted(checkAuth);
 <template>
   <Head title="Platform Admin" />
 
-  <div class="platform-shell" :style="{ backgroundColor: portal.dark }">
+  <div class="platform-shell fg-marble-bg">
     <div v-if="loading" class="platform-loading">Loading…</div>
 
     <div v-else-if="!isLoggedIn" class="platform-login">
@@ -309,31 +309,31 @@ onMounted(checkAuth);
     </div>
 
     <div v-else class="platform-dashboard">
-      <header class="dashboard-header" :style="{ borderColor: portal.border }">
+      <header class="dashboard-header">
         <div>
-          <p class="eyebrow" :style="{ color: portal.textDim }">FitGym Platform</p>
+          <p class="eyebrow">FitGym Platform</p>
           <h1>Branches &amp; Subscriptions</h1>
         </div>
         <div class="header-actions">
-          <span :style="{ color: portal.textDim }">{{ user?.name }}</span>
-          <button type="button" class="ghost-btn" :style="{ borderColor: portal.border, color: portal.textDim }" @click="openPasswordModal">
+          <span>{{ user?.name }}</span>
+          <button type="button" class="ghost-btn" @click="openPasswordModal">
             Change Password
           </button>
-          <button type="button" class="ghost-btn" :style="{ borderColor: portal.border, color: portal.textDim }" @click="handleLogout">
+          <button type="button" class="ghost-btn" @click="handleLogout">
             Sign Out
           </button>
         </div>
       </header>
       <p v-if="accountNotice" class="account-notice" role="status">{{ accountNotice }}</p>
 
-      <nav class="tab-nav" :style="{ borderColor: portal.border }">
+      <nav class="tab-nav">
         <button
           v-for="tab in tabs"
           :key="tab.id"
           type="button"
           class="tab-btn"
           :class="{ 'tab-btn--active': currentTab === tab.id }"
-          :style="currentTab === tab.id ? { color: '#ffffff', borderColor: portal.purple } : { color: portal.textDim, borderColor: 'transparent' }"
+          :style="currentTab === tab.id ? { color: 'var(--fg-ink)', borderColor: 'var(--fg-gold)' } : { color: 'var(--fg-ink-soft)', borderColor: 'transparent' }"
           @click="switchTab(tab.id)"
         >
           {{ tab.label }}
@@ -699,8 +699,31 @@ select {
   flex-wrap: wrap;
   gap: 1rem;
   padding-bottom: 1.5rem;
-  border-bottom: 1px solid;
+  border-bottom: 1px solid rgba(160, 122, 31, 0.3);
   margin-bottom: 1rem;
+}
+
+/* The header and tabs sit straight on the marble background, so they use dark ink */
+.dashboard-header h1 {
+  color: var(--fg-ink);
+}
+
+.dashboard-header .eyebrow {
+  color: var(--fg-gold);
+  font-weight: 600;
+}
+
+.dashboard-header .header-actions span {
+  color: var(--fg-ink-soft);
+}
+
+.dashboard-header .ghost-btn {
+  border-color: rgba(107, 93, 69, 0.45);
+  color: var(--fg-ink);
+}
+
+.dashboard-header .ghost-btn:hover {
+  background: rgba(255, 255, 255, 0.45);
 }
 
 .header-actions {
@@ -712,7 +735,7 @@ select {
 .tab-nav {
   display: flex;
   gap: 0.5rem;
-  border-bottom: 1px solid;
+  border-bottom: 1px solid rgba(160, 122, 31, 0.3);
   margin-bottom: 1.5rem;
   overflow-x: auto;
 }
@@ -809,7 +832,7 @@ th, td {
 .hint-row {
   margin: -0.5rem 0 1rem;
   font-size: 0.78rem;
-  color: #a0a0a0;
+  color: var(--fg-ink-soft);
 }
 
 .actions-cell {
@@ -921,7 +944,7 @@ th, td {
   border-radius: 0.6rem;
   background: rgba(141, 255, 0, 0.1);
   padding: 0.6rem 0.85rem;
-  color: #8dff00;
+  color: #3f6b00;
   font-size: 0.85rem;
 }
 

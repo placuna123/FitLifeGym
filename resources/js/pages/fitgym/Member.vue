@@ -945,7 +945,7 @@ onUnmounted(() => {
 
 <template>
   <Head :title="`${gymDisplayName} - Member Portal`" />
-  <div class="member-portal min-h-screen text-white" :style="{ backgroundColor: portal.dark }">
+  <div class="member-portal fg-marble-bg min-h-screen text-white" :style="{ backgroundColor: portal.dark }">
     <!-- Sign-in/registration now live on the unified entry page (fitgym/Portal.vue).
          This portal only ever renders once a Member session is confirmed;
          checkAuth() redirects everyone else there before this template matters. -->
@@ -954,7 +954,7 @@ onUnmounted(() => {
     </div>
 
     <div v-else class="sm:p-4 lg:p-6">
-      <div class="member-shell fg-shell mx-auto flex min-h-[calc(100vh-2rem)] max-w-[1500px] overflow-hidden rounded-[1.75rem] border shadow-2xl" :style="{ borderColor: portal.border, backgroundColor: portal.dark }">
+      <div class="member-shell fg-shell fg-marble-bg mx-auto flex min-h-[calc(100vh-2rem)] max-w-[1500px] overflow-hidden rounded-[1.75rem] border shadow-2xl" style="border-color: rgba(160, 122, 31, 0.35)">
         <div v-if="mobileNavOpen" class="fg-nav-backdrop" aria-hidden="true" @click="closeMobileNav" />
         <aside id="member-sidebar" class="member-sidebar fg-sidebar flex w-[17.5rem] shrink-0 flex-col px-5 py-8" :class="{ 'is-open': mobileNavOpen }" :style="{ backgroundColor: portal.sidebar }">
           <div class="flex items-start justify-between gap-3 pb-6">
@@ -1026,11 +1026,11 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <header class="member-header flex flex-col gap-4 border-b px-4 py-5 sm:px-6 sm:py-6 lg:flex-row lg:items-center lg:justify-between lg:px-10" :style="{ borderColor: portal.border }">
+          <header class="member-header flex flex-col gap-4 border-b px-4 py-5 sm:px-6 sm:py-6 lg:flex-row lg:items-center lg:justify-between lg:px-10" style="border-color: rgba(160, 122, 31, 0.3)">
             <div class="min-w-0">
-              <p class="text-sm font-semibold uppercase tracking-[0.24em]" :style="{ color: portal.purpleLight }">Member Workspace</p>
-              <h2 class="mt-2 text-2xl font-bold text-white sm:text-3xl">{{ currentPageInfo.label }}</h2>
-              <p class="mt-2 max-w-2xl text-sm" :style="{ color: portal.textDim }">{{ currentPageInfo.description }}</p>
+              <p class="text-sm font-semibold uppercase tracking-[0.24em] text-[var(--fg-gold)]">Member Workspace</p>
+              <h2 class="mt-2 text-2xl font-bold text-[var(--fg-ink)] sm:text-3xl">{{ currentPageInfo.label }}</h2>
+              <p class="mt-2 max-w-2xl text-sm text-[var(--fg-ink-soft)]">{{ currentPageInfo.description }}</p>
             </div>
 
             <div class="relative flex flex-wrap items-center gap-3">
@@ -1898,13 +1898,6 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.member-portal {
-  background:
-    radial-gradient(circle at top left, rgba(138, 43, 226, 0.18), transparent 26%),
-    radial-gradient(circle at bottom right, rgba(255, 107, 107, 0.12), transparent 30%),
-    #1A1A2E;
-}
-
 /* backdrop-filter would trap the fixed-position mobile drawer inside the shell */
 @media (min-width: 1024px) {
   .member-shell {
@@ -1944,8 +1937,7 @@ onUnmounted(() => {
 }
 
 .member-header {
-  background:
-    linear-gradient(180deg, rgba(138, 43, 226, 0.12) 0%, rgba(26, 26, 46, 0) 100%);
+  background: transparent;
 }
 
 .member-portal input,

@@ -1585,7 +1585,7 @@ onUnmounted(() => {
   <Head :title="`${gymDisplayName} - Admin Portal`">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" />
   </Head>
-  <div class="fitgym-admin admin-portal">
+  <div class="fitgym-admin admin-portal fg-marble-bg">
     <div v-if="!isLoggedIn && !loading" class="admin-auth-shell flex min-h-screen items-center justify-center p-4">
       <div class="admin-auth-card w-full max-w-md rounded-2xl border p-6 sm:p-8">
         <div class="text-center">
@@ -1646,7 +1646,7 @@ onUnmounted(() => {
     </div>
 
     <div v-else class="sm:p-4 lg:p-6">
-      <div class="admin-shell fg-shell mx-auto flex min-h-[calc(100vh-2rem)] max-w-[1500px] overflow-hidden rounded-[1.75rem] border shadow-2xl">
+      <div class="admin-shell fg-shell fg-marble-bg mx-auto flex min-h-[calc(100vh-2rem)] max-w-[1500px] overflow-hidden rounded-[1.75rem] border shadow-2xl">
         <div v-if="mobileNavOpen" class="fg-nav-backdrop" aria-hidden="true" @click="closeMobileNav" />
         <aside id="admin-sidebar" class="admin-sidebar fg-sidebar flex w-[18rem] shrink-0 flex-col px-5 py-8" :class="{ 'is-open': mobileNavOpen }">
           <div class="flex items-start justify-between gap-3 pb-6">
@@ -1714,9 +1714,9 @@ onUnmounted(() => {
 
           <header class="admin-header flex flex-col gap-4 border-b px-4 py-5 sm:px-6 sm:py-6 lg:flex-row lg:items-center lg:justify-between lg:px-10">
             <div class="min-w-0">
-              <p class="text-sm font-semibold uppercase tracking-[0.24em] text-[var(--accent-purple-light)]">Admin Workspace</p>
-              <h2 class="mt-2 text-2xl font-bold text-white sm:text-3xl">{{ currentViewInfo.label }}</h2>
-              <p class="mt-2 max-w-2xl text-sm text-[var(--text-secondary)]">{{ currentViewInfo.description }}</p>
+              <p class="text-sm font-semibold uppercase tracking-[0.24em] text-[var(--fg-gold)]">Admin Workspace</p>
+              <h2 class="mt-2 text-2xl font-bold text-[var(--fg-ink)] sm:text-3xl">{{ currentViewInfo.label }}</h2>
+              <p class="mt-2 max-w-2xl text-sm text-[var(--fg-ink-soft)]">{{ currentViewInfo.description }}</p>
             </div>
 
             <div class="relative flex flex-wrap items-center gap-3">
@@ -3316,7 +3316,7 @@ onUnmounted(() => {
 
 .admin-shell {
   background: var(--bg-primary);
-  border-color: var(--border-color);
+  border-color: rgba(160, 122, 31, 0.35);
 }
 
 /* backdrop-filter would trap the fixed-position mobile drawer inside the shell */
@@ -3371,9 +3371,8 @@ onUnmounted(() => {
 }
 
 .admin-header {
-  background:
-    linear-gradient(180deg, rgba(138, 43, 226, 0.12) 0%, rgba(26, 26, 46, 0) 100%);
-  border-color: var(--border-color);
+  background: transparent;
+  border-color: rgba(160, 122, 31, 0.3);
 }
 
 .admin-header-button {
@@ -3663,7 +3662,7 @@ onUnmounted(() => {
 .page-header h2 {
   font-size: clamp(1.5rem, 3vw, 2rem);
   font-weight: bold;
-  color: var(--text-primary);
+  color: var(--fg-ink);
 }
 
 .header-user {
@@ -4205,14 +4204,14 @@ onUnmounted(() => {
   display: flex;
   gap: 0;
   margin-bottom: 1.5625rem;
-  border-bottom: 2px solid var(--border-color);
+  border-bottom: 2px solid rgba(160, 122, 31, 0.3);
 }
 
 .attendance-tab {
   padding: 0.75rem 1.5rem;
   background: transparent;
   border: none;
-  color: var(--text-secondary);
+  color: var(--fg-ink-soft);
   font-size: clamp(0.875rem, 1.5vw, 1rem);
   cursor: pointer;
   position: relative;
@@ -4221,8 +4220,9 @@ onUnmounted(() => {
 }
 
 .attendance-tab.active {
-  color: var(--text-primary);
-  border-bottom-color: var(--accent-green);
+  color: var(--fg-ink);
+  font-weight: 600;
+  border-bottom-color: var(--fg-gold);
 }
 
 .attendance-tab-content {
@@ -4234,6 +4234,16 @@ onUnmounted(() => {
   gap: 0.9375rem;
   margin-bottom: 1.5625rem;
   align-items: center;
+}
+
+/* The attendance search has no box of its own, so it sits right on the marble */
+.attendance-filters .search-bar,
+.attendance-filters .search-bar input {
+  color: var(--fg-ink);
+}
+
+.attendance-filters .search-bar input::placeholder {
+  color: var(--fg-ink-soft);
 }
 
 .btn-clear-filter {
@@ -4255,7 +4265,7 @@ onUnmounted(() => {
 
 .current-gym-header h3 {
   font-size: clamp(1.125rem, 2.5vw, 1.5rem);
-  color: var(--text-primary);
+  color: var(--fg-ink);
 }
 
 .live-updates {
@@ -4393,14 +4403,14 @@ onUnmounted(() => {
   display: flex;
   gap: 0;
   margin-bottom: 1.5625rem;
-  border-bottom: 2px solid var(--border-color);
+  border-bottom: 2px solid rgba(160, 122, 31, 0.3);
 }
 
 .report-tab {
   padding: 0.75rem 1.5rem;
   background: transparent;
   border: none;
-  color: var(--text-secondary);
+  color: var(--fg-ink-soft);
   font-size: clamp(0.875rem, 1vw, 1rem);
   cursor: pointer;
   border-bottom: 3px solid transparent;
@@ -4584,7 +4594,7 @@ onUnmounted(() => {
   display: flex;
   gap: 0;
   margin-bottom: 1.25rem;
-  border-bottom: 2px solid var(--border-color);
+  border-bottom: 2px solid rgba(160, 122, 31, 0.3);
 }
 
 .notification-tab {
@@ -4594,7 +4604,7 @@ onUnmounted(() => {
   padding: 0.75rem 1.25rem;
   background: transparent;
   border: none;
-  color: var(--text-secondary);
+  color: var(--fg-ink-soft);
   font-size: clamp(0.875rem, 1vw, 1rem);
   cursor: pointer;
   position: relative;
@@ -4603,8 +4613,9 @@ onUnmounted(() => {
 }
 
 .notification-tab.active {
-  color: var(--text-primary);
-  border-bottom-color: var(--accent-green);
+  color: var(--fg-ink);
+  font-weight: 600;
+  border-bottom-color: var(--fg-gold);
 }
 
 .notification-badge {
@@ -4746,15 +4757,16 @@ onUnmounted(() => {
   color: var(--accent-pink);
 }
 
+/* Empty states sit straight on the marble background */
 .empty-state {
   text-align: center;
   padding: 4rem 2rem;
-  color: var(--text-secondary);
+  color: var(--fg-ink-soft);
 }
 
 .empty-state i {
   font-size: 4rem;
-  color: var(--text-secondary);
+  color: var(--fg-ink-soft);
   margin-bottom: 1rem;
   opacity: 0.5;
 }
@@ -4762,13 +4774,13 @@ onUnmounted(() => {
 .empty-state h3 {
   font-size: clamp(1.25rem, 2.5vw, 1.5rem);
   margin-bottom: 0.5rem;
-  color: var(--text-primary);
+  color: var(--fg-ink);
 }
 
 .empty-state p {
   font-size: clamp(0.875rem, 1.2vw, 1rem);
   margin-bottom: 1.5rem;
-  color: var(--text-secondary);
+  color: var(--fg-ink-soft);
 }
 
 .empty-state .btn-add-plan {
@@ -4921,7 +4933,7 @@ onUnmounted(() => {
   padding: 0.75rem 0.9375rem;
   background: transparent;
   border: none;
-  color: var(--text-secondary);
+  color: var(--fg-ink-soft);
   text-align: left;
   border-radius: 0.5rem;
   cursor: pointer;

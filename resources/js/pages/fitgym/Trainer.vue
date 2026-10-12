@@ -1391,7 +1391,7 @@ onUnmounted(() => {
 
 <template>
   <Head :title="`${gymDisplayName} - Staff Portal`" />
-  <div class="trainer-portal min-h-screen text-white">
+  <div class="trainer-portal fg-marble-bg min-h-screen text-white">
     <div v-if="!isLoggedIn && !loading" class="trainer-auth-shell flex min-h-screen items-center justify-center p-4">
       <div class="trainer-auth-card w-full max-w-md rounded-2xl border p-6 sm:p-8">
         <div class="text-center">
@@ -1450,7 +1450,7 @@ onUnmounted(() => {
     </div>
 
     <div v-else class="sm:p-4 lg:p-6">
-      <div class="trainer-shell fg-shell mx-auto flex min-h-[calc(100vh-2rem)] max-w-[1500px] overflow-hidden rounded-[1.75rem] border shadow-2xl">
+      <div class="trainer-shell fg-shell fg-marble-bg mx-auto flex min-h-[calc(100vh-2rem)] max-w-[1500px] overflow-hidden rounded-[1.75rem] border shadow-2xl">
         <div v-if="mobileNavOpen" class="fg-nav-backdrop" aria-hidden="true" @click="closeMobileNav" />
         <aside id="trainer-sidebar" class="trainer-sidebar fg-sidebar flex w-[17.5rem] shrink-0 flex-col px-5 py-8" :class="{ 'is-open': mobileNavOpen }">
           <div class="flex items-start justify-between gap-3 pb-6">
@@ -1518,9 +1518,9 @@ onUnmounted(() => {
 
           <header class="trainer-header flex flex-col gap-4 border-b px-4 py-5 sm:px-6 sm:py-6 lg:flex-row lg:items-center lg:justify-between lg:px-10">
             <div class="min-w-0">
-              <p class="text-sm font-semibold uppercase tracking-[0.24em] text-[var(--accent-purple-light)]">Staff Workspace</p>
-              <h2 class="mt-2 text-2xl font-bold text-white sm:text-3xl">{{ currentViewInfo.label }}</h2>
-              <p class="mt-2 max-w-2xl text-sm text-[var(--text-secondary)]">{{ currentViewInfo.description }}</p>
+              <p class="text-sm font-semibold uppercase tracking-[0.24em] text-[var(--fg-gold)]">Staff Workspace</p>
+              <h2 class="mt-2 text-2xl font-bold text-[var(--fg-ink)] sm:text-3xl">{{ currentViewInfo.label }}</h2>
+              <p class="mt-2 max-w-2xl text-sm text-[var(--fg-ink-soft)]">{{ currentViewInfo.description }}</p>
             </div>
 
             <div class="flex flex-wrap items-center gap-3">
@@ -1831,7 +1831,7 @@ onUnmounted(() => {
                 <p class="text-2xl font-bold text-white">{{ mostSubscribedPlanName() }}</p>
               </div>
             </div>
-            <h4 class="text-xl font-semibold text-white mb-4">Available Plans</h4>
+            <h4 class="text-xl font-semibold text-[var(--fg-ink)] mb-4">Available Plans</h4>
             <div class="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
               <div v-for="p in activePlansWithStats()" :key="String((p as Record<string, unknown>).id)" :class="['trainer-plan-card relative flex h-full flex-col rounded-lg border-t-4 bg-[#2A3042] p-6 shadow', (p as Record<string, unknown>).is_popular ? 'border-amber-400' : 'border-purple-500']">
                 <span v-if="(p as Record<string, unknown>).is_popular" class="absolute top-4 right-4 bg-amber-400 text-amber-900 text-xs font-bold px-3 py-1 rounded-full">Popular</span>
@@ -1876,7 +1876,7 @@ onUnmounted(() => {
               <button type="button" :class="['px-4 py-2 font-medium rounded-md transition-colors', scheduleViewTab === 'TrainerAvailability' ? 'bg-blue-600 text-white' : 'bg-[#2A3042] text-gray-300 hover:bg-gray-700']" @click="scheduleViewTab = 'TrainerAvailability'">Trainer Availability</button>
               <button type="button" :class="['px-4 py-2 font-medium rounded-md transition-colors', scheduleViewTab === 'ClassManagement' ? 'bg-blue-600 text-white' : 'bg-[#2A3042] text-gray-300 hover:bg-gray-700']" @click="scheduleViewTab = 'ClassManagement'">Class Management</button>
               <label class="relative ml-auto flex items-center gap-2 text-gray-300">
-                <span class="text-xs">Week of</span>
+                <span class="text-xs font-semibold text-[var(--fg-ink-soft)]">Week of</span>
                 <input v-model="scheduleDate" type="date" class="rounded border border-gray-600 bg-[#2A3042] text-white px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500" />
               </label>
             </div>
@@ -2398,10 +2398,7 @@ onUnmounted(() => {
   --accent-purple-light: #6A5ACD;
   --accent-pink: #ff6b6b;
   --accent-yellow: #ffd700;
-  background:
-    radial-gradient(circle at top left, rgba(138, 43, 226, 0.18), transparent 26%),
-    radial-gradient(circle at bottom right, rgba(255, 107, 107, 0.12), transparent 30%),
-    var(--bg-primary) !important;
+  /* the page background is the shared .fg-marble-bg */
 }
 
 .trainer-auth-shell {
@@ -2475,7 +2472,7 @@ onUnmounted(() => {
 
 .trainer-shell {
   background: var(--bg-primary);
-  border-color: var(--border-color);
+  border-color: rgba(160, 122, 31, 0.35);
 }
 
 /* backdrop-filter would trap the fixed-position mobile drawer inside the shell */
@@ -2526,9 +2523,8 @@ onUnmounted(() => {
 }
 
 .trainer-header {
-  background:
-    linear-gradient(180deg, rgba(138, 43, 226, 0.12) 0%, rgba(26, 26, 46, 0) 100%);
-  border-color: var(--border-color);
+  background: transparent;
+  border-color: rgba(160, 122, 31, 0.3);
 }
 
 .trainer-main {
@@ -2539,8 +2535,9 @@ onUnmounted(() => {
   background: var(--bg-primary) !important;
 }
 
+/* the content column shows the marble shell behind it */
 .trainer-portal .flex.flex-1.flex-col.overflow-hidden {
-  background: var(--bg-primary) !important;
+  background: transparent !important;
 }
 
 .trainer-portal .bg-\[\#1e293b\] {
