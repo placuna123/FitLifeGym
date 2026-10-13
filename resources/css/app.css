@@ -312,10 +312,11 @@
     background-attachment: fixed !important;
 }
 
-/* Text sitting straight on the marble needs dark ink to stay readable.
-   The --fg-card-* tokens are the colors of the boxes (cards, tables, forms, modals,
-   sidebars) on every page: change them here to restyle every box at once. */
-.fg-marble-bg {
+
+/* Theme tokens. Global (:root) so popups teleported to <body> get them too.
+   --fg-ink* is text that sits straight on the cream marble; --fg-card-* are the
+   colors of the big black boxes; the light surfaces below redefine them. */
+:root {
     --fg-ink: #2b2418;
     --fg-ink-soft: #6b5d45;
     --fg-gold: #a07a1f;
@@ -329,33 +330,112 @@
     --fg-card-gold: #d9b45a;
 }
 
-/* Black-and-white smoky marble on every box (cards, tables, sidebars, modals, forms).
-   Only the image is added: each box keeps its own color underneath, its size and layout.
-   !important beats the pages' scoped `background:` shorthands, which would reset it. */
+/* Big boxes (sidebars, tables, charts, plan cards, the sign-in card): black marble
+   with smoky white swirls and a faint gold rim. Only the image and rim are added;
+   size and layout stay. !important beats the pages' scoped `background:` shorthands. */
 .fg-marble-bg :is(
-    .admin-sidebar, .admin-profile-card, .admin-header-card, .admin-header-button, .admin-notification-panel,
-    .metric-card, .table-container, .summary-card, .plan-card, .attendance-card, .current-member-card,
-    .report-card, .reports-chart-card, .notification-card, .settings-content, .dashboard-card, .recent-activity,
-    .modal-content,
-    .trainer-sidebar, .trainer-profile-card, .trainer-header-card,
+    .admin-sidebar, .admin-notification-panel,
+    .table-container, .plan-card, .current-member-card,
+    .reports-chart-card, .notification-card, .settings-content, .dashboard-card, .recent-activity,
+    .trainer-sidebar,
     .member-sidebar,
-    .stat-card, .modal-card,
     .entry-card, .fg-auth-card
 ),
 .fg-marble-bg.trainer-portal :is(.bg-\[\#2A3042\].rounded-lg, .bg-\[\#2A3042\].rounded-xl),
 .member-portal main .rounded-xl.border,
-.member-portal header .rounded-xl.border,
-.member-portal .fixed .rounded-xl,
 .platform-shell .login-card {
     background-image:
         linear-gradient(rgba(10, 10, 10, 0.35), rgba(10, 10, 10, 0.35)),
         url('../images/fitgym-box-marble.jpg') !important;
     background-size: cover !important;
     background-position: center !important;
+    box-shadow: 0 0 0 1px rgba(217, 180, 90, 0.22), 0 14px 34px rgba(20, 16, 8, 0.22) !important;
+}
+
+/* Small boxes and every popup / edit form: white with gold, dark text. Redefining the
+   tokens here flips everything inside (labels, inputs, buttons) to the light palette. */
+.fg-light-surface,
+.fg-marble-bg :is(
+    .admin-profile-card, .admin-header-card, .admin-header-button,
+    .metric-card, .summary-card, .attendance-card, .report-card, .modal-content,
+    .trainer-profile-card, .trainer-header-card,
+    .stat-card, .modal-card, .entry-role
+),
+.fg-marble-bg.trainer-portal .lg\:grid-cols-4 > .bg-\[\#2A3042\],
+:is(.fitgym-admin, .trainer-portal) .fixed.inset-0.z-50 > div,
+body > .fixed.inset-0.z-50 > div,
+.member-portal header .rounded-xl.border {
+    --fg-card: #fffdf8;
+    --fg-card-2: #f6efdf;
+    --fg-card-sidebar: #fffdf8;
+    --fg-card-border: #e6d3a3;
+    --fg-card-ink: #2b2418;
+    --fg-card-ink-soft: #6b5d45;
+    --fg-card-gold: #b8923a;
+    --bg-primary: #fffdf8;
+    --bg-secondary: #fffdf8;
+    --bg-card: #fffdf8;
+    --bg-input: #f6efdf;
+    --text-primary: #2b2418;
+    --text-secondary: #6b5d45;
+    --border-color: #e6d3a3;
+
+    background: linear-gradient(160deg, #fffefb 0%, #faf3e3 100%) !important;
+    border-color: #e6d3a3 !important;
+    box-shadow: inset 0 3px 0 #d9b45a, 0 12px 30px rgba(120, 90, 30, 0.14) !important;
+    color: #2b2418;
+}
+
+/* Inner tiles inside the black boxes (stat tiles, achievements, settings rows). */
+.fg-tile {
+    --fg-card: #fffdf8;
+    --fg-card-2: #f6efdf;
+    --fg-card-border: #e6d3a3;
+    --fg-card-ink: #2b2418;
+    --fg-card-ink-soft: #6b5d45;
+
+    background: linear-gradient(160deg, #fffefb 0%, #f8f0de 100%) !important;
+    border: 1px solid #e6d3a3;
+    box-shadow: inset 0 2px 0 #d9b45a;
+    color: #2b2418 !important;
+}
+
+.fg-tile.fg-tile--earned {
+    border-color: #d9b45a !important;
+    background: linear-gradient(160deg, #fff6d8 0%, #f3dc9c 100%) !important;
+    box-shadow: inset 0 2px 0 #b8923a, 0 8px 22px rgba(217, 180, 90, 0.35) !important;
+}
+
+/* Small boxes lift a little on hover, so the dashboard feels alive. */
+.fg-marble-bg :is(.metric-card, .summary-card, .attendance-card, .report-card, .stat-card, .fg-tile),
+.fg-marble-bg.trainer-portal .lg\:grid-cols-4 > .bg-\[\#2A3042\] {
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.fg-marble-bg :is(.metric-card, .summary-card, .attendance-card, .report-card, .stat-card, .fg-tile):hover,
+.fg-marble-bg.trainer-portal .lg\:grid-cols-4 > .bg-\[\#2A3042\]:hover {
+    transform: translateY(-2px);
+}
+
+/* Inputs inside light surfaces: cream with a gold focus ring. */
+:is(.fg-light-surface, .fg-tile, .modal-content, .modal-card, .fixed.inset-0.z-50 > div) :is(input, select, textarea):not([type='checkbox']):not([type='radio']):not([type='file']) {
+    border-color: #e6d3a3 !important;
+    background-color: #fffaf0 !important;
+    color: #2b2418 !important;
+}
+
+:is(.fg-light-surface, .fg-tile, .modal-content, .modal-card, .fixed.inset-0.z-50 > div) :is(input, select, textarea)::placeholder {
+    color: #a39478 !important;
+}
+
+:is(.fg-light-surface, .fg-tile, .modal-content, .modal-card, .fixed.inset-0.z-50 > div) :is(input, select, textarea):focus {
+    border-color: #d9b45a !important;
+    box-shadow: 0 0 0 3px rgba(217, 180, 90, 0.28) !important;
+    outline: none !important;
 }
 
 /* Gold marks whatever is selected or being pressed: the open page in the menu,
-   the active tab, and any button while it is clicked. */
+   the active tab, the chosen role card, and any button while it is clicked. */
 .fg-marble-bg :is(.admin-nav-item.active, .trainer-nav-item.active, .member-nav-item.active, .report-tab.active, .settings-nav-item.active) {
     background: linear-gradient(135deg, #f0d48a 0%, #d9b45a 55%, #b8923a 100%) !important;
     border-color: #f0d48a !important;
@@ -372,12 +452,12 @@
     background: rgba(217, 180, 90, 0.12) !important;
 }
 
-.fg-marble-bg :is(button, a, [role='button']):not(:disabled):active {
-    box-shadow: 0 0 0 2px #d9b45a, 0 0 22px rgba(217, 180, 90, 0.6) !important;
-}
-
-/* The chosen role card on the sign-in page is gold too. */
 .fg-marble-bg .entry-role.entry-role--active {
     border-color: #d9b45a !important;
-    box-shadow: 0 0 0 1px #d9b45a, 0 10px 26px rgba(217, 180, 90, 0.35) !important;
+    background: linear-gradient(160deg, #fff6d8 0%, #f3dc9c 100%) !important;
+    box-shadow: 0 0 0 1px #d9b45a, 0 10px 26px rgba(217, 180, 90, 0.4) !important;
+}
+
+:is(.fg-marble-bg, body > .fixed) :is(button, a, [role='button']):not(:disabled):active {
+    box-shadow: 0 0 0 2px #d9b45a, 0 0 22px rgba(217, 180, 90, 0.6) !important;
 }

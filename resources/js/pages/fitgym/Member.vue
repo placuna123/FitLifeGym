@@ -976,7 +976,7 @@ onUnmounted(() => {
             </button>
           </div>
 
-          <div class="rounded-2xl border p-4" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }">
+          <div class="fg-tile rounded-2xl border p-4" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }">
             <div class="flex items-center gap-3">
               <div class="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl text-lg font-bold" :style="{ backgroundColor: portal.purple, color: portal.primaryText }">
                 <img v-if="userPhotoUrl" :src="userPhotoUrl" alt="" class="h-full w-full object-cover" />
@@ -1050,7 +1050,7 @@ onUnmounted(() => {
               </div>
               <button
                 type="button"
-                class="flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition-opacity hover:opacity-90"
+                class="fg-light-surface flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition-opacity hover:opacity-90"
                 :style="{ backgroundColor: portal.dark3, color: 'var(--fg-card-ink)', border: `1px solid ${portal.border}` }"
                 @click="showNotificationsPanel = !showNotificationsPanel"
               >
@@ -1130,15 +1130,15 @@ onUnmounted(() => {
                 Welcome back, {{ memberFirstName }}!
               </h2>
               <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <div class="rounded-lg p-4 text-center" :style="{ backgroundColor: portal.dark2 }">
+                <div class="fg-tile rounded-lg p-4 text-center" :style="{ backgroundColor: portal.dark2 }">
                   <p class="text-3xl font-bold" :style="{ color: portal.cyan }">{{ attendanceLoading ? '-' : visitsThisMonth }}</p>
                   <p class="text-sm" :style="{ color: portal.textDim }">Visits This Month</p>
                 </div>
-                <div class="rounded-lg p-4 text-center" :style="{ backgroundColor: portal.dark2 }">
+                <div class="fg-tile rounded-lg p-4 text-center" :style="{ backgroundColor: portal.dark2 }">
                   <p class="text-3xl font-bold" :style="{ color: portal.lime }">{{ attendanceLoading ? '-' : currentStreak }}</p>
                   <p class="text-sm" :style="{ color: portal.textDim }">Current Streak</p>
                 </div>
-                <div class="rounded-lg p-4 text-center" :style="{ backgroundColor: portal.dark2 }">
+                <div class="fg-tile rounded-lg p-4 text-center" :style="{ backgroundColor: portal.dark2 }">
                   <p class="text-3xl font-bold" :style="{ color: portal.purple }">{{ bookedClassesCount }}</p>
                   <p class="text-sm" :style="{ color: portal.textDim }">Classes Booked</p>
                 </div>
@@ -1146,7 +1146,7 @@ onUnmounted(() => {
               <div class="flex flex-col space-y-3 sm:flex-row sm:space-x-3 sm:space-y-0">
                 <button type="button" class="flex-1 rounded-lg py-3 font-semibold transition-opacity hover:opacity-90" :style="{ backgroundColor: portal.purple, color: portal.primaryText }" @click="currentPage = 'Attendance'">Check Attendance</button>
                 <button type="button" class="flex-1 rounded-lg py-3 font-semibold transition-opacity hover:opacity-90" :style="{ backgroundColor: portal.pink, color: portal.primaryText }" @click="currentPage = 'Membership'">Renew Membership</button>
-                <button type="button" class="flex-1 rounded-lg py-3 font-semibold text-[var(--fg-card-ink)] transition-opacity hover:opacity-90" :style="{ backgroundColor: portal.dark2, border: `1px solid ${portal.border}` }" @click="currentPage = 'Schedule'">View Schedule</button>
+                <button type="button" class="fg-tile flex-1 rounded-lg py-3 font-semibold text-[var(--fg-card-ink)] transition-opacity hover:opacity-90" :style="{ backgroundColor: portal.dark2, border: `1px solid ${portal.border}` }" @click="currentPage = 'Schedule'">View Schedule</button>
               </div>
             </div>
             <div class="rounded-xl border p-4 sm:p-6" :style="{ backgroundColor: portal.dark3, borderColor: portal.border }">
@@ -1216,7 +1216,7 @@ onUnmounted(() => {
             <div class="rounded-xl border p-4 sm:p-6 lg:col-span-3" :style="{ backgroundColor: portal.dark3, borderColor: portal.border }">
               <h2 class="mb-4 text-xl font-bold text-[var(--fg-card-ink)]">Membership Benefits</h2>
               <div class="space-y-4">
-                <div class="rounded-lg border p-4" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }">
+                <div class="fg-tile rounded-lg border p-4" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }">
                   <h3 class="mb-1 flex items-center text-lg font-semibold text-[var(--fg-card-ink)]">⭐ {{ currentPlan?.name || member?.membership_plan || 'Your Plan' }}</h3>
                   <p v-if="currentPlan?.description" class="mb-3 text-sm" :style="{ color: portal.textDim }">{{ currentPlan.description }}</p>
                   <ul v-if="currentPlan?.features.length" class="list-inside list-disc space-y-2 text-sm leading-relaxed text-[var(--fg-card-ink)]">
@@ -1225,7 +1225,7 @@ onUnmounted(() => {
                   <p v-else-if="paymentsLoading" class="text-sm" :style="{ color: portal.textDim }">Loading plan details...</p>
                   <p v-else class="text-sm" :style="{ color: portal.textDim }">Your gym hasn't listed the features of this plan yet. Ask the front desk for details.</p>
                 </div>
-                <div class="rounded-lg border p-4" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }">
+                <div class="fg-tile rounded-lg border p-4" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }">
                   <h3 class="mb-3 flex items-center text-lg font-semibold text-[var(--fg-card-ink)]">📱 Included With Every Membership</h3>
                   <ul class="list-inside list-disc space-y-2 text-sm leading-relaxed text-[var(--fg-card-ink)]">
                     <li>QR code check-in and attendance history</li>
@@ -1261,7 +1261,7 @@ onUnmounted(() => {
                 </button>
                 <div
                   v-if="showAttendanceQr"
-                  class="mb-6 rounded-lg border p-4 text-center"
+                  class="fg-tile mb-6 rounded-lg border p-4 text-center"
                   :style="{ backgroundColor: portal.dark2, borderColor: portal.border }"
                 >
                   <p class="mb-3 text-sm font-semibold text-[var(--fg-card-ink)]">Attendance QR</p>
@@ -1302,7 +1302,7 @@ onUnmounted(() => {
                     {{ attendanceQrCopyStatus }}
                   </p>
                 </div>
-                <div class="mb-4 flex justify-around rounded-lg p-4 text-center" :style="{ backgroundColor: portal.dark2 }">
+                <div class="fg-tile mb-4 flex justify-around rounded-lg p-4 text-center" :style="{ backgroundColor: portal.dark2 }">
                   <div>
                     <p class="text-sm" :style="{ color: portal.textDim }">This Month Summary</p>
                     <p class="text-2xl font-bold text-[var(--fg-card-ink)]">{{ attendanceLoading ? '–' : visitsThisMonth }}</p>
@@ -1465,7 +1465,7 @@ onUnmounted(() => {
                   <div
                     v-for="item in paymentHistory"
                     :key="item.id"
-                    class="flex items-center justify-between rounded-lg p-4"
+                    class="fg-tile flex items-center justify-between rounded-lg p-4"
                     :style="{ backgroundColor: portal.dark2 }"
                   >
                     <div>
@@ -1510,7 +1510,7 @@ onUnmounted(() => {
                 </div>
                 <div>
                   <p class="mb-2 font-semibold text-[var(--fg-card-ink)]">Body Metrics</p>
-                  <div class="flex justify-around rounded-lg p-4 text-center" :style="{ backgroundColor: portal.dark2 }">
+                  <div class="fg-tile flex justify-around rounded-lg p-4 text-center" :style="{ backgroundColor: portal.dark2 }">
                     <div>
                       <p class="text-2xl font-bold text-[var(--fg-card-ink)]">{{ progressData.current_weight_kg !== null ? `${progressData.current_weight_kg}kg` : '–' }}</p>
                       <p class="text-xs" :style="{ color: portal.textDim }">Current Weight</p>
@@ -1521,7 +1521,7 @@ onUnmounted(() => {
                     </div>
                   </div>
                 </div>
-                <div class="rounded-lg p-4" :style="{ backgroundColor: portal.dark2 }">
+                <div class="fg-tile rounded-lg p-4" :style="{ backgroundColor: portal.dark2 }">
                   <p class="mb-2 font-semibold text-[var(--fg-card-ink)]">Log Today's Weight</p>
                   <div class="flex gap-2">
                     <input
@@ -1577,7 +1577,7 @@ onUnmounted(() => {
                   v-for="a in progressAchievements"
                   :key="a.title"
                   class="flex items-center space-x-4 rounded-lg p-4"
-                  :style="a.achieved ? { backgroundColor: 'rgba(163, 230, 53, 0.14)', borderWidth: '1px', borderColor: portal.lime } : { backgroundColor: portal.dark2 }"
+                  :class="['fg-tile', { 'fg-tile--earned': a.achieved }]"
                 >
                   <span class="text-3xl" :style="{ color: a.achieved ? portal.lime : portal.textDim }">{{ a.icon }}</span>
                   <div>
@@ -1594,9 +1594,9 @@ onUnmounted(() => {
             <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h2 class="flex items-center text-xl font-bold text-[var(--fg-card-ink)]">📅 Class Schedule</h2>
               <div class="flex flex-wrap items-center gap-2">
-                <button type="button" class="rounded-md px-3 py-1.5 text-sm font-semibold" :style="{ backgroundColor: portal.dark2, color: 'var(--fg-card-ink)' }" @click="shiftScheduleDate(-1)">‹ Prev</button>
+                <button type="button" class="fg-tile rounded-md px-3 py-1.5 text-sm font-semibold" :style="{ backgroundColor: portal.dark2, color: 'var(--fg-card-ink)' }" @click="shiftScheduleDate(-1)">‹ Prev</button>
                 <span class="text-sm font-semibold text-[var(--fg-card-ink)]">{{ scheduleDateLabel }}</span>
-                <button type="button" class="rounded-md px-3 py-1.5 text-sm font-semibold" :style="{ backgroundColor: portal.dark2, color: 'var(--fg-card-ink)' }" @click="shiftScheduleDate(1)">Next ›</button>
+                <button type="button" class="fg-tile rounded-md px-3 py-1.5 text-sm font-semibold" :style="{ backgroundColor: portal.dark2, color: 'var(--fg-card-ink)' }" @click="shiftScheduleDate(1)">Next ›</button>
               </div>
             </div>
             <p v-if="scheduleError" class="mb-3 text-sm text-red-400">{{ scheduleError }}</p>
@@ -1608,7 +1608,7 @@ onUnmounted(() => {
               <div
                 v-for="cls in scheduleClasses"
                 :key="cls.id"
-                class="flex flex-col rounded-lg p-4 sm:flex-row sm:items-center sm:justify-between"
+                class="fg-tile flex flex-col rounded-lg p-4 sm:flex-row sm:items-center sm:justify-between"
                 :style="{ backgroundColor: portal.dark2 }"
               >
                 <div>
@@ -1630,7 +1630,7 @@ onUnmounted(() => {
                   </button>
                   <span
                     v-else-if="cls.is_full"
-                    class="inline-block rounded-md px-4 py-1.5 text-sm font-semibold cursor-not-allowed"
+                    class="fg-tile inline-block rounded-md px-4 py-1.5 text-sm font-semibold cursor-not-allowed"
                     :style="{ backgroundColor: portal.dark2, color: portal.textDim }"
                   >
                     Full
@@ -1694,14 +1694,14 @@ onUnmounted(() => {
             <div class="rounded-xl border p-4 sm:p-6" :style="{ backgroundColor: portal.dark3, borderColor: portal.border }">
               <h2 class="mb-4 text-xl font-bold text-[var(--fg-card-ink)]">Settings</h2>
               <div class="space-y-4">
-                <div class="rounded-lg p-4" :style="{ backgroundColor: portal.dark2 }">
+                <div class="fg-tile rounded-lg p-4" :style="{ backgroundColor: portal.dark2 }">
                   <h3 class="mb-3 text-lg font-semibold text-[var(--fg-card-ink)]">Account Settings</h3>
                   <ul class="space-y-2 text-sm" :style="{ color: portal.textDim }">
                     <li><button type="button" class="cursor-pointer transition-colors hover:text-[var(--fg-card-ink)]" @click="openChangePassword">Change Password</button></li>
                     <li><button type="button" class="cursor-pointer transition-colors hover:text-[var(--fg-card-ink)]" @click="openEditProfile">Update Email</button></li>
                   </ul>
                 </div>
-                <div class="rounded-lg p-4" :style="{ backgroundColor: portal.dark2 }">
+                <div class="fg-tile rounded-lg p-4" :style="{ backgroundColor: portal.dark2 }">
                   <h3 class="mb-3 text-lg font-semibold text-[var(--fg-card-ink)]">Notifications</h3>
                   <p class="text-sm [overflow-wrap:anywhere]" :style="{ color: portal.textDim }">
                     Payment, approval, and class booking updates appear in your Notifications and are sent by SMS to
@@ -1709,7 +1709,7 @@ onUnmounted(() => {
                     Keep your phone number up to date in Edit Profile.
                   </p>
                 </div>
-                <div class="rounded-lg p-4" :style="{ backgroundColor: portal.dark2 }">
+                <div class="fg-tile rounded-lg p-4" :style="{ backgroundColor: portal.dark2 }">
                   <h3 class="mb-3 text-lg font-semibold text-[var(--fg-card-ink)]">Payment Methods</h3>
                   <ul class="mb-3 list-inside list-disc space-y-1 text-sm" :style="{ color: portal.textDim }">
                     <li><span class="text-[var(--fg-card-ink)]">GCash</span> — pay online and upload your receipt on the Payments page</li>
@@ -1848,7 +1848,7 @@ onUnmounted(() => {
                 <p v-if="profileError" class="rounded-lg border px-3 py-2 text-sm text-red-300" role="alert" :style="{ borderColor: portal.pink, backgroundColor: 'rgba(255, 107, 107, 0.12)' }">{{ profileError }}</p>
                 <div class="flex space-x-3 pt-4">
                   <button type="submit" class="flex-1 rounded-lg py-3 font-semibold transition-opacity hover:opacity-90 disabled:opacity-50" :style="{ backgroundColor: portal.purple, color: portal.primaryText }" :disabled="profileSaving">{{ profileSaving ? 'Saving...' : 'Save Changes' }}</button>
-                  <button type="button" class="flex-1 rounded-lg py-3 font-semibold text-[var(--fg-card-ink)] transition-opacity hover:opacity-90" :style="{ backgroundColor: portal.dark2 }" @click="showEditProfile = false">Cancel</button>
+                  <button type="button" class="fg-tile flex-1 rounded-lg py-3 font-semibold text-[var(--fg-card-ink)] transition-opacity hover:opacity-90" :style="{ backgroundColor: portal.dark2 }" @click="showEditProfile = false">Cancel</button>
                 </div>
               </form>
             </div>
@@ -1893,7 +1893,7 @@ onUnmounted(() => {
                 <p v-if="passwordError" class="rounded-lg border px-3 py-2 text-sm text-red-300" role="alert" :style="{ borderColor: portal.pink, backgroundColor: 'rgba(255, 107, 107, 0.12)' }">{{ passwordError }}</p>
                 <div class="flex space-x-3 pt-2">
                   <button type="submit" class="flex-1 rounded-lg py-3 font-semibold transition-opacity hover:opacity-90 disabled:opacity-50" :style="{ backgroundColor: portal.purple, color: portal.primaryText }" :disabled="passwordSaving">{{ passwordSaving ? 'Saving...' : 'Change Password' }}</button>
-                  <button type="button" class="flex-1 rounded-lg py-3 font-semibold text-[var(--fg-card-ink)] transition-opacity hover:opacity-90" :style="{ backgroundColor: portal.dark2 }" @click="showChangePassword = false">Cancel</button>
+                  <button type="button" class="fg-tile flex-1 rounded-lg py-3 font-semibold text-[var(--fg-card-ink)] transition-opacity hover:opacity-90" :style="{ backgroundColor: portal.dark2 }" @click="showChangePassword = false">Cancel</button>
                 </div>
               </form>
             </div>
