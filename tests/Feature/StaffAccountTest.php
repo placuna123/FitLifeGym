@@ -84,6 +84,17 @@ class StaffAccountTest extends TestCase
         $this->assertGuest();
     }
 
+    public function test_adding_staff_with_an_email_already_in_use_says_why(): void
+    {
+        $gym = Gym::create(['name' => 'Gym A', 'slug' => 'gym-a']);
+        $admin = User::factory()->create(['role' => 'Admin', 'gym_id' => $gym->id]);
+        User::factory()->create(['role' => 'Admin', 'email' => 'new.staff@example.com']);
+
+        $this->actingAs($admin)->postJson(route('trainer.store'), $this->staffPayload())
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'This email is already used by another FitGym account. Use a different email.');
+    }
+
     private function staffPayload(): array
     {
         return [

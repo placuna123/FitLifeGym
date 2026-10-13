@@ -68,12 +68,18 @@ class TrainerController extends Controller
             'status' => 'required|in:Active,Inactive,On Leave',
             'password' => 'required|string|min:6',
             'schedule' => 'nullable|string|max:255',
+        ], [
+            'email.unique' => 'This email is already used by another FitGym account. Use a different email.',
+            'password.min' => 'The password must be at least 6 characters.',
+            'phone.required' => 'Enter a phone number.',
+            'position.required' => 'Enter a position (e.g. Trainer or Front Desk).',
+            'hire_date.required' => 'Choose a hire date.',
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Validation failed',
+                'message' => $validator->errors()->first(),
                 'errors' => $validator->errors()
             ], 422);
         }
@@ -200,12 +206,15 @@ class TrainerController extends Controller
                 'department' => 'nullable|string|max:100',
                 'status' => 'required|in:Active,Inactive,On Leave',
                 'password' => 'nullable|string|min:6',
+            ], [
+                'email.unique' => 'This email is already used by another FitGym account. Use a different email.',
+                'password.min' => 'The password must be at least 6 characters.',
             ]);
 
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Validation failed',
+                    'message' => $validator->errors()->first(),
                     'errors' => $validator->errors()
                 ], 422);
             }
@@ -324,7 +333,7 @@ class TrainerController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Validation failed',
+                'message' => $validator->errors()->first(),
                 'errors' => $validator->errors()
             ], 422);
         }
@@ -371,7 +380,7 @@ class TrainerController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Validation failed',
+                'message' => $validator->errors()->first(),
                 'errors' => $validator->errors()
             ], 422);
         }
