@@ -1286,16 +1286,16 @@ function buildAdminDashboardChart() {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: '#75664F' } } },
+      plugins: { legend: { labels: { color: '#A8A196' } } },
       scales: {
         y: {
           beginAtZero: true,
-          grid: { color: 'rgba(117,102,79,0.15)' },
-          ticks: { color: '#75664F' },
+          grid: { color: 'rgba(168,161,150,0.15)' },
+          ticks: { color: '#A8A196' },
         },
         x: {
           grid: { display: false },
-          ticks: { color: '#75664F' },
+          ticks: { color: '#A8A196' },
         },
       },
     } as ChartConfiguration<'bar'>['options'],
@@ -1375,24 +1375,24 @@ function buildAdminReportCharts() {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { labels: { color: '#75664F' } },
+        legend: { labels: { color: '#A8A196' } },
       },
       scales: {
         y: {
           beginAtZero: true,
-          grid: { color: 'rgba(117,102,79,0.15)' },
-          ticks: { color: '#75664F' },
+          grid: { color: 'rgba(168,161,150,0.15)' },
+          ticks: { color: '#A8A196' },
         },
         x: {
           grid: { display: false },
-          ticks: { color: '#75664F' },
+          ticks: { color: '#A8A196' },
         },
       },
     };
     const pieOptions = {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: '#75664F' } } },
+      plugins: { legend: { labels: { color: '#A8A196' } } },
     };
 
     if (reportsTab.value === 'overview' && overviewChartCanvas.value) {
@@ -1458,7 +1458,7 @@ function buildAdminReportCharts() {
               label: 'Members',
               data: data.values,
               backgroundColor: ['#8DFF00', '#00BFFF', '#8A2BE2', '#FF6B6B', '#FFD700'],
-              borderColor: '#FFFDF8',
+              borderColor: '#151515',
               borderWidth: 2,
               hoverOffset: 6,
             },
@@ -3179,20 +3179,20 @@ onUnmounted(() => {
 <style scoped>
 /* Match Blade admin-portal.css (dark theme) */
 .fitgym-admin {
-  /* Light cream-and-gold theme that sits on the marble background */
-  --bg-primary: #FBF8F2;
-  --bg-secondary: #FFFDF8;
-  --bg-card: #FFFDF8;
-  --bg-input: #F5EFE3;
-  --text-primary: #2B2418;
-  --text-secondary: #75664F;
+  /* Box colors come from the shared --fg-card-* tokens in app.css */
+  --bg-primary: var(--fg-card);
+  --bg-secondary: var(--fg-card-sidebar);
+  --bg-card: var(--fg-card);
+  --bg-input: var(--fg-card-2);
+  --text-primary: var(--fg-card-ink);
+  --text-secondary: var(--fg-card-ink-soft);
   --accent-green: #5FA82E;
   --accent-blue: #1E88C8;
   --accent-purple: #8A2BE2;
   --accent-purple-light: #6A4BC4;
   --accent-pink: #E0565B;
   --accent-yellow: #E2B54A;
-  --border-color: #E6DBC6;
+  --border-color: var(--fg-card-border);
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
@@ -3303,7 +3303,7 @@ onUnmounted(() => {
 
 .admin-sidebar {
   background:
-    linear-gradient(180deg, rgba(226, 181, 74, 0.14) 0%, rgba(255, 253, 248, 0) 60%),
+    linear-gradient(180deg, rgba(217, 180, 90, 0.07) 0%, rgba(217, 180, 90, 0) 45%),
     var(--bg-secondary);
   border-right: 1px solid var(--border-color);
 }
@@ -3331,7 +3331,7 @@ onUnmounted(() => {
 }
 
 .admin-nav-item:hover {
-  background: rgba(226, 181, 74, 0.14);
+  background: rgba(217, 180, 90, 0.1);
   border-color: rgba(106, 90, 205, 0.3);
 }
 

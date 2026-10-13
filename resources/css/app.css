@@ -184,10 +184,10 @@
     justify-content: center;
     width: 2.75rem;
     height: 2.75rem;
-    border: 1px solid #e6dbc6;
+    border: 1px solid var(--fg-card-border);
     border-radius: 0.75rem;
-    background: #fffdf8;
-    color: #2b2418;
+    background: var(--fg-card);
+    color: var(--fg-card-ink);
     cursor: pointer;
 }
 
@@ -211,8 +211,8 @@
         align-items: center;
         gap: 0.75rem;
         padding: 0.75rem 1rem;
-        border-bottom: 1px solid #e6dbc6;
-        background: rgba(255, 253, 248, 0.92);
+        border-bottom: 1px solid var(--fg-card-border);
+        background: var(--fg-card-sidebar);
         backdrop-filter: blur(10px);
     }
 
@@ -289,13 +289,13 @@
     justify-content: center;
     border: 0;
     background: transparent;
-    color: #8a7a60;
+    color: var(--fg-card-ink-soft, #a8a196);
     cursor: pointer;
 }
 
 .fg-password-toggle:hover,
 .fg-password-toggle:focus-visible {
-    color: #2b2418;
+    color: var(--fg-card-ink, #f5f1e8);
 }
 
 /* Soft cream-and-gold marble backdrop behind every FitGym page. Only the page background
@@ -305,16 +305,26 @@
 .fg-marble-bg {
     background-color: #f6f1e7 !important;
     background-image:
-        linear-gradient(rgba(255, 252, 245, 0.2), rgba(255, 252, 245, 0.2)),
+        linear-gradient(rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.42)),
         url('../images/fitgym-marble.jpg') !important;
     background-size: cover !important;
     background-position: center !important;
     background-attachment: fixed !important;
 }
 
-/* Text sitting straight on the marble needs dark ink to stay readable. */
+/* Text sitting straight on the marble needs dark ink to stay readable.
+   The --fg-card-* tokens are the colors of the boxes (cards, tables, forms, modals,
+   sidebars) on every page: change them here to restyle every box at once. */
 .fg-marble-bg {
     --fg-ink: #2b2418;
     --fg-ink-soft: #6b5d45;
     --fg-gold: #a07a1f;
+
+    --fg-card: #151515;
+    --fg-card-2: #222222;
+    --fg-card-sidebar: #101010;
+    --fg-card-border: #2f2c27;
+    --fg-card-ink: #f5f1e8;
+    --fg-card-ink-soft: #a8a196;
+    --fg-card-gold: #d9b45a;
 }

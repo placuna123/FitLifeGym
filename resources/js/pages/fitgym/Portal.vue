@@ -17,19 +17,19 @@ import {
 const pw = usePasswordVisibility();
 
 // Same palette as the Admin / Trainer / Member portals — nothing new introduced.
-// Light cream-and-gold theme that sits on the marble background (the keys keep their old names)
+// Box colors come from the shared --fg-card-* tokens in app.css (the keys keep their old names)
 const portal = {
-  dark: '#FBF8F2',
-  dark2: '#F5EFE3',
-  dark3: '#FFFDF8',
-  sidebar: '#FFFDF8',
-  border: '#E6DBC6',
+  dark: 'var(--fg-card)',
+  dark2: 'var(--fg-card-2)',
+  dark3: 'var(--fg-card)',
+  sidebar: 'var(--fg-card-sidebar)',
+  border: 'var(--fg-card-border)',
   purple: '#8A2BE2',
   purpleLight: '#6A4BC4',
   pink: '#E0565B',
   cyan: '#1E88C8',
   lime: '#5FA82E',
-  textDim: '#75664F',
+  textDim: 'var(--fg-card-ink-soft)',
   primaryText: '#FFFFFF',
 };
 
@@ -908,7 +908,7 @@ onMounted(async () => {
   justify-content: center;
   overflow: hidden;
   padding: 2rem 1rem;
-  color: #2b2418;
+  color: var(--fg-card-ink);
   font-family: 'Instrument Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
@@ -1229,7 +1229,7 @@ onMounted(async () => {
   padding: 1rem 0.6rem;
   cursor: pointer;
   text-align: center;
-  color: #2b2418;
+  color: var(--fg-card-ink);
   transition:
     border-color 0.18s ease,
     box-shadow 0.18s ease,
@@ -1291,7 +1291,7 @@ onMounted(async () => {
   background-color: rgba(224, 86, 91, 0.1);
   padding: 0.7rem 0.85rem;
   font-size: 0.85rem;
-  color: #b42318;
+  color: #f08a8e;
 }
 
 .entry-form {
@@ -1363,7 +1363,7 @@ onMounted(async () => {
   border-style: solid;
   padding: 0.75rem;
   font-size: 0.92rem;
-  color: #2b2418;
+  color: var(--fg-card-ink);
   outline: none;
 }
 
@@ -1372,7 +1372,7 @@ onMounted(async () => {
 }
 
 .entry-field input::placeholder {
-  color: #a39478;
+  color: #77716a;
 }
 
 .entry-field input:focus,
@@ -1384,10 +1384,10 @@ onMounted(async () => {
 .entry-field input:-webkit-autofill:hover,
 .entry-field input:-webkit-autofill:focus,
 .entry-field input:-webkit-autofill:active {
-  -webkit-text-fill-color: #2b2418;
-  -webkit-box-shadow: 0 0 0px 1000px #f5efe3 inset;
-  box-shadow: 0 0 0px 1000px #f5efe3 inset;
-  caret-color: #2b2418;
+  -webkit-text-fill-color: #f5f1e8;
+  -webkit-box-shadow: 0 0 0px 1000px #222222 inset;
+  box-shadow: 0 0 0px 1000px #222222 inset;
+  caret-color: #f5f1e8;
   transition: background-color 5000s ease-in-out 0s;
 }
 

@@ -275,7 +275,7 @@ function buildDashboardChart() {
             Number(expiringMembers.value.length || 0),
           ],
           backgroundColor: ['#00BFFF', '#8DFF00', '#8A2BE2', '#FF6B6B'],
-          borderColor: '#FFFDF8',
+          borderColor: '#151515',
           borderWidth: 2,
           hoverOffset: 8,
         },
@@ -284,7 +284,7 @@ function buildDashboardChart() {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: '#75664F' } } },
+      plugins: { legend: { labels: { color: '#A8A196' } } },
     } as ChartConfiguration<'doughnut'>['options'],
   });
 }
@@ -1056,8 +1056,8 @@ function buildReportsCharts() {
   if (currentView.value !== 'reports') return;
   destroyReportCharts();
   nextTick(() => {
-    const commonOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#75664F' } } }, scales: { y: { beginAtZero: true, grid: { color: 'rgba(117,102,79,0.15)' }, ticks: { color: '#75664F' } }, x: { grid: { display: false }, ticks: { color: '#75664F' } } } };
-    const doughnutPieOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#75664F' } } } };
+    const commonOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#A8A196' } } }, scales: { y: { beginAtZero: true, grid: { color: 'rgba(168,161,150,0.15)' }, ticks: { color: '#A8A196' } }, x: { grid: { display: false }, ticks: { color: '#A8A196' } } } };
+    const doughnutPieOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#A8A196' } } } };
     if (reportsTab.value === 'overview' && weeklyChartCanvas.value) {
       const w = weeklyActivityData.value;
       reportCharts.value.weekly = new Chart(weeklyChartCanvas.value, {
@@ -2387,14 +2387,14 @@ onUnmounted(() => {
 
 <style>
 .trainer-portal {
-  /* Light cream-and-gold theme that sits on the marble background */
-  --bg-primary: #FBF8F2;
-  --bg-secondary: #FFFDF8;
-  --bg-card: #FFFDF8;
-  --bg-input: #F5EFE3;
-  --text-primary: #2B2418;
-  --text-secondary: #75664F;
-  --border-color: #E6DBC6;
+  /* Box colors come from the shared --fg-card-* tokens in app.css */
+  --bg-primary: var(--fg-card);
+  --bg-secondary: var(--fg-card-sidebar);
+  --bg-card: var(--fg-card);
+  --bg-input: var(--fg-card-2);
+  --text-primary: var(--fg-card-ink);
+  --text-secondary: var(--fg-card-ink-soft);
+  --border-color: var(--fg-card-border);
   --accent-green: #5FA82E;
   --accent-blue: #1E88C8;
   --accent-purple: #8A2BE2;
@@ -2487,7 +2487,7 @@ onUnmounted(() => {
 
 .trainer-sidebar {
   background:
-    linear-gradient(180deg, rgba(226, 181, 74, 0.14) 0%, rgba(255, 253, 248, 0) 60%),
+    linear-gradient(180deg, rgba(217, 180, 90, 0.07) 0%, rgba(217, 180, 90, 0) 45%),
     var(--bg-secondary) !important;
   border-right: 1px solid var(--border-color);
 }
@@ -2511,7 +2511,7 @@ onUnmounted(() => {
 }
 
 .trainer-nav-item:hover {
-  background: rgba(226, 181, 74, 0.14);
+  background: rgba(217, 180, 90, 0.1);
   border-color: rgba(106, 90, 205, 0.3);
 }
 

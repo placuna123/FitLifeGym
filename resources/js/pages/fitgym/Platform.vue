@@ -8,19 +8,19 @@ import { usePasswordVisibility } from '@/composables/usePasswordVisibility';
 const pw = usePasswordVisibility();
 
 // Same palette as the Admin / Trainer / Member portals — nothing new introduced.
-// Light cream-and-gold theme that sits on the marble background (the keys keep their old names)
+// Box colors come from the shared --fg-card-* tokens in app.css (the keys keep their old names)
 const portal = {
-  dark: '#FBF8F2',
-  dark2: '#F5EFE3',
-  dark3: '#FFFDF8',
-  sidebar: '#FFFDF8',
-  border: '#E6DBC6',
+  dark: 'var(--fg-card)',
+  dark2: 'var(--fg-card-2)',
+  dark3: 'var(--fg-card)',
+  sidebar: 'var(--fg-card-sidebar)',
+  border: 'var(--fg-card-border)',
   purple: '#8A2BE2',
   purpleLight: '#6A4BC4',
   pink: '#E0565B',
   cyan: '#1E88C8',
   lime: '#5FA82E',
-  textDim: '#75664F',
+  textDim: 'var(--fg-card-ink-soft)',
 };
 
 const loading = ref(true);
@@ -601,7 +601,7 @@ onMounted(checkAuth);
 <style scoped>
 .platform-shell {
   min-height: 100vh;
-  color: #2b2418;
+  color: var(--fg-card-ink);
   font-family: 'Instrument Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   padding: 2rem 1.5rem;
 }
@@ -611,7 +611,7 @@ onMounted(checkAuth);
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  color: #75664f;
+  color: var(--fg-ink-soft);
 }
 
 .platform-login {
@@ -657,7 +657,7 @@ select {
   border-radius: 0.6rem;
   border: 1px solid;
   padding: 0.65rem 0.75rem;
-  color: #2b2418;
+  color: var(--fg-card-ink);
   font-size: 0.9rem;
   outline: none;
 }
@@ -780,7 +780,7 @@ th, td {
   text-align: left;
   padding: 0.85rem 1rem;
   font-size: 0.88rem;
-  border-bottom: 1px solid #e6dbc6;
+  border-bottom: 1px solid var(--fg-card-border);
 }
 
 .nowrap {
@@ -792,13 +792,13 @@ th, td {
 }
 
 .role-tag {
-  color: #75664f;
+  color: var(--fg-card-ink-soft);
   font-size: 0.78rem;
 }
 
 .empty-row {
   text-align: center;
-  color: #75664f;
+  color: var(--fg-card-ink-soft);
   padding: 1.5rem;
 }
 
@@ -809,14 +809,14 @@ th, td {
   text-transform: capitalize;
 }
 
-.badge-active { background: rgba(95,168,46,0.16); color: #3f7d1e; }
-.badge-trial { background: rgba(30,136,200,0.14); color: #1a6fa3; }
-.badge-pending { background: rgba(117,102,79,0.14); color: #75664f; }
-.badge-suspended { background: rgba(224,86,91,0.14); color: #b8383d; }
-.badge-expired { background: rgba(226,181,74,0.2); color: #8a6100; }
+.badge-active { background: rgba(95,168,46,0.2); color: #8fd16a; }
+.badge-trial { background: rgba(30,136,200,0.2); color: #6cc0f0; }
+.badge-pending { background: rgba(168,161,150,0.16); color: #a8a196; }
+.badge-suspended { background: rgba(224,86,91,0.2); color: #f08a8e; }
+.badge-expired { background: rgba(226,181,74,0.2); color: #e2b54a; }
 
 .over-limit {
-  color: #b8383d;
+  color: #f08a8e;
   font-weight: 600;
 }
 
@@ -825,9 +825,9 @@ th, td {
   border-radius: 0.6rem;
   border: 1px solid;
   padding: 0.5rem 0.6rem;
-  color: #2b2418;
+  color: var(--fg-card-ink);
   font-size: 0.85rem;
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 .hint-row {
@@ -853,7 +853,7 @@ th, td {
 
 .action-btn.suspend { background: #e0565b; }
 .action-btn.activate { background: #5fa82e; }
-.action-btn.delete { background: transparent; border: 1px solid #e0565b; color: #b8383d; }
+.action-btn.delete { background: transparent; border: 1px solid #e0565b; color: #f08a8e; }
 
 /* light cards get a soft shadow so they stand off the marble */
 .login-card,
@@ -892,7 +892,7 @@ th, td {
 .entry-error {
   background: rgba(255, 107, 107, 0.12);
   border: 1px solid #ff6b6b;
-  color: #b8383d;
+  color: #d9474c;
   border-radius: 0.6rem;
   padding: 0.6rem 0.85rem;
   font-size: 0.85rem;

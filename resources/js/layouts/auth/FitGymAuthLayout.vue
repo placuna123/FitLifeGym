@@ -51,7 +51,7 @@ defineProps<{
     justify-content: center;
     overflow: hidden;
     padding: 2rem 1rem;
-    color: #2b2418;
+    color: var(--fg-card-ink);
     font-family: 'Instrument Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
@@ -107,9 +107,9 @@ defineProps<{
 }
 
 .fg-auth-card {
-    border: 1px solid #e6dbc6;
+    border: 1px solid var(--fg-card-border);
     border-radius: 1.25rem;
-    background: #fffdf8;
+    background: var(--fg-card);
     box-shadow: 0 18px 44px rgba(92, 70, 30, 0.1);
     padding: 1.75rem;
 }
@@ -122,7 +122,7 @@ defineProps<{
 
 .fg-auth-description {
     margin: 0.35rem 0 1.4rem;
-    color: #75664f;
+    color: var(--fg-card-ink-soft);
     font-size: 0.875rem;
 }
 
@@ -168,24 +168,24 @@ defineProps<{
 }
 
 .fg-auth .fg-field label {
-    color: #75664f;
+    color: var(--fg-card-ink-soft);
     font-size: 0.82rem;
     font-weight: 500;
 }
 
 .fg-auth .fg-field input {
     width: 100%;
-    border: 1px solid #e6dbc6;
+    border: 1px solid var(--fg-card-border);
     border-radius: 0.65rem;
-    background: #f5efe3;
+    background: var(--fg-card-2);
     padding: 0.75rem;
-    color: #2b2418;
+    color: var(--fg-card-ink);
     font-size: 1rem;
     outline: none;
 }
 
 .fg-auth .fg-field input::placeholder {
-    color: #a39478;
+    color: #77716a;
 }
 
 .fg-auth .fg-field input:focus {
@@ -193,12 +193,12 @@ defineProps<{
 }
 
 .fg-auth .fg-field input[readonly] {
-    color: #75664f;
+    color: var(--fg-card-ink-soft);
 }
 
 .fg-auth .fg-error {
     margin: 0;
-    color: #b42318;
+    color: #f08a8e;
     font-size: 0.82rem;
 }
 
@@ -208,7 +208,7 @@ defineProps<{
     border-radius: 0.7rem;
     background: rgba(141, 255, 0, 0.1);
     padding: 0.75rem 0.85rem;
-    color: #3f6b00;
+    color: #8fd16a;
     font-size: 0.875rem;
 }
 
@@ -236,13 +236,13 @@ defineProps<{
 
 .fg-auth .fg-hint {
     margin: 0;
-    color: #75664f;
+    color: var(--fg-card-ink-soft);
     font-size: 0.78rem;
     line-height: 1.5;
 }
 
 .fg-auth .fg-inline-link {
-    color: #6b3fc4;
+    color: #b794f6;
     font-weight: 600;
     text-decoration: underline;
 }
