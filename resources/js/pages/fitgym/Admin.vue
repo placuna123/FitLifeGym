@@ -1195,6 +1195,29 @@ function filteredMembers() {
   return list;
 }
 
+/** Status as shown in both portals: Pending Approval, Expired and Ending Soon (30 days) come from the dates. */
+function memberStatusLabel(status: unknown, expiryDate?: string): string {
+  const s = String(status || '').toLowerCase();
+  if (s === 'pending') return 'Pending Approval';
+  const today = new Date().toISOString().slice(0, 10);
+  if (expiryDate && expiryDate < today) return 'Expired';
+  if (s === 'active' && expiryDate) {
+    const in30 = new Date();
+    in30.setDate(in30.getDate() + 30);
+    if (expiryDate <= in30.toISOString().slice(0, 10)) return 'Ending Soon';
+  }
+  if (s === 'expired') return 'Expired';
+  if (s === 'ending soon') return 'Ending Soon';
+  return s || 'Active';
+}
+
+function memberStatusBadge(status: unknown, expiryDate?: string): string {
+  const label = memberStatusLabel(status, expiryDate).toLowerCase();
+  if (label === 'active') return 'active';
+  if (label === 'pending approval' || label === 'ending soon') return 'pending';
+  return 'inactive';
+}
+
 function filteredAttendanceLogs() {
   const list = attendanceLogs.value;
   const q = (attendanceSearch.value || '').toLowerCase();
@@ -1944,8 +1967,8 @@ onUnmounted(() => {
                   <td>{{ memberStreetAddress(m.address) }}</td>
                   <td>{{ m.membership_plan }}</td>
                   <td>
-                    <span :class="['status-badge', String(m.status).toLowerCase() === 'active' ? 'active' : (String(m.status).toLowerCase() === 'pending' ? 'pending' : 'inactive')]">
-                      {{ String(m.status).toLowerCase() === 'pending' ? 'Pending Approval' : m.status }}
+                    <span :class="['status-badge', memberStatusBadge(m.status, m.expiry_date as string)]">
+                      {{ memberStatusLabel(m.status, m.expiry_date as string) }}
                     </span>
                   </td>
                   <td>{{ m.expiry_date }}</td>
@@ -4510,9 +4533,10 @@ onUnmounted(() => {
 
 /* Action buttons */
 .action-buttons {
-  display: flex;
+  /* two icons per row keeps the Actions column narrow, so the table fits without scrolling */
+  display: grid;
+  grid-template-columns: repeat(2, 1.625rem);
   gap: 0.375rem;
-  flex-wrap: nowrap;
 }
 
 .action-btn {

@@ -78,10 +78,10 @@ Route::put('api/members/{id}', [App\Http\Controllers\MemberController::class, 'u
 Route::delete('api/members/{id}', [App\Http\Controllers\MemberController::class, 'destroy'])->middleware(['auth', 'tenant'])->name('members.destroy');
 
 Route::get('api/membership-plans', [App\Http\Controllers\MembershipPlanController::class, 'index'])->middleware(['auth', 'tenant'])->name('membership-plans.index');
-Route::post('api/membership-plans', [App\Http\Controllers\MembershipPlanController::class, 'store'])->middleware(['auth', 'tenant', 'role:Admin'])->name('membership-plans.store');
+Route::post('api/membership-plans', [App\Http\Controllers\MembershipPlanController::class, 'store'])->middleware(['auth', 'tenant', 'role:Admin,Staff'])->name('membership-plans.store');
 Route::get('api/membership-plans/{id}', [App\Http\Controllers\MembershipPlanController::class, 'show'])->middleware(['auth', 'tenant'])->name('membership-plans.show');
-Route::put('api/membership-plans/{id}', [App\Http\Controllers\MembershipPlanController::class, 'update'])->middleware(['auth', 'tenant', 'role:Admin'])->name('membership-plans.update');
-Route::delete('api/membership-plans/{id}', [App\Http\Controllers\MembershipPlanController::class, 'destroy'])->middleware(['auth', 'tenant', 'role:Admin'])->name('membership-plans.destroy');
+Route::put('api/membership-plans/{id}', [App\Http\Controllers\MembershipPlanController::class, 'update'])->middleware(['auth', 'tenant', 'role:Admin,Staff'])->name('membership-plans.update');
+Route::delete('api/membership-plans/{id}', [App\Http\Controllers\MembershipPlanController::class, 'destroy'])->middleware(['auth', 'tenant', 'role:Admin,Staff'])->name('membership-plans.destroy');
 
 Route::get('api/payments', [App\Http\Controllers\PaymentController::class, 'index'])->middleware(['auth', 'tenant'])->name('payments.index');
 Route::post('api/payments', [App\Http\Controllers\PaymentController::class, 'store'])->middleware(['auth', 'tenant'])->name('payments.store');

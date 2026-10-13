@@ -75,6 +75,28 @@ class PlanFeaturesTest extends TestCase
         ]))->assertStatus(422);
     }
 
+    public function test_staff_can_add_edit_deactivate_and_delete_plans_of_their_branch(): void
+    {
+        $admin = $this->adminForNewGym('gym-a');
+        $staff = User::factory()->create(['role' => 'Staff', 'gym_id' => $admin->gym_id]);
+
+        $id = $this->actingAs($staff)->postJson(route('membership-plans.store'), $this->planPayload(['features' => ['Gym Access']]))
+            ->assertCreated()
+            ->json('plan.id');
+        $this->actingAs($staff)->putJson(route('membership-plans.update', $id), $this->planPayload(['price' => 650, 'is_deactivated' => 1]))
+            ->assertOk();
+        $this->assertDatabaseHas('membership_plans', ['id' => $id, 'price' => 650, 'is_deactivated' => 1]);
+        $this->actingAs($staff)->deleteJson(route('membership-plans.destroy', $id))->assertOk();
+    }
+
+    public function test_members_cannot_change_plans(): void
+    {
+        $admin = $this->adminForNewGym('gym-a');
+        $member = User::factory()->create(['role' => 'Member', 'gym_id' => $admin->gym_id]);
+
+        $this->actingAs($member)->postJson(route('membership-plans.store'), $this->planPayload())->assertForbidden();
+    }
+
     private function adminForNewGym(string $slug): User
     {
         $gym = Gym::create(['name' => strtoupper($slug), 'slug' => $slug]);

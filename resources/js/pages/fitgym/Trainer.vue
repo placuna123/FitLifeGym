@@ -124,7 +124,16 @@ const formLoading = ref(false);
 const formError = ref('');
 
 const showAddPlanModal = ref(false);
-const planForm = ref({ name: '', type: 'Monthly', price: '', period: 'per month', description: '', is_popular: false });
+const planForm = ref({ name: '', type: 'Monthly', price: '', period: 'per month', description: '', is_popular: false, features: [] as string[] });
+const MAX_PLAN_FEATURES = 20;
+
+function addPlanFeature() {
+  if (planForm.value.features.length < MAX_PLAN_FEATURES) planForm.value.features.push('');
+}
+
+function removePlanFeature(index: number) {
+  planForm.value.features.splice(index, 1);
+}
 const selectedPlanForEdit = ref<Record<string, unknown> | null>(null);
 const navItems = [
   { id: 'dashboard', label: 'Dashboard', description: 'Overview and quick actions' },
@@ -987,12 +996,6 @@ async function submitChangePassword() {
   }
 }
 
-function revenueMonthly(): string {
-  const r = reportRevenue.value;
-  if (!r || typeof (r as Record<string, unknown>).monthly_revenue !== 'number') return '0.00';
-  return Number((r as Record<string, unknown>).monthly_revenue).toLocaleString('en-PH', { minimumFractionDigits: 2 });
-}
-
 // Reports chart data (same structure as Blade trainer - use API data when available, else Blade defaults)
 const weeklyActivityData = computed(() => {
   const daily = (reportAttendance.value?.daily_stats as Array<{ date?: string; count?: number }>) || [];
@@ -1128,7 +1131,23 @@ function plansWithStats(): Record<string, unknown>[] {
 }
 
 function activePlansWithStats(): Record<string, unknown>[] {
-  return plansWithStats().filter((p) => !(p as Record<string, unknown>).is_deactivated);
+  // Deactivated plans stay listed (last) so they can be reactivated, as in Admin.
+  return plansWithStats().sort(
+    (a, b) => Number(Boolean((a as Record<string, unknown>).is_deactivated)) - Number(Boolean((b as Record<string, unknown>).is_deactivated)),
+  );
+}
+
+function formatCurrency(value: unknown): string {
+  const amount = Number(value ?? 0);
+  return `PHP ${(Number.isFinite(amount) ? amount : 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/** Admin-style badge class for a member's status label. */
+function staffStatusBadge(status: unknown, expiryDate?: string): string {
+  const label = memberStatusLabel(status, expiryDate).toLowerCase();
+  if (label === 'active') return 'active';
+  if (label === 'pending approval' || label === 'ending soon') return 'pending';
+  return 'inactive';
 }
 
 function mostSubscribedPlanName(): string {
@@ -1283,7 +1302,7 @@ async function deleteManagedClass(cls: ScheduleClass) {
 
 function openAddPlan() {
   selectedPlanForEdit.value = null;
-  planForm.value = { name: '', type: 'Monthly', price: '', period: 'per month', description: '', is_popular: false };
+  planForm.value = { name: '', type: 'Monthly', price: '', period: 'per month', description: '', is_popular: false, features: [''] };
   showAddPlanModal.value = true;
   formError.value = '';
 }
@@ -1297,6 +1316,7 @@ function openEditPlan(plan: Record<string, unknown>) {
     period: String(plan.period || 'per month'),
     description: String(plan.description || ''),
     is_popular: !!plan.is_popular,
+    features: Array.isArray(plan.features) ? (plan.features as unknown[]).map(String) : [],
   };
   showAddPlanModal.value = true;
   formError.value = '';
@@ -1320,6 +1340,32 @@ async function deletePlan(plan: Record<string, unknown>) {
   }
 }
 
+async function deactivatePlan(plan: Record<string, unknown>) {
+  const id = plan.id;
+  if (id == null) return;
+  const action = plan.is_deactivated ? 'Reactivate' : 'Deactivate';
+  if (!confirm(`${action} plan "${plan.name}"?`)) return;
+  formLoading.value = true;
+  formError.value = '';
+  try {
+    await membershipPlans.update(Number(id), {
+      name: plan.name,
+      type: plan.type,
+      price: Number(plan.price) || 0,
+      period: plan.period,
+      description: plan.description,
+      is_deactivated: plan.is_deactivated ? 0 : 1,
+    });
+    await loadMembershipsData();
+  } catch (err: unknown) {
+    const ax = err as { response?: { data?: { message?: string } } };
+    formError.value = ax.response?.data?.message || `Failed to ${action.toLowerCase()} plan.`;
+    alert(formError.value);
+  } finally {
+    formLoading.value = false;
+  }
+}
+
 async function submitAddPlan() {
   formLoading.value = true;
   formError.value = '';
@@ -1330,6 +1376,7 @@ async function submitAddPlan() {
     period: planForm.value.period || '',
     description: planForm.value.description || '',
     is_popular: planForm.value.is_popular ? 1 : 0,
+    features: planForm.value.features.map((f) => f.trim()).filter(Boolean),
   };
   try {
     if (selectedPlanForEdit.value && selectedPlanForEdit.value.id != null) {
@@ -1400,7 +1447,9 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <Head :title="`${gymDisplayName} - Staff Portal`" />
+  <Head :title="`${gymDisplayName} - Staff Portal`">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" />
+  </Head>
   <div class="trainer-portal fg-marble-bg min-h-screen text-white">
     <div v-if="!isLoggedIn && !loading" class="trainer-auth-shell flex min-h-screen items-center justify-center p-4">
       <div class="trainer-auth-card w-full max-w-md rounded-2xl border p-6 sm:p-8">
@@ -1719,157 +1768,167 @@ onUnmounted(() => {
               </div>
             </div>
           </div>          <!-- Members -->
-          <div v-if="currentView === 'members'" class="space-y-6">
-            <div class="flex flex-wrap items-center justify-between gap-4">
-              <h2 class="sr-only">Member Management</h2>
-              <button type="button" class="rounded bg-[#A3E635] px-4 py-2 font-semibold text-black hover:opacity-90" @click="openAddMemberModal">
-                + Add Member
-              </button>
-            </div>
-            <div class="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_160px_160px]">
-              <input
-                v-model="memberSearch"
-                type="text"
-                placeholder="SEARCH MEMBERS by name, email, or ID..."
-                class="w-full rounded border border-gray-600 bg-[#2A3042] px-4 py-3 text-white placeholder-gray-500 focus:border-[#A3E635] focus:outline-none focus:ring-1 focus:ring-[#A3E635]"
-              />
-              <select v-model="memberStatusFilter" class="rounded border border-gray-600 bg-[#2A3042] px-4 py-3 text-white focus:border-[#A3E635] focus:outline-none focus:ring-1 focus:ring-[#A3E635]">
+          <!-- Members: same layout as Admin > Members (Staff has no SMS action) -->
+          <div v-if="currentView === 'members'" class="staff-admin-view">
+            <div class="page-controls">
+              <div class="search-bar">
+                <i class="fas fa-search"></i>
+                <input v-model="memberSearch" type="text" placeholder="SEARCH MEMBERS by name, email, or ID..." />
+              </div>
+              <select v-model="memberStatusFilter" class="filter-dropdown">
                 <option value="">All Status</option>
                 <option value="active">Active</option>
+                <option value="pending">Pending Approval</option>
                 <option value="expired">Expired</option>
                 <option value="ending soon">Ending Soon</option>
               </select>
-              <select v-model="memberPlanFilter" class="rounded border border-gray-600 bg-[#2A3042] px-4 py-3 text-white focus:border-[#A3E635] focus:outline-none focus:ring-1 focus:ring-[#A3E635]">
+              <select v-model="memberPlanFilter" class="filter-dropdown">
                 <option value="">All Plans</option>
                 <option v-for="p in plansList" :key="`plan-filter-${String((p as Record<string, unknown>).id)}`" :value="String((p as Record<string, unknown>).name || '')">
                   {{ (p as Record<string, unknown>).name }}
                 </option>
               </select>
+              <button type="button" class="btn-add-member" @click="openAddMemberModal">
+                <i class="fas fa-plus"></i>
+                <span>Add Member</span>
+              </button>
             </div>
-
-            <div class="overflow-x-auto rounded-lg border border-gray-700 bg-[#2A3042]">
-              <!-- 5 compact columns so the whole table fits the content area; phones still scroll sideways -->
-              <table class="w-full min-w-[560px] text-left text-sm text-gray-300">
-                <thead class="border-b border-gray-700">
+            <div class="table-container">
+              <table class="data-table">
+                <thead>
                   <tr>
-                    <th class="px-4 py-3">Member</th>
-                    <th class="px-4 py-3">Contact</th>
-                    <th class="px-4 py-3">Plan &amp; Expiry</th>
-                    <th class="px-4 py-3">Status</th>
-                    <th class="px-4 py-3 text-right">Actions</th>
+                    <th>Member</th>
+                    <th>ID</th>
+                    <th>Contact</th>
+                    <th>Address</th>
+                    <th>Plan</th>
+                    <th>Status</th>
+                    <th>Expiry</th>
+                    <th>Payment</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="m in filteredMembers()" :key="String((m as Record<string, unknown>).id)" class="border-b border-gray-800/70">
-                    <td class="px-4 py-3">
-                      <div class="flex items-center gap-3">
-                        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-purple-500/40 text-sm font-bold text-white">
-                          {{ String((m as Record<string, unknown>).full_name || '').slice(0, 2).toUpperCase() }}
-                        </div>
-                        <div class="min-w-0">
-                          <p class="font-semibold text-white">{{ (m as Record<string, unknown>).full_name }}</p>
-                          <p class="break-all text-xs text-gray-400">{{ (m as Record<string, unknown>).email || '—' }}</p>
-                          <p class="text-xs text-gray-400">ID {{ (m as Record<string, unknown>).member_id || '—' }}</p>
+                  <tr v-for="m in filteredMembers()" :key="String((m as Record<string, unknown>).id)">
+                    <td>
+                      <div class="member-cell">
+                        <div class="member-avatar">{{ String((m as Record<string, unknown>).full_name || '').slice(0, 2).toUpperCase() }}</div>
+                        <div>
+                          <p>{{ (m as Record<string, unknown>).full_name }}</p>
+                          <span>{{ (m as Record<string, unknown>).email }}</span>
                         </div>
                       </div>
                     </td>
-                    <td class="px-4 py-3">
-                      <p>{{ (m as Record<string, unknown>).phone || '—' }}</p>
-                      <p class="max-w-[160px] truncate text-xs text-gray-400" :title="memberStreetAddress((m as Record<string, unknown>).address)">
-                        {{ memberStreetAddress((m as Record<string, unknown>).address) || '—' }}
-                      </p>
+                    <td>{{ (m as Record<string, unknown>).member_id }}</td>
+                    <td>{{ (m as Record<string, unknown>).phone || '-' }}</td>
+                    <td>{{ memberStreetAddress((m as Record<string, unknown>).address) || '-' }}</td>
+                    <td>{{ (m as Record<string, unknown>).membership_plan }}</td>
+                    <td>
+                      <span :class="['status-badge', staffStatusBadge((m as Record<string, unknown>).status, (m as Record<string, unknown>).expiry_date as string)]">
+                        {{ memberStatusLabel((m as Record<string, unknown>).status, (m as Record<string, unknown>).expiry_date as string) }}
+                      </span>
                     </td>
-                    <td class="px-4 py-3">
-                      <p>{{ (m as Record<string, unknown>).membership_plan || '—' }}</p>
-                      <p class="text-xs text-gray-400">Expires <span class="whitespace-nowrap">{{ (m as Record<string, unknown>).expiry_date || '—' }}</span></p>
+                    <td>{{ (m as Record<string, unknown>).expiry_date }}</td>
+                    <td>
+                      <span :class="['status-badge', String((m as Record<string, unknown>).payment_status || '').toLowerCase() === 'paid' ? 'paid' : 'pending']">{{ (m as Record<string, unknown>).payment_status }}</span>
                     </td>
-                    <td class="px-4 py-3">
-                      <div class="flex flex-col items-start gap-1.5">
-                        <span :class="['whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold', statusBadgeClass((m as Record<string, unknown>).status, (m as Record<string, unknown>).expiry_date as string)]">
-                          {{ memberStatusLabel((m as Record<string, unknown>).status, (m as Record<string, unknown>).expiry_date as string) }}
-                        </span>
-                        <span :class="['whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold', paymentBadgeClass((m as Record<string, unknown>).payment_status)]">
-                          {{ String((m as Record<string, unknown>).payment_status || '—').toLowerCase() }}
-                        </span>
-                      </div>
-                    </td>
-                    <td class="px-4 py-3">
-                      <div class="flex flex-wrap justify-end gap-1.5">
-                        <button v-if="String((m as Record<string, unknown>).status).toLowerCase() === 'pending'" type="button" class="rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700" :disabled="formLoading" @click="approveMember(m as Record<string, unknown>)">Approve</button>
-                        <button type="button" class="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700" @click="viewMember(m as Record<string, unknown>)">View</button>
-                        <button type="button" class="rounded bg-purple-600 px-3 py-1 text-xs font-medium text-white hover:bg-purple-700" @click="editMember(m as Record<string, unknown>)">Edit</button>
-                        <button type="button" class="rounded bg-red-600 px-3 py-1 text-xs font-medium text-white hover:bg-red-700" :disabled="formLoading" @click="deleteMember(m as Record<string, unknown>)">Delete</button>
+                    <td>
+                      <div class="action-buttons">
+                        <button v-if="String((m as Record<string, unknown>).status).toLowerCase() === 'pending'" type="button" class="action-btn green" title="Approve Account" :disabled="formLoading" @click="approveMember(m as Record<string, unknown>)"><i class="fas fa-user-check"></i></button>
+                        <button type="button" class="action-btn blue" title="View" @click="viewMember(m as Record<string, unknown>)"><i class="fas fa-eye"></i></button>
+                        <button type="button" class="action-btn purple" title="Edit" @click="editMember(m as Record<string, unknown>)"><i class="fas fa-edit"></i></button>
+                        <button type="button" class="action-btn red" title="Delete" :disabled="formLoading" @click="deleteMember(m as Record<string, unknown>)"><i class="fas fa-trash"></i></button>
                       </div>
                     </td>
                   </tr>
                   <tr v-if="filteredMembers().length === 0">
-                    <td colspan="5" class="px-4 py-6 text-center text-gray-400">{{ dataLoading ? 'Loading...' : 'No members.' }}</td>
+                    <td colspan="9" class="empty-row">{{ dataLoading ? 'Loading...' : 'No members found.' }}</td>
                   </tr>
                 </tbody>
               </table>
             </div>
           </div>
 
-          <!-- Memberships (same layout & data as Blade trainer: summary + Available Plans cards + Add/Edit/Delete) -->
-          <div v-if="currentView === 'memberships'" class="space-y-6">
-            <div class="flex flex-wrap justify-between items-center gap-4">
-              <h2 class="sr-only">Memberships</h2>
-              <div class="flex gap-2">
-                <button type="button" class="rounded bg-[#A3E635] px-4 py-2 text-sm font-semibold text-black hover:opacity-90" @click="openAddPlan">
-                  + Add New Plan
-                </button>
-                <button type="button" class="rounded bg-[#2A3042] border border-gray-600 px-3 py-2 text-sm text-white hover:bg-gray-700" title="Refresh (same data as Blade when same DB)" @click="loadMembershipsData">
-                  <span class="mr-1">&#8635;</span> Refresh
+          <!-- Membership Plans: same layout as Admin > Membership Plans -->
+          <div v-if="currentView === 'memberships'" class="staff-admin-view">
+            <div class="page-header">
+              <h2>Membership Plans</h2>
+              <div class="header-actions" style="display: flex; gap: 0.5rem; align-items: center;">
+                <button type="button" class="btn-add-plan" @click="openAddPlan">
+                  <i class="fas fa-plus"></i>
+                  <span>Add New Plan</span>
                 </button>
               </div>
             </div>
-            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
-              <div class="rounded-lg bg-[#2A3042] p-4 shadow">
-                <p class="text-sm text-gray-400">Total Plans</p>
-                <p class="text-2xl font-bold text-white">{{ plansList.length }}</p>
-              </div>
-              <div class="rounded-lg bg-[#2A3042] p-4 shadow">
-                <p class="text-sm text-gray-400">Total Members</p>
-                <p class="text-2xl font-bold text-white">{{ reportRevenue?.total_members ?? reportMembership?.total_members ?? 0 }}</p>
-              </div>
-              <div class="rounded-lg bg-[#2A3042] p-4 shadow">
-                <p class="text-sm text-gray-400">Monthly Revenue</p>
-                <p class="text-2xl font-bold text-white">&#8369;{{ revenueMonthly() }}</p>
-              </div>
-              <div class="rounded-lg bg-[#2A3042] p-4 shadow">
-                <p class="text-sm text-gray-400">Most subscribed plan</p>
-                <p class="text-2xl font-bold text-white">{{ mostSubscribedPlanName() }}</p>
-              </div>
-            </div>
-            <h4 class="text-xl font-semibold text-[var(--fg-ink)] mb-4">Available Plans</h4>
-            <div class="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
-              <div v-for="p in activePlansWithStats()" :key="String((p as Record<string, unknown>).id)" :class="['trainer-plan-card relative flex h-full flex-col rounded-lg border-t-4 bg-[#2A3042] p-6 shadow', (p as Record<string, unknown>).is_popular ? 'border-amber-400' : 'border-purple-500']">
-                <span v-if="(p as Record<string, unknown>).is_popular" class="absolute top-4 right-4 bg-amber-400 text-amber-900 text-xs font-bold px-3 py-1 rounded-full">Popular</span>
-                <div class="mb-4">
-                  <h4 class="text-2xl font-bold text-white">{{ (p as Record<string, unknown>).name }}</h4>
-                  <p class="mt-2 text-2xl font-bold text-white">&#8369;{{ Number((p as Record<string, unknown>).price || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 }) }} <span class="text-base font-normal text-gray-400">/ {{ (p as Record<string, unknown>).period || 'month' }}</span></p>
-                  <p class="mt-2 text-sm text-gray-400">{{ (p as Record<string, unknown>).description || 'A great membership plan for our valued members.' }}</p>
+            <div class="plans-summary">
+              <div class="summary-card">
+                <i class="fas fa-file-alt"></i>
+                <div>
+                  <h3>{{ plansList.length }}</h3>
+                  <p>Total membership plans</p>
                 </div>
-                <div class="my-6 flex-1">
-                  <h5 class="font-semibold text-white mb-3">Features Included:</h5>
-                  <ul class="space-y-2 text-gray-300 text-sm">
-                    <li v-for="(f, i) in planFeatures(p as Record<string, unknown>)" :key="i" class="flex items-center">
-                      <i class="fas fa-check text-green-400 mr-2 w-4"></i>{{ f }}
-                    </li>
+              </div>
+              <div class="summary-card">
+                <i class="fas fa-users"></i>
+                <div>
+                  <h3>{{ reportRevenue?.total_members ?? reportMembership?.total_members ?? membersList.length }}</h3>
+                  <p>Active members</p>
+                </div>
+              </div>
+              <div class="summary-card">
+                <i class="fas fa-coins"></i>
+                <div>
+                  <h3>{{ formatCurrency(reportRevenue?.monthly_revenue) }}</h3>
+                  <p>Total monthly revenue</p>
+                </div>
+              </div>
+              <div class="summary-card">
+                <i class="fas fa-star"></i>
+                <div>
+                  <h3>{{ mostSubscribedPlanName() }}</h3>
+                  <p>Most subscribed plan</p>
+                </div>
+              </div>
+            </div>
+            <div v-if="plansList.length === 0 && !dataLoading" class="empty-state">
+              <i class="fas fa-inbox"></i>
+              <h3>No Plans Yet</h3>
+              <p>Get started by creating your first membership plan</p>
+              <button type="button" class="btn-add-plan" @click="openAddPlan">
+                <i class="fas fa-plus"></i>
+                <span>Add Your First Plan</span>
+              </button>
+            </div>
+            <div v-else class="plans-grid">
+              <div
+                v-for="p in activePlansWithStats()"
+                :key="String((p as Record<string, unknown>).id)"
+                :class="['plan-card', (p as Record<string, unknown>).is_popular ? 'popular' : '', (p as Record<string, unknown>).is_deactivated ? 'deactivated' : '']"
+              >
+                <span v-if="(p as Record<string, unknown>).is_popular" class="popular-badge">POPULAR</span>
+                <span v-if="(p as Record<string, unknown>).is_deactivated" class="popular-badge" style="right: auto; left: 1rem; background: #ef4444; color: #fff;">DEACTIVATED</span>
+                <h3>{{ (p as Record<string, unknown>).name }}</h3>
+                <div class="plan-price">
+                  <span class="price">{{ formatCurrency((p as Record<string, unknown>).price) }}</span>
+                  <span class="period">{{ (p as Record<string, unknown>).period || 'per month' }}</span>
+                </div>
+                <p class="plan-description">{{ (p as Record<string, unknown>).description || 'A great membership plan for our valued members.' }}</p>
+                <div class="plan-features">
+                  <p>Features Included</p>
+                  <ul>
+                    <li v-for="(feature, fi) in planFeatures(p as Record<string, unknown>)" :key="fi"><i class="fas fa-check"></i> {{ feature }}</li>
                   </ul>
                 </div>
-                <div class="mt-4 rounded-lg bg-purple-500/20 p-4">
-                  <div class="flex justify-between items-center text-white">
-                    <div><p class="text-sm">Members</p><p class="text-xl font-bold">{{ (p as Record<string, unknown>).member_count ?? 0 }}</p></div>
-                    <div><p class="text-sm">Monthly Revenue</p><p class="text-xl font-bold"><span class="trainer-revenue-badge rounded px-2 py-0.5 bg-amber-400 text-amber-900 font-semibold">&#8369;{{ Number((p as Record<string, unknown>).monthly_revenue ?? 0).toLocaleString('en-PH', { minimumFractionDigits: 2 }) }}</span></p></div>
-                  </div>
+                <div class="plan-stats">
+                  <p>{{ (p as Record<string, unknown>).member_count ?? 0 }} Members</p>
+                  <p>Monthly Revenue <span class="revenue-badge">{{ formatCurrency((p as Record<string, unknown>).monthly_revenue) }}</span></p>
                 </div>
-                <div class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <button type="button" class="rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700" @click="openEditPlan(p as Record<string, unknown>)">Edit Plan</button>
-                  <button type="button" class="rounded bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700" @click="deletePlan(p as Record<string, unknown>)">Delete</button>
+                <div class="plan-actions">
+                  <button type="button" class="btn-edit" @click="openEditPlan(p as Record<string, unknown>)">Edit Plan</button>
+                  <button type="button" class="btn-deactivate" :disabled="formLoading" @click="deactivatePlan(p as Record<string, unknown>)">{{ (p as Record<string, unknown>).is_deactivated ? 'Reactivate' : 'Deactivate' }}</button>
+                  <button type="button" class="btn-delete" :disabled="formLoading" @click="deletePlan(p as Record<string, unknown>)">Delete</button>
                 </div>
               </div>
-              <p v-if="activePlansWithStats().length === 0 && !dataLoading" class="col-span-full py-4 text-center text-gray-400">No plans.</p>
             </div>
           </div>
 
@@ -2215,6 +2274,23 @@ onUnmounted(() => {
           <div>
             <label class="block text-sm font-medium text-gray-300">Description</label>
             <textarea v-model="planForm.description" class="mt-1 w-full rounded border border-gray-600 bg-[#1A2035] px-3 py-2 text-white" rows="2" placeholder="Description"></textarea>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-300">Features Included</label>
+            <div class="mt-1 space-y-2">
+              <div v-for="(_, fi) in planForm.features" :key="fi" class="flex gap-2">
+                <input
+                  v-model="planForm.features[fi]"
+                  type="text"
+                  maxlength="100"
+                  class="w-full rounded border border-gray-600 bg-[#1A2035] px-3 py-2 text-white"
+                  :placeholder="fi === 0 ? 'e.g. Gym Access' : 'Another feature'"
+                  :aria-label="`Feature ${fi + 1}`"
+                />
+                <button type="button" class="shrink-0 rounded border border-gray-600 px-3 text-gray-300 hover:text-red-400" :aria-label="`Remove feature ${fi + 1}`" title="Remove" @click="removePlanFeature(fi)">&times;</button>
+              </div>
+            </div>
+            <button v-if="planForm.features.length < MAX_PLAN_FEATURES" type="button" class="mt-2 text-sm font-semibold text-[#b8923a] hover:underline" @click="addPlanFeature">+ Add feature</button>
           </div>
           <div class="flex items-center gap-2">
             <input v-model="planForm.is_popular" type="checkbox" id="trainer-plan-popular" class="rounded border-gray-600" />
@@ -2761,13 +2837,13 @@ onUnmounted(() => {
   font-weight: 700;
 }
 
-.trainer-portal table th {
+.trainer-portal table:not(.data-table) th {
   font-size: clamp(0.7rem, 1.2vw, 0.875rem) !important;
   font-weight: 600 !important;
   padding: clamp(0.75rem, 1.5vw, 0.9375rem) !important;
 }
 
-.trainer-portal table td {
+.trainer-portal table:not(.data-table) td {
   font-size: clamp(0.7rem, 1.2vw, 0.875rem) !important;
   padding: clamp(0.75rem, 1.5vw, 0.9375rem) !important;
 }
@@ -2800,6 +2876,590 @@ onUnmounted(() => {
   .trainer-portal select,
   .trainer-portal textarea {
     font-size: 1rem;
+  }
+}
+
+
+/* Same typeface as the Admin portal for the shared Members / Plans views */
+.trainer-portal .staff-admin-view {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* ===== Members / Membership Plans: copied from Admin.vue so both portals look the same.
+   Scoped to .staff-admin-view; regenerate from Admin.vue rather than editing by hand. ===== */
+.trainer-portal .staff-admin-view .page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.875rem;
+}
+
+.trainer-portal .staff-admin-view .page-header h2 {
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-weight: bold;
+  color: var(--fg-ink);
+}
+
+.trainer-portal .staff-admin-view .page-controls {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.9375rem;
+  margin-bottom: 1.5625rem;
+}
+
+.trainer-portal .staff-admin-view .page-controls .search-bar {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.trainer-portal .staff-admin-view .page-controls .search-bar i {
+  position: absolute;
+  left: 0.9375rem;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+
+.trainer-portal .staff-admin-view .page-controls .search-bar input {
+  width: 100%;
+  padding: 0.75rem 0.9375rem 0.75rem 2.5rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  color: var(--text-primary);
+  font-size: clamp(0.75rem, 1vw, 0.875rem);
+}
+
+.trainer-portal .staff-admin-view .page-controls .filter-dropdown {
+  padding: 0.75rem 0.9375rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  color: var(--text-primary);
+  font-size: clamp(0.75rem, 1vw, 0.875rem);
+  cursor: pointer;
+  min-width: 9.375rem;
+  flex-shrink: 0;
+}
+
+.trainer-portal .staff-admin-view .page-controls .btn-add-member {
+  flex-shrink: 0;
+}
+
+.trainer-portal .staff-admin-view .table-container {
+  background: var(--bg-card);
+  border-radius: 0.75rem;
+  overflow-x: auto;
+  width: 100%;
+  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
+}
+
+.trainer-portal .staff-admin-view .data-table {
+  width: 100%;
+  min-width: 42rem;
+  border-collapse: collapse;
+}
+
+.trainer-portal .staff-admin-view .data-table thead {
+  background: var(--bg-input);
+}
+
+.trainer-portal .staff-admin-view .data-table th {
+  padding: clamp(0.5rem, 1vw, 0.625rem) clamp(0.625rem, 1.2vw, 0.75rem);
+  text-align: left;
+  font-size: clamp(0.65rem, 1.1vw, 0.8rem);
+  font-weight: 600;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-color);
+  white-space: nowrap;
+}
+
+.trainer-portal .staff-admin-view .data-table td {
+  padding: clamp(0.4rem, 0.8vw, 0.5625rem) clamp(0.625rem, 1.2vw, 0.75rem);
+  border-bottom: 1px solid var(--border-color);
+  font-size: clamp(0.65rem, 1.1vw, 0.8rem);
+  color: var(--text-primary);
+}
+
+.trainer-portal .staff-admin-view .member-cell {
+  display: flex;
+  align-items: center;
+  gap: clamp(0.4rem, 0.8vw, 0.625rem);
+}
+
+.trainer-portal .staff-admin-view .member-avatar {
+  width: clamp(1.65rem, 2.4vw, 2rem);
+  height: clamp(1.65rem, 2.4vw, 2rem);
+  min-width: clamp(1.65rem, 2.4vw, 2rem);
+  border-radius: 50%;
+  background: var(--accent-purple);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: clamp(0.55rem, 0.9vw, 0.7rem);
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.trainer-portal .staff-admin-view .member-cell p {
+  font-size: clamp(0.65rem, 1.1vw, 0.8rem);
+  color: var(--text-primary);
+  margin-bottom: 0.0625rem;
+  line-height: 1.25;
+}
+
+.trainer-portal .staff-admin-view .member-cell span {
+  font-size: clamp(0.55rem, 0.9vw, 0.7rem);
+  color: var(--text-secondary);
+  line-height: 1.25;
+}
+
+.trainer-portal .staff-admin-view .status-badge {
+  padding: clamp(0.2rem, 0.5vw, 0.25rem) clamp(0.5rem, 1vw, 0.75rem);
+  border-radius: 0.75rem;
+  font-size: clamp(0.6rem, 1vw, 0.75rem);
+  font-weight: 600;
+  display: inline-block;
+}
+
+.trainer-portal .staff-admin-view .status-badge.active {
+  background: var(--accent-green);
+  color: #000;
+}
+
+.trainer-portal .staff-admin-view .status-badge.inactive {
+  background: var(--accent-pink);
+  color: #fff;
+}
+
+.trainer-portal .staff-admin-view .empty-row {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-secondary);
+}
+
+.trainer-portal .staff-admin-view .plans-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.25rem;
+  margin-bottom: 1.875rem;
+}
+
+.trainer-portal .staff-admin-view .summary-card {
+  background: var(--bg-card);
+  padding: 1.25rem;
+  border-radius: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.9375rem;
+  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
+}
+
+.trainer-portal .staff-admin-view .summary-card i {
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  color: var(--accent-green);
+}
+
+.trainer-portal .staff-admin-view .summary-card h3 {
+  font-size: clamp(1.125rem, 2.5vw, 1.5rem);
+  font-weight: bold;
+  margin-bottom: 0.3125rem;
+  color: var(--text-primary);
+}
+
+.trainer-portal .staff-admin-view .summary-card p {
+  font-size: clamp(0.625rem, 0.8vw, 0.75rem);
+  color: var(--text-secondary);
+}
+
+.trainer-portal .staff-admin-view .btn-add-plan {
+  padding: 0.75rem 1.25rem;
+  background: var(--accent-green);
+  color: #000;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: clamp(0.75rem, 1vw, 0.875rem);
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.trainer-portal .staff-admin-view .plans-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(18rem, 100%), 1fr));
+  gap: 1.25rem;
+}
+
+.trainer-portal .staff-admin-view .plan-card {
+  background: var(--bg-card);
+  padding: 1.5625rem;
+  border-radius: 0.75rem;
+  position: relative;
+  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
+}
+
+.trainer-portal .staff-admin-view .plan-card.deactivated {
+  opacity: 0.85;
+  border: 1px dashed #ef4444;
+}
+
+.trainer-portal .staff-admin-view .plan-card.popular .popular-badge {
+  position: absolute;
+  top: 0.9375rem;
+  right: 0.9375rem;
+  background: var(--accent-yellow);
+  color: #000;
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.75rem;
+  font-size: clamp(0.625rem, 0.8vw, 0.75rem);
+  font-weight: bold;
+}
+
+.trainer-portal .staff-admin-view .plan-card h3 {
+  font-size: clamp(1.125rem, 2.5vw, 1.5rem);
+  margin-bottom: 0.9375rem;
+  color: var(--text-primary);
+}
+
+.trainer-portal .staff-admin-view .plan-price {
+  margin-bottom: 0.9375rem;
+}
+
+.trainer-portal .staff-admin-view .plan-price .price {
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-weight: bold;
+  display: block;
+  color: var(--text-primary);
+}
+
+.trainer-portal .staff-admin-view .plan-price .period {
+  font-size: clamp(0.75rem, 1vw, 0.875rem);
+  color: var(--text-secondary);
+}
+
+.trainer-portal .staff-admin-view .plan-description {
+  font-size: clamp(0.75rem, 1vw, 0.875rem);
+  color: var(--text-secondary);
+  margin-bottom: 1.25rem;
+  line-height: 1.5;
+}
+
+.trainer-portal .staff-admin-view .plan-features {
+  margin-bottom: 1.25rem;
+}
+
+.trainer-portal .staff-admin-view .plan-features > p {
+  font-size: clamp(0.625rem, 0.8vw, 0.75rem);
+  color: var(--text-secondary);
+  margin-bottom: 0.75rem;
+  text-transform: uppercase;
+}
+
+.trainer-portal .staff-admin-view .plan-features ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.trainer-portal .staff-admin-view .plan-features li {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  margin-bottom: 0.5rem;
+  font-size: clamp(0.75rem, 1vw, 0.875rem);
+  color: var(--text-primary);
+}
+
+.trainer-portal .staff-admin-view .plan-features li i {
+  color: var(--accent-green);
+  font-size: clamp(0.625rem, 0.8vw, 0.75rem);
+}
+
+.trainer-portal .staff-admin-view .plan-stats {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.trainer-portal .staff-admin-view .plan-stats p {
+  font-size: clamp(0.75rem, 1vw, 0.875rem);
+  color: var(--text-primary);
+}
+
+.trainer-portal .staff-admin-view .plan-stats .revenue-badge {
+  background: var(--accent-yellow);
+  color: #000;
+  padding: 0.25rem 0.625rem;
+  border-radius: 0.5rem;
+  font-size: clamp(0.625rem, 0.8vw, 0.75rem);
+  font-weight: 600;
+  margin-left: 0.5rem;
+}
+
+.trainer-portal .staff-admin-view .plan-actions {
+  display: flex;
+  gap: 0.625rem;
+}
+
+.trainer-portal .staff-admin-view .plan-actions .btn-edit {
+  flex: 1;
+  padding: 0.625rem;
+  background: var(--accent-blue);
+  color: #fff;
+  border: none;
+  border-radius: 0.375rem;
+  font-size: clamp(0.75rem, 1vw, 0.875rem);
+  cursor: pointer;
+}
+
+.trainer-portal .staff-admin-view .plan-actions .btn-deactivate {
+  flex: 1;
+  padding: 0.625rem;
+  background: var(--accent-pink);
+  color: #fff;
+  border: none;
+  border-radius: 0.375rem;
+  font-size: clamp(0.75rem, 1vw, 0.875rem);
+  cursor: pointer;
+}
+
+.trainer-portal .staff-admin-view .plan-actions .btn-delete {
+  flex: 1;
+  padding: 0.625rem;
+  background: var(--accent-purple);
+  color: #fff;
+  border: none;
+  border-radius: 0.375rem;
+  font-size: clamp(0.75rem, 1vw, 0.875rem);
+  cursor: pointer;
+}
+
+.trainer-portal .staff-admin-view .btn-add-member {
+  padding: 0.75rem 1.25rem;
+  background: var(--accent-green);
+  color: #fff;
+  border: none;
+  border-radius: 0.75rem;
+  font-size: clamp(0.8125rem, 1vw, 0.9375rem);
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  box-shadow: 0 0 12px rgba(141, 255, 0, 0.3);
+}
+
+.trainer-portal .staff-admin-view .btn-add-member:hover {
+  filter: brightness(1.1);
+}
+
+.trainer-portal .staff-admin-view .attendance-filters .search-bar,
+.trainer-portal .staff-admin-view .attendance-filters .search-bar input {
+  color: var(--fg-ink);
+}
+
+.trainer-portal .staff-admin-view .attendance-filters .search-bar input::placeholder {
+  color: var(--fg-ink-soft);
+}
+
+.trainer-portal .staff-admin-view .action-buttons {
+  /* two icons per row keeps the Actions column narrow, so the table fits without scrolling */
+  display: grid;
+  grid-template-columns: repeat(2, 1.625rem);
+  gap: 0.375rem;
+}
+
+.trainer-portal .staff-admin-view .action-btn {
+  width: 1.625rem;
+  height: 1.625rem;
+  min-width: 1.625rem;
+  border: none;
+  border-radius: 0.375rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 0.7rem;
+  flex-shrink: 0;
+}
+
+.trainer-portal .staff-admin-view .action-btn.blue {
+  background: var(--accent-blue);
+  color: #fff;
+}
+
+.trainer-portal .staff-admin-view .action-btn.purple {
+  background: var(--accent-purple);
+  color: #fff;
+}
+
+.trainer-portal .staff-admin-view .action-btn.red {
+  background: var(--accent-pink);
+  color: #fff;
+}
+
+.trainer-portal .staff-admin-view .action-btn.green {
+  background: var(--accent-green);
+  color: #000;
+}
+
+.trainer-portal .staff-admin-view .action-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.trainer-portal .staff-admin-view .status-badge.paid {
+  background: var(--accent-green);
+  color: #000;
+}
+
+.trainer-portal .staff-admin-view .status-badge.pending {
+  background: var(--accent-yellow);
+  color: #000;
+}
+
+.trainer-portal .staff-admin-view .status-badge.cancelled {
+  background: var(--accent-pink);
+  color: #fff;
+}
+
+.trainer-portal .staff-admin-view .status-badge.overdue {
+  background: var(--accent-blue);
+  color: #fff;
+}
+
+.trainer-portal .staff-admin-view .header-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.trainer-portal .staff-admin-view .empty-state {
+  text-align: center;
+  padding: 4rem 2rem;
+  color: var(--fg-ink-soft);
+}
+
+.trainer-portal .staff-admin-view .empty-state i {
+  font-size: 4rem;
+  color: var(--fg-ink-soft);
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
+.trainer-portal .staff-admin-view .empty-state h3 {
+  font-size: clamp(1.25rem, 2.5vw, 1.5rem);
+  margin-bottom: 0.5rem;
+  color: var(--fg-ink);
+}
+
+.trainer-portal .staff-admin-view .empty-state p {
+  font-size: clamp(0.875rem, 1.2vw, 1rem);
+  margin-bottom: 1.5rem;
+  color: var(--fg-ink-soft);
+}
+
+.trainer-portal .staff-admin-view .empty-state .btn-add-plan {
+  margin-top: 0.5rem;
+}
+
+@media (max-width: 1279.98px) {
+  .trainer-portal .staff-admin-view .plans-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767.98px) {
+  .trainer-portal .staff-admin-view .page-header {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .trainer-portal .staff-admin-view .page-header .header-actions,
+  .trainer-portal .staff-admin-view .plan-actions {
+    flex-wrap: wrap;
+  }
+
+  .trainer-portal .staff-admin-view .page-controls {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .trainer-portal .staff-admin-view .page-controls .search-bar {
+    flex: 1 1 100%;
+  }
+
+  .trainer-portal .staff-admin-view .page-controls .filter-dropdown {
+    flex: 1 1 9rem;
+    min-width: 0;
+  }
+
+  .trainer-portal .staff-admin-view .page-controls .btn-add-member {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+
+  .trainer-portal .staff-admin-view .attendance-filters .search-bar {
+    flex: 1 1 14rem;
+    min-width: 0;
+  }
+
+  .trainer-portal .staff-admin-view .attendance-filters .search-bar input {
+    width: 100%;
+  }
+
+  .trainer-portal .staff-admin-view .plan-stats {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .trainer-portal .staff-admin-view .plan-card {
+    padding: 1.25rem;
+  }
+
+  .trainer-portal .staff-admin-view .empty-state {
+    padding: 2.5rem 1rem;
+  }
+
+  .trainer-portal .staff-admin-view .data-table th,
+  .trainer-portal .staff-admin-view .data-table td,
+  .trainer-portal .staff-admin-view .member-cell p {
+    font-size: 0.8125rem;
+  }
+
+  .trainer-portal .staff-admin-view .member-cell span,
+  .trainer-portal .staff-admin-view .status-badge {
+    font-size: 0.75rem;
+  }
+
+  .trainer-portal .staff-admin-view .page-controls .search-bar input,
+  .trainer-portal .staff-admin-view .page-controls .filter-dropdown {
+    font-size: 1rem;
+  }
+}
+
+@media (max-width: 479.98px) {
+  .trainer-portal .staff-admin-view .plans-summary {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (pointer: coarse) {
+  .trainer-portal .staff-admin-view .action-btn {
+    width: auto;
+    min-width: 2.5rem;
+    height: 2.5rem;
+    padding: 0 0.5rem;
+    font-size: 0.875rem;
   }
 }
 </style>
