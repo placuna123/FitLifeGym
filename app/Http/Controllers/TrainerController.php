@@ -283,6 +283,17 @@ class TrainerController extends Controller
             // Soft delete by archiving
             $trainer->update(['is_archived' => 1]);
 
+            // Close their login too; otherwise a deleted staff member could still sign in.
+            if ($trainer->email) {
+                \App\Models\User::where('gym_id', $trainer->gym_id)
+                    ->where('role', 'Staff')
+                    ->whereRaw('LOWER(email) = ?', [strtolower($trainer->email)])
+                    ->update(['is_archived' => 1]);
+            }
+
+            // Their classes stay on the schedule as "Unassigned (TBA)" until someone takes them.
+            \App\Models\GymClass::where('trainer_id', $trainer->id)->update(['trainer_id' => null]);
+
             \App\Models\AuditLog::record('trainer.deleted', "Deleted trainer {$trainer->full_name}", ['type' => 'Staff', 'id' => $trainer->id]);
 
             return response()->json([
