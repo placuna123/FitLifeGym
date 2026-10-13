@@ -17,18 +17,19 @@ import {
 const pw = usePasswordVisibility();
 
 // Same palette as the Admin / Trainer / Member portals — nothing new introduced.
+// Light cream-and-gold theme that sits on the marble background (the keys keep their old names)
 const portal = {
-  dark: '#1A1A2E',
-  dark2: '#2A2A4A',
-  dark3: '#2C2C4A',
-  sidebar: '#0F0F1A',
-  border: '#3A3A5A',
+  dark: '#FBF8F2',
+  dark2: '#F5EFE3',
+  dark3: '#FFFDF8',
+  sidebar: '#FFFDF8',
+  border: '#E6DBC6',
   purple: '#8A2BE2',
-  purpleLight: '#6A5ACD',
-  pink: '#FF6B6B',
-  cyan: '#00BFFF',
-  lime: '#8DFF00',
-  textDim: '#A0A0A0',
+  purpleLight: '#6A4BC4',
+  pink: '#E0565B',
+  cyan: '#1E88C8',
+  lime: '#5FA82E',
+  textDim: '#75664F',
   primaryText: '#FFFFFF',
 };
 
@@ -907,7 +908,7 @@ onMounted(async () => {
   justify-content: center;
   overflow: hidden;
   padding: 2rem 1rem;
-  color: #ffffff;
+  color: #2b2418;
   font-family: 'Instrument Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
@@ -1150,6 +1151,7 @@ onMounted(async () => {
   border-width: 1px;
   border-style: solid;
   padding: 1.75rem;
+  box-shadow: 0 18px 44px rgba(92, 70, 30, 0.1);
 }
 
 .entry-card--center {
@@ -1227,7 +1229,7 @@ onMounted(async () => {
   padding: 1rem 0.6rem;
   cursor: pointer;
   text-align: center;
-  color: #ffffff;
+  color: #2b2418;
   transition:
     border-color 0.18s ease,
     box-shadow 0.18s ease,
@@ -1285,11 +1287,11 @@ onMounted(async () => {
 .entry-error {
   margin-bottom: 0.85rem;
   border-radius: 0.7rem;
-  border: 1px solid #ef4444;
-  background-color: rgba(127, 29, 29, 0.3);
+  border: 1px solid rgba(224, 86, 91, 0.5);
+  background-color: rgba(224, 86, 91, 0.1);
   padding: 0.7rem 0.85rem;
   font-size: 0.85rem;
-  color: #fca5a5;
+  color: #b42318;
 }
 
 .entry-form {
@@ -1361,7 +1363,7 @@ onMounted(async () => {
   border-style: solid;
   padding: 0.75rem;
   font-size: 0.92rem;
-  color: #ffffff;
+  color: #2b2418;
   outline: none;
 }
 
@@ -1370,7 +1372,7 @@ onMounted(async () => {
 }
 
 .entry-field input::placeholder {
-  color: #6b6b8a;
+  color: #a39478;
 }
 
 .entry-field input:focus,
@@ -1382,10 +1384,10 @@ onMounted(async () => {
 .entry-field input:-webkit-autofill:hover,
 .entry-field input:-webkit-autofill:focus,
 .entry-field input:-webkit-autofill:active {
-  -webkit-text-fill-color: #ffffff;
-  -webkit-box-shadow: 0 0 0px 1000px #2a2a4a inset;
-  box-shadow: 0 0 0px 1000px #2a2a4a inset;
-  caret-color: #ffffff;
+  -webkit-text-fill-color: #2b2418;
+  -webkit-box-shadow: 0 0 0px 1000px #f5efe3 inset;
+  box-shadow: 0 0 0px 1000px #f5efe3 inset;
+  caret-color: #2b2418;
   transition: background-color 5000s ease-in-out 0s;
 }
 

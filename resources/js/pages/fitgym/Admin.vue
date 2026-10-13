@@ -1286,16 +1286,16 @@ function buildAdminDashboardChart() {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: '#A0A0A0' } } },
+      plugins: { legend: { labels: { color: '#75664F' } } },
       scales: {
         y: {
           beginAtZero: true,
-          grid: { color: 'rgba(160,160,160,0.2)' },
-          ticks: { color: '#A0A0A0' },
+          grid: { color: 'rgba(117,102,79,0.15)' },
+          ticks: { color: '#75664F' },
         },
         x: {
           grid: { display: false },
-          ticks: { color: '#A0A0A0' },
+          ticks: { color: '#75664F' },
         },
       },
     } as ChartConfiguration<'bar'>['options'],
@@ -1375,24 +1375,24 @@ function buildAdminReportCharts() {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { labels: { color: '#A0A0A0' } },
+        legend: { labels: { color: '#75664F' } },
       },
       scales: {
         y: {
           beginAtZero: true,
-          grid: { color: 'rgba(160,160,160,0.2)' },
-          ticks: { color: '#A0A0A0' },
+          grid: { color: 'rgba(117,102,79,0.15)' },
+          ticks: { color: '#75664F' },
         },
         x: {
           grid: { display: false },
-          ticks: { color: '#A0A0A0' },
+          ticks: { color: '#75664F' },
         },
       },
     };
     const pieOptions = {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: '#A0A0A0' } } },
+      plugins: { legend: { labels: { color: '#75664F' } } },
     };
 
     if (reportsTab.value === 'overview' && overviewChartCanvas.value) {
@@ -1458,7 +1458,7 @@ function buildAdminReportCharts() {
               label: 'Members',
               data: data.values,
               backgroundColor: ['#8DFF00', '#00BFFF', '#8A2BE2', '#FF6B6B', '#FFD700'],
-              borderColor: '#1A1A2E',
+              borderColor: '#FFFDF8',
               borderWidth: 2,
               hoverOffset: 6,
             },
@@ -1625,7 +1625,7 @@ onUnmounted(() => {
         <aside id="admin-sidebar" class="admin-sidebar fg-sidebar flex w-[18rem] shrink-0 flex-col px-5 py-8" :class="{ 'is-open': mobileNavOpen }">
           <div class="flex items-start justify-between gap-3 pb-6">
             <div class="min-w-0">
-              <h1 class="text-2xl font-bold break-words text-white">{{ gymDisplayName }}</h1>
+              <h1 class="text-2xl font-bold break-words text-[var(--text-primary)]">{{ gymDisplayName }}</h1>
               <p class="mt-1 text-sm text-[var(--text-secondary)]">Admin Portal</p>
             </div>
             <button type="button" class="fg-menu-btn fg-sidebar-close" aria-label="Close navigation menu" @click="closeMobileNav">
@@ -1639,7 +1639,7 @@ onUnmounted(() => {
                 {{ adminInitials }}
               </div>
               <div class="min-w-0">
-                <p class="truncate font-semibold text-white">{{ adminDisplayName }}</p>
+                <p class="truncate font-semibold text-[var(--text-primary)]">{{ adminDisplayName }}</p>
                 <p class="truncate text-xs text-[var(--text-secondary)]">{{ adminRoleLabel }}</p>
               </div>
             </div>
@@ -1681,7 +1681,7 @@ onUnmounted(() => {
               <Menu class="h-5 w-5" aria-hidden="true" />
             </button>
             <div class="min-w-0">
-              <p class="truncate text-base font-bold text-white">{{ gymDisplayName }}</p>
+              <p class="truncate text-base font-bold text-[var(--text-primary)]">{{ gymDisplayName }}</p>
               <p class="truncate text-xs text-[var(--text-secondary)]">Admin Portal</p>
             </div>
           </div>
@@ -1696,7 +1696,7 @@ onUnmounted(() => {
             <div class="relative flex flex-wrap items-center gap-3">
               <div class="admin-header-card rounded-xl border px-4 py-3">
                 <p class="text-xs uppercase tracking-[0.2em] text-[var(--text-secondary)]">Admin</p>
-                <p class="mt-1 text-sm font-semibold break-all text-white">{{ user?.email || 'No email' }}</p>
+                <p class="mt-1 text-sm font-semibold break-all text-[var(--text-primary)]">{{ user?.email || 'No email' }}</p>
               </div>
               <button
                 type="button"
@@ -1719,7 +1719,7 @@ onUnmounted(() => {
                 @click.stop
               >
                 <div class="border-b px-4 py-3">
-                  <h3 class="font-semibold text-white">Notifications</h3>
+                  <h3 class="font-semibold text-[var(--text-primary)]">Notifications</h3>
                 </div>
                 <div class="max-h-72 overflow-y-auto p-3">
                   <template v-if="notificationList.length === 0">
@@ -1733,7 +1733,7 @@ onUnmounted(() => {
                       class="admin-notification-item mb-2 w-full rounded-xl p-3 text-left transition-opacity hover:opacity-90"
                       @click="currentView = 'notifications'; closeNotificationsPanel()"
                     >
-                      <p class="text-sm font-medium text-white">
+                      <p class="text-sm font-medium text-[var(--text-primary)]">
                         {{ String((n as Record<string, unknown>).title || (n as Record<string, unknown>).notification_type || 'Active Notification') }}
                       </p>
                       <p class="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
@@ -2134,9 +2134,9 @@ onUnmounted(() => {
         </div>
 
         <div v-if="showMemberQrScannerModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" @click.self="stopAdminQrScanner(); showMemberQrScannerModal = false">
-          <div class="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-xl bg-[#1f2937] p-5 shadow-2xl sm:p-6" @click.stop>
-            <h3 class="mb-4 text-xl font-bold text-white">Scan Member QR</h3>
-            <p class="mb-4 text-sm text-gray-300">Scan the member portal QR code here to check members in or out automatically.</p>
+          <div class="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-xl bg-[var(--bg-card)] p-5 shadow-2xl sm:p-6" @click.stop>
+            <h3 class="mb-4 text-xl font-bold text-[var(--text-primary)]">Scan Member QR</h3>
+            <p class="mb-4 text-sm text-[var(--text-secondary)]">Scan the member portal QR code here to check members in or out automatically.</p>
             <div class="overflow-hidden rounded-xl border border-gray-700 bg-black">
               <div ref="adminQrVideoRef" class="h-60 w-full sm:h-72" />
             </div>
@@ -2144,13 +2144,13 @@ onUnmounted(() => {
               <button
                 type="button"
                 class="rounded px-4 py-2 font-medium text-black"
-                :class="adminQrScannerActive ? 'bg-red-400' : 'bg-[#A3E635]'"
+                :class="adminQrScannerActive ? 'bg-red-400' : 'bg-[var(--accent-green)]'"
                 :disabled="adminQrScannerBusy"
                 @click="adminQrScannerActive ? stopAdminQrScanner() : startAdminQrScanner()"
               >
                 {{ adminQrScannerActive ? 'Stop Scan' : 'Start Scan' }}
               </button>
-              <button type="button" class="rounded bg-gray-600 px-4 py-2 font-medium text-white hover:bg-gray-500" @click="stopAdminQrScanner(); showMemberQrScannerModal = false">
+              <button type="button" class="rounded bg-[var(--bg-input)] px-4 py-2 font-medium text-[var(--text-primary)] hover:opacity-90" @click="stopAdminQrScanner(); showMemberQrScannerModal = false">
                 Close
               </button>
             </div>
@@ -2158,7 +2158,7 @@ onUnmounted(() => {
             <p v-if="adminQrScannerError" class="mt-2 text-sm text-red-400">{{ adminQrScannerError }}</p>
             <textarea
               v-model="adminQrManualQrPayload"
-              class="mt-4 w-full rounded-lg border border-gray-600 bg-[#111827] px-3 py-2 text-sm text-white"
+              class="mt-4 w-full rounded-lg border border-gray-600 bg-[var(--bg-input)] px-3 py-2 text-sm text-[var(--text-primary)]"
               rows="4"
               placeholder="Paste the member attendance QR payload here if camera scan is unavailable."
             />
@@ -2816,12 +2816,12 @@ onUnmounted(() => {
               <option value="">No plan (other payment)</option>
               <option v-for="p in plansList" :key="String(p.id)" :value="String(p.id)">{{ p.name }} — {{ p.type }}</option>
             </select>
-            <p class="entry-hint" style="margin-top: 4px; color: #9CA3AF;">Approving the payment extends the membership by this plan (Monthly, Quarterly or Annual).</p>
+            <p class="entry-hint" style="margin-top: 4px; color: var(--text-secondary);">Approving the payment extends the membership by this plan (Monthly, Quarterly or Annual).</p>
           </div>
           <div class="form-group">
             <label>Amount</label>
             <input v-model="paymentForm.amount" type="number" class="form-input" placeholder="0" step="0.01" required :readonly="!!paymentForm.membership_plan_id" />
-            <p v-if="paymentForm.membership_plan_id" class="entry-hint" style="margin-top: 4px; color: #9CA3AF;">Set from the plan's price.</p>
+            <p v-if="paymentForm.membership_plan_id" class="entry-hint" style="margin-top: 4px; color: var(--text-secondary);">Set from the plan's price.</p>
           </div>
           <div class="form-group">
             <label>Payment Date</label>
@@ -2837,7 +2837,7 @@ onUnmounted(() => {
               <option>Other</option>
             </select>
           </div>
-          <p class="entry-hint" style="margin-top: -4px; margin-bottom: 8px; color: #9CA3AF;">New payments start as Pending — approve or reject them from the payments list once recorded.</p>
+          <p class="entry-hint" style="margin-top: -4px; margin-bottom: 8px; color: var(--text-secondary);">New payments start as Pending — approve or reject them from the payments list once recorded.</p>
           <p v-if="formError" class="error-message">{{ formError }}</p>
           <div class="modal-actions">
             <button type="button" class="btn-cancel" @click="closeModals">Cancel</button>
@@ -3111,7 +3111,7 @@ onUnmounted(() => {
           <div class="form-group">
             <label>Message</label>
             <textarea v-model="smsMessage" class="form-input" rows="4" maxlength="300" placeholder="Type your message..."></textarea>
-            <p style="font-size: 0.8rem; color: #9CA3AF; margin-top: 4px;">{{ smsMessage.length }}/300</p>
+            <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">{{ smsMessage.length }}/300</p>
           </div>
           <p v-if="formError" class="error-message">{{ formError }}</p>
           <div class="modal-actions">
@@ -3179,19 +3179,20 @@ onUnmounted(() => {
 <style scoped>
 /* Match Blade admin-portal.css (dark theme) */
 .fitgym-admin {
-  --bg-primary: #1A1A2E;
-  --bg-secondary: #0F0F1A;
-  --bg-card: #2C2C4A;
-  --bg-input: #2A2A4A;
-  --text-primary: #FFFFFF;
-  --text-secondary: #A0A0A0;
-  --accent-green: #8DFF00;
-  --accent-blue: #00BFFF;
+  /* Light cream-and-gold theme that sits on the marble background */
+  --bg-primary: #FBF8F2;
+  --bg-secondary: #FFFDF8;
+  --bg-card: #FFFDF8;
+  --bg-input: #F5EFE3;
+  --text-primary: #2B2418;
+  --text-secondary: #75664F;
+  --accent-green: #5FA82E;
+  --accent-blue: #1E88C8;
   --accent-purple: #8A2BE2;
-  --accent-purple-light: #6A5ACD;
-  --accent-pink: #FF6B6B;
-  --accent-yellow: #FFD700;
-  --border-color: #3A3A5A;
+  --accent-purple-light: #6A4BC4;
+  --accent-pink: #E0565B;
+  --accent-yellow: #E2B54A;
+  --border-color: #E6DBC6;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
@@ -3278,7 +3279,7 @@ onUnmounted(() => {
   background: linear-gradient(135deg, var(--accent-purple) 0%, #9b36f3 100%);
   border: 0;
   border-radius: 0.75rem;
-  color: var(--text-primary);
+  color: #fff;
   font-size: 1rem;
   font-weight: 700;
   width: 100%;
@@ -3302,7 +3303,7 @@ onUnmounted(() => {
 
 .admin-sidebar {
   background:
-    linear-gradient(180deg, rgba(138, 43, 226, 0.16) 0%, rgba(15, 15, 26, 0) 100%),
+    linear-gradient(180deg, rgba(226, 181, 74, 0.14) 0%, rgba(255, 253, 248, 0) 60%),
     var(--bg-secondary);
   border-right: 1px solid var(--border-color);
 }
@@ -3315,11 +3316,12 @@ onUnmounted(() => {
 .admin-notification-open {
   background: var(--bg-card);
   border-color: var(--border-color);
+  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
 }
 
 .admin-avatar {
   background: var(--accent-purple);
-  color: var(--text-primary);
+  color: #fff;
 }
 
 .admin-nav-item {
@@ -3329,19 +3331,19 @@ onUnmounted(() => {
 }
 
 .admin-nav-item:hover {
-  background: rgba(42, 42, 74, 0.88);
+  background: rgba(226, 181, 74, 0.14);
   border-color: rgba(106, 90, 205, 0.3);
 }
 
 .admin-nav-item.active {
   background: linear-gradient(135deg, rgba(138, 43, 226, 0.92) 0%, rgba(155, 54, 243, 0.92) 100%);
   box-shadow: 0 14px 28px rgba(138, 43, 226, 0.28);
-  color: var(--text-primary);
+  color: #fff;
 }
 
 .admin-logout-btn {
   background: var(--accent-pink);
-  color: var(--text-primary);
+  color: #fff;
 }
 
 .admin-header {
@@ -3356,7 +3358,7 @@ onUnmounted(() => {
 
 .admin-header-badge {
   background: var(--accent-purple);
-  color: var(--text-primary);
+  color: #fff;
 }
 
 .admin-notification-panel .border-b {
@@ -3373,7 +3375,7 @@ onUnmounted(() => {
 
 .admin-notification-open {
   background: var(--accent-purple);
-  color: var(--text-primary);
+  color: #fff;
 }
 
 .admin-main {
@@ -3587,6 +3589,7 @@ onUnmounted(() => {
 .nav-item:hover {
   background: var(--bg-card);
   color: var(--text-primary);
+  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
 }
 
 .nav-item.active {
@@ -3606,7 +3609,7 @@ onUnmounted(() => {
   gap: 0.625rem;
   padding: 0.75rem 0.9375rem;
   background: var(--accent-pink);
-  color: var(--text-primary);
+  color: #fff;
   border: none;
   border-radius: 0.5rem;
   cursor: pointer;
@@ -3709,6 +3712,7 @@ onUnmounted(() => {
   display: flex;
   gap: 0.625rem;
   align-items: flex-start;
+  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
 }
 
 .metric-icon {
@@ -3783,6 +3787,7 @@ onUnmounted(() => {
   border-radius: 0.75rem;
   overflow-x: auto;
   width: 100%;
+  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
 }
 
 /* Wide tables scroll inside .table-container instead of crushing columns */
@@ -3830,7 +3835,7 @@ onUnmounted(() => {
   justify-content: center;
   font-weight: bold;
   font-size: clamp(0.55rem, 0.9vw, 0.7rem);
-  color: var(--text-primary);
+  color: #fff;
   flex-shrink: 0;
 }
 
@@ -3891,6 +3896,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 0.9375rem;
+  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
 }
 
 .summary-card i {
@@ -3936,6 +3942,7 @@ onUnmounted(() => {
   padding: 1.5625rem;
   border-radius: 0.75rem;
   position: relative;
+  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
 }
 
 .plan-card.deactivated {
@@ -4154,6 +4161,7 @@ onUnmounted(() => {
   background: var(--bg-card);
   padding: 1.5625rem;
   border-radius: 0.75rem;
+  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
 }
 
 .attendance-card p {
@@ -4277,6 +4285,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 1.25rem;
+  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
 }
 
 .current-member-avatar {
@@ -4392,7 +4401,7 @@ onUnmounted(() => {
 }
 
 .report-tab.active {
-  color: var(--text-primary);
+  color: #fff;
   border-bottom-color: var(--accent-purple-light);
   background: var(--accent-purple-light);
 }
@@ -4412,6 +4421,7 @@ onUnmounted(() => {
   background: var(--bg-card);
   padding: 1.5625rem;
   border-radius: 0.75rem;
+  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
 }
 
 .report-card h3 {
@@ -4430,6 +4440,7 @@ onUnmounted(() => {
   background: var(--bg-card);
   border-radius: 0.75rem;
   padding: 1.25rem;
+  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
 }
 
 .reports-chart-card h3 {
@@ -4624,6 +4635,7 @@ onUnmounted(() => {
   padding: 1.25rem;
   border-radius: 0.75rem;
   border-left: 4px solid var(--border-color);
+  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
 }
 
 .notification-card.pink {
@@ -4766,6 +4778,7 @@ onUnmounted(() => {
   padding: 1.875rem;
   border-radius: 0.75rem;
   min-width: 0;
+  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
 }
 
 .settings-content h3 {
@@ -4786,6 +4799,7 @@ onUnmounted(() => {
   background: var(--bg-card);
   padding: 1.5625rem;
   border-radius: 0.75rem;
+  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
 }
 
 .dashboard-card h3 {
@@ -4834,6 +4848,7 @@ onUnmounted(() => {
   border-radius: 0.75rem;
   margin-top: 1.25rem;
   margin-top: 1.25rem;
+  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
 }
 
 .recent-activity h3 {
@@ -4867,7 +4882,7 @@ onUnmounted(() => {
   justify-content: center;
   font-weight: bold;
   font-size: clamp(0.75rem, 1vw, 0.875rem);
-  color: var(--text-primary);
+  color: #fff;
   flex-shrink: 0;
 }
 
@@ -4922,7 +4937,7 @@ onUnmounted(() => {
 
 .settings-nav-item.active {
   background: var(--accent-purple-light);
-  color: var(--text-primary);
+  color: #fff;
 }
 
 .settings-nav-item i {
@@ -5155,6 +5170,7 @@ onUnmounted(() => {
   max-height: 90vh;
   max-height: 90dvh;
   overflow-y: auto;
+  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
 }
 
 .receipt-modal-content {

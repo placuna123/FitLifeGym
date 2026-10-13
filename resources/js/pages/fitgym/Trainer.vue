@@ -275,7 +275,7 @@ function buildDashboardChart() {
             Number(expiringMembers.value.length || 0),
           ],
           backgroundColor: ['#00BFFF', '#8DFF00', '#8A2BE2', '#FF6B6B'],
-          borderColor: '#1A1A2E',
+          borderColor: '#FFFDF8',
           borderWidth: 2,
           hoverOffset: 8,
         },
@@ -284,7 +284,7 @@ function buildDashboardChart() {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: '#d1d5db' } } },
+      plugins: { legend: { labels: { color: '#75664F' } } },
     } as ChartConfiguration<'doughnut'>['options'],
   });
 }
@@ -1056,8 +1056,8 @@ function buildReportsCharts() {
   if (currentView.value !== 'reports') return;
   destroyReportCharts();
   nextTick(() => {
-    const commonOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#d1d5db' } } }, scales: { y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.1)' }, ticks: { color: '#d1d5db' } }, x: { grid: { display: false }, ticks: { color: '#d1d5db' } } } };
-    const doughnutPieOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#d1d5db' } } } };
+    const commonOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#75664F' } } }, scales: { y: { beginAtZero: true, grid: { color: 'rgba(117,102,79,0.15)' }, ticks: { color: '#75664F' } }, x: { grid: { display: false }, ticks: { color: '#75664F' } } } };
+    const doughnutPieOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#75664F' } } } };
     if (reportsTab.value === 'overview' && weeklyChartCanvas.value) {
       const w = weeklyActivityData.value;
       reportCharts.value.weekly = new Chart(weeklyChartCanvas.value, {
@@ -2387,19 +2387,20 @@ onUnmounted(() => {
 
 <style>
 .trainer-portal {
-  --bg-primary: #1A1A2E;
-  --bg-secondary: #0F0F1A;
-  --bg-card: #2C2C4A;
-  --bg-input: #2A2A4A;
-  --text-primary: #FFFFFF;
-  --text-secondary: #A0A0A0;
-  --border-color: #3A3A5A;
-  --accent-green: #8dff00;
-  --accent-blue: #00bfff;
+  /* Light cream-and-gold theme that sits on the marble background */
+  --bg-primary: #FBF8F2;
+  --bg-secondary: #FFFDF8;
+  --bg-card: #FFFDF8;
+  --bg-input: #F5EFE3;
+  --text-primary: #2B2418;
+  --text-secondary: #75664F;
+  --border-color: #E6DBC6;
+  --accent-green: #5FA82E;
+  --accent-blue: #1E88C8;
   --accent-purple: #8A2BE2;
-  --accent-purple-light: #6A5ACD;
-  --accent-pink: #ff6b6b;
-  --accent-yellow: #ffd700;
+  --accent-purple-light: #6A4BC4;
+  --accent-pink: #E0565B;
+  --accent-yellow: #E2B54A;
   /* the page background is the shared .fg-marble-bg */
 }
 
@@ -2459,13 +2460,13 @@ onUnmounted(() => {
   background: rgba(255, 107, 107, 0.12);
   border: 1px solid rgba(255, 107, 107, 0.3);
   border-radius: 0.75rem;
-  color: #fecaca;
+  color: #b42318;
   padding: 0.75rem 0.9rem;
 }
 
 .trainer-auth-primary {
   background: linear-gradient(135deg, var(--accent-purple) 0%, #9b36f3 100%);
-  color: var(--text-primary);
+  color: #fff;
 }
 
 .trainer-auth-primary:hover:not(:disabled) {
@@ -2486,7 +2487,7 @@ onUnmounted(() => {
 
 .trainer-sidebar {
   background:
-    linear-gradient(180deg, rgba(138, 43, 226, 0.16) 0%, rgba(15, 15, 26, 0) 100%),
+    linear-gradient(180deg, rgba(226, 181, 74, 0.14) 0%, rgba(255, 253, 248, 0) 60%),
     var(--bg-secondary) !important;
   border-right: 1px solid var(--border-color);
 }
@@ -2494,12 +2495,13 @@ onUnmounted(() => {
 .trainer-profile-card,
 .trainer-header-card {
   background: var(--bg-card);
+  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
   border-color: var(--border-color);
 }
 
 .trainer-avatar {
   background: var(--accent-purple);
-  color: var(--text-primary);
+  color: #fff;
 }
 
 .trainer-nav-item {
@@ -2509,19 +2511,19 @@ onUnmounted(() => {
 }
 
 .trainer-nav-item:hover {
-  background: rgba(42, 42, 74, 0.88);
+  background: rgba(226, 181, 74, 0.14);
   border-color: rgba(106, 90, 205, 0.3);
 }
 
 .trainer-nav-item.active {
   background: linear-gradient(135deg, rgba(138, 43, 226, 0.92) 0%, rgba(155, 54, 243, 0.92) 100%);
   box-shadow: 0 14px 28px rgba(138, 43, 226, 0.28);
-  color: var(--text-primary);
+  color: #fff;
 }
 
 .trainer-logout-btn {
   background: var(--accent-pink);
-  color: var(--text-primary);
+  color: #fff;
 }
 
 .trainer-header {
@@ -2550,6 +2552,12 @@ onUnmounted(() => {
   background: var(--bg-card) !important;
 }
 
+/* light cards get a hairline ring and soft shadow so they stand off the marble */
+.trainer-portal .bg-\[\#2A3042\].rounded-lg,
+.trainer-portal .bg-\[\#2A3042\].rounded-xl {
+  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
+}
+
 .trainer-portal .text-gray-300,
 .trainer-portal .text-gray-400,
 .trainer-portal .text-gray-500 {
@@ -2557,7 +2565,9 @@ onUnmounted(() => {
 }
 
 .trainer-portal .border-gray-600,
-.trainer-portal .border-gray-700 {
+.trainer-portal .border-gray-700,
+.trainer-portal .border-gray-800\/70,
+.trainer-portal .divide-gray-700 > * + * {
   border-color: var(--border-color) !important;
 }
 
@@ -2711,6 +2721,12 @@ onUnmounted(() => {
 
 .trainer-portal .text-white {
   color: var(--text-primary) !important;
+}
+
+/* white text stays white on colored buttons, badges and avatars */
+.trainer-portal :is(.bg-purple-600, .bg-blue-500, .bg-blue-600, .bg-red-400, .bg-red-500, .bg-red-600, .bg-red-700, .bg-green-600, .bg-gray-300, .trainer-nav-item.active, .nav-item.bg-purple-600).text-white,
+.trainer-portal :is(.bg-purple-600, .bg-blue-500, .bg-blue-600, .bg-red-600, .bg-red-700, .trainer-nav-item.active) .text-white {
+  color: #fff !important;
 }
 
 .trainer-portal input,

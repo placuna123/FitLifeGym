@@ -184,10 +184,10 @@
     justify-content: center;
     width: 2.75rem;
     height: 2.75rem;
-    border: 1px solid #3a3a5a;
+    border: 1px solid #e6dbc6;
     border-radius: 0.75rem;
-    background: #2c2c4a;
-    color: #ffffff;
+    background: #fffdf8;
+    color: #2b2418;
     cursor: pointer;
 }
 
@@ -211,8 +211,8 @@
         align-items: center;
         gap: 0.75rem;
         padding: 0.75rem 1rem;
-        border-bottom: 1px solid #3a3a5a;
-        background: rgba(15, 15, 26, 0.92);
+        border-bottom: 1px solid #e6dbc6;
+        background: rgba(255, 253, 248, 0.92);
         backdrop-filter: blur(10px);
     }
 
@@ -246,7 +246,7 @@
         inset: 0;
         z-index: 55;
         display: block;
-        background: rgba(5, 5, 15, 0.6);
+        background: rgba(43, 36, 24, 0.45);
     }
 }
 
@@ -289,13 +289,13 @@
     justify-content: center;
     border: 0;
     background: transparent;
-    color: #a0a0a0;
+    color: #8a7a60;
     cursor: pointer;
 }
 
 .fg-password-toggle:hover,
 .fg-password-toggle:focus-visible {
-    color: #ffffff;
+    color: #2b2418;
 }
 
 /* Soft cream-and-gold marble backdrop behind every FitGym page. Only the page background
