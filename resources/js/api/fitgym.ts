@@ -68,6 +68,7 @@ export const reports = {
     quarterly: () => api.get('/reports/quarterly'),
     breakdown: () => api.get('/reports/breakdown'),
     exportCsv: () => api.get('/reports/export-csv', { responseType: 'blob' }),
+    exportExcel: () => api.get('/reports/export-excel', { responseType: 'blob' }),
 };
 
 export const trainer = {
@@ -213,4 +214,14 @@ export const platformAnalytics = {
 
 export const platformAuditLogs = {
     list: (params?: { gym_id?: string | number; action?: string }) => api.get('/platform/audit-logs', { params }),
+};
+
+/** Profile photo of the signed-in account (any role). */
+export const profilePhoto = {
+    upload: (file: File) => {
+        const form = new FormData();
+        form.append('photo', file);
+        return api.post('/profile/photo', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+    },
+    remove: () => api.delete('/profile/photo'),
 };

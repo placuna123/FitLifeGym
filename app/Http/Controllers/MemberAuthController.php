@@ -155,6 +155,7 @@ class MemberAuthController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'role' => $user->role,
+                'photo_url' => $user->profilePhotoUrl(),
             ],
             'member' => [
                 'id' => $member->id,
@@ -292,6 +293,7 @@ class MemberAuthController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'role' => $user->role,
+                'photo_url' => $user->profilePhotoUrl(),
             ],
             'member' => [
                 'id' => $member->id,

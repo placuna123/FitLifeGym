@@ -17,6 +17,7 @@ import {
 } from '@/api/fitgym';
 import { Chart, type ChartConfiguration } from 'chart.js/auto';
 import PasswordToggle from '@/components/PasswordToggle.vue';
+import ProfilePhotoPicker from '@/components/ProfilePhotoPicker.vue';
 import { useMobileNav } from '@/composables/useMobileNav';
 import { usePasswordVisibility } from '@/composables/usePasswordVisibility';
 import { useQrCheckinScanner } from '@/composables/useQrCheckinScanner';
@@ -42,7 +43,14 @@ async function loadGymInfo() {
   }
 }
 const loginError = ref('');
-const user = ref<{ name: string; email: string } | null>(null);
+const user = ref<{ name: string; email: string; photo_url?: string | null } | null>(null);
+/** The signed-in staff member's profile photo; the Profile picker writes it back so the sidebar updates too. */
+const userPhotoUrl = computed<string | null>({
+  get: () => user.value?.photo_url ?? null,
+  set: (url) => {
+    if (user.value) user.value = { ...user.value, photo_url: url };
+  },
+});
 
 const loginForm = ref({
   email: '',
@@ -1467,8 +1475,9 @@ onUnmounted(() => {
 
           <div class="trainer-profile-card rounded-2xl border p-4">
             <div class="flex items-center gap-3">
-              <div class="trainer-avatar flex h-12 w-12 items-center justify-center rounded-2xl text-lg font-bold">
-                {{ trainerInitials }}
+              <div class="trainer-avatar flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl text-lg font-bold">
+                <img v-if="userPhotoUrl" :src="userPhotoUrl" alt="" class="h-full w-full object-cover" />
+                <template v-else>{{ trainerInitials }}</template>
               </div>
               <div class="min-w-0">
                 <p class="truncate font-semibold text-white">{{ trainerDisplayName }}</p>
@@ -2001,9 +2010,7 @@ onUnmounted(() => {
             <div class="rounded-lg bg-[#2A3042] p-5 shadow sm:p-8">
               <div class="grid grid-cols-1 gap-8 md:grid-cols-3">
                 <div class="flex flex-col items-center text-center md:col-span-1">
-                  <div class="mb-4 flex h-32 w-32 items-center justify-center rounded-full bg-purple-600 text-4xl font-bold text-white">
-                    {{ profileTrainer ? String((profileTrainer as Record<string, unknown>).full_name || '').slice(0, 2).toUpperCase() : '-' }}
-                  </div>
+                  <ProfilePhotoPicker v-model:photo-url="userPhotoUrl" :initials="trainerInitials" class="mb-4" />
                   <h4 class="text-xl font-bold text-white">{{ profileForm.full_name || '-' }}</h4>
                   <p class="text-gray-400">{{ (profileTrainer as Record<string, unknown>)?.role || 'Staff' }}</p>
                 </div>

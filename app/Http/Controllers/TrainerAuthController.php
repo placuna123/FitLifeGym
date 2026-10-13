@@ -66,6 +66,7 @@ class TrainerAuthController extends Controller
                     'name' => $user->name,
                     'email' => $user->email,
                     'role' => $user->role ?? 'Staff',
+                    'photo_url' => $user->profilePhotoUrl(),
                 ]
             ]);
         }
@@ -96,6 +97,7 @@ class TrainerAuthController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'role' => $user->role ?? 'Staff',
+                'photo_url' => $user->profilePhotoUrl(),
             ]
         ]);
     }

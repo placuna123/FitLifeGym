@@ -4,6 +4,7 @@ import { Menu, X } from 'lucide-vue-next';
 import { ref, onMounted, onUnmounted, watch, computed } from 'vue';
 import { memberAuth, memberAttendance, membershipPlans, memberPayments, memberNotifications, memberClasses, memberProgress, gymInfo } from '@/api/fitgym';
 import PasswordToggle from '@/components/PasswordToggle.vue';
+import ProfilePhotoPicker from '@/components/ProfilePhotoPicker.vue';
 import { useMobileNav } from '@/composables/useMobileNav';
 import { usePasswordVisibility } from '@/composables/usePasswordVisibility';
 import { useSessionGuard } from '@/composables/useSessionGuard';
@@ -63,7 +64,14 @@ async function loadGymInfo() {
   }
 }
 
-const user = ref<{ name: string; email: string } | null>(null);
+const user = ref<{ name: string; email: string; photo_url?: string | null } | null>(null);
+/** The signed-in member's profile photo; the Profile picker writes it back so the sidebar updates too. */
+const userPhotoUrl = computed<string | null>({
+  get: () => user.value?.photo_url ?? null,
+  set: (url) => {
+    if (user.value) user.value = { ...user.value, photo_url: url };
+  },
+});
 const member = ref<{
   id?: number;
   full_name?: string;
@@ -970,8 +978,9 @@ onUnmounted(() => {
 
           <div class="rounded-2xl border p-4" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }">
             <div class="flex items-center gap-3">
-              <div class="flex h-12 w-12 items-center justify-center rounded-2xl text-lg font-bold" :style="{ backgroundColor: portal.purple, color: portal.primaryText }">
-                {{ profileInitials() }}
+              <div class="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl text-lg font-bold" :style="{ backgroundColor: portal.purple, color: portal.primaryText }">
+                <img v-if="userPhotoUrl" :src="userPhotoUrl" alt="" class="h-full w-full object-cover" />
+                <template v-else>{{ profileInitials() }}</template>
               </div>
               <div class="min-w-0">
                 <p class="truncate font-semibold text-[var(--fg-card-ink)]">{{ memberDisplayName }}</p>
@@ -1646,9 +1655,7 @@ onUnmounted(() => {
             <div class="rounded-xl border p-4 sm:p-6" :style="{ backgroundColor: portal.dark3, borderColor: portal.border }">
               <h2 class="mb-4 text-xl font-bold text-[var(--fg-card-ink)]">Personal Information</h2>
               <div class="flex flex-col items-center text-center">
-                <div class="mb-3 flex h-24 w-24 items-center justify-center rounded-full text-4xl font-bold" :style="{ backgroundColor: portal.purple, color: portal.primaryText }">
-                  {{ profileInitials() }}
-                </div>
+                <ProfilePhotoPicker v-model:photo-url="userPhotoUrl" :initials="profileInitials()" class="mb-3" />
                 <p class="text-2xl font-bold text-[var(--fg-card-ink)]">{{ profileData.name || 'Member' }}</p>
                 <p class="text-sm" :style="{ color: portal.textDim }">{{ member?.membership_plan || 'Member' }}</p>
               </div>

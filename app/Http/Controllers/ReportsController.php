@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use App\Models\Gym;
 use App\Models\Member;
 use App\Models\MembershipPlan;
+use App\Support\GymReportWorkbook;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
@@ -750,91 +752,15 @@ class ReportsController extends Controller
     }
     
     /**
-     * Export Excel File
+     * Download the branch report as a real Excel (.xlsx) workbook.
      */
     public function exportExcel()
     {
-        try {
-            // Get all data
-            $members = Member::where('is_archived', 0)
-                ->with('membershipPlan')
-                ->get();
-            
-            $plans = MembershipPlan::where('is_archived', 0)->get();
-            
-            // Calculate revenue
-            $totalRevenue = Member::where('members.is_archived', 0)
-                ->where('members.payment_status', 'Paid')
-                ->join('membership_plans', 'members.membership_plan_id', '=', 'membership_plans.id')
-                ->where('membership_plans.is_archived', 0)
-                ->sum(DB::raw('membership_plans.price'));
-            
-            // Generate Excel-like CSV (for simplicity, using CSV format)
-            // For production, use PhpSpreadsheet library
-            $csv = "FitLife Gym - Excel Report\n";
-            $csv .= "Generated: " . Carbon::now()->format('Y-m-d H:i:s') . "\n\n";
-            
-            // Summary Sheet
-            $csv .= "=== SUMMARY ===\n";
-            $csv .= "Total Revenue,₱" . number_format($totalRevenue, 2) . "\n";
-            $csv .= "Total Members," . $members->count() . "\n";
-            $csv .= "Active Members," . $members->where('status', 'Active')->count() . "\n\n";
-            
-            // Plans Sheet
-            $csv .= "=== PLANS ===\n";
-            $csv .= "Name,Type,Price,Period,Member Count\n";
-            foreach ($plans as $plan) {
-                $memberCount = $members->where('membership_plan_id', $plan->id)->count();
-                $csv .= sprintf(
-                    '"%s","%s",₱%s,"%s",%d' . "\n",
-                    $plan->name,
-                    $plan->type,
-                    number_format($plan->price, 2),
-                    $plan->period,
-                    $memberCount
-                );
-            }
-            $csv .= "\n";
-            
-            // Members Sheet
-            $csv .= "=== MEMBERS ===\n";
-            $csv .= "Member ID,Full Name,Email,Phone,Plan,Status,Expiry Date,Payment Status\n";
-            foreach ($members as $member) {
-                $csv .= sprintf(
-                    '"%s","%s","%s","%s","%s","%s","%s","%s"' . "\n",
-                    $member->member_id,
-                    $member->full_name,
-                    $member->email,
-                    $member->phone,
-                    $member->membershipPlan ? $member->membershipPlan->name : 'N/A',
-                    $member->status,
-                    $member->expiry_date ? $member->expiry_date->format('Y-m-d') : 'N/A',
-                    $member->payment_status
-                );
-            }
-            
-            // Return as Excel MIME type (CSV format for compatibility)
-            return response($csv, 200)
-                ->header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-                ->header('Content-Disposition', 'attachment; filename="FitLife_Gym_Report_' . date('Y-m-d') . '.xlsx"')
-                ->header('X-Content-Type-Options', 'nosniff');
-        } catch (\Exception $e) {
-            // Return error as JSON
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to export Excel: ' . $e->getMessage()
-            ], 500)
-                ->header('Content-Type', 'application/json');
-        }
+        $gym = Gym::forCurrentUser();
+        $path = GymReportWorkbook::build($gym);
+
+        return response()->download($path, GymReportWorkbook::filename($gym), [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ])->deleteFileAfterSend();
     }
 }
-
-
-
-
-
-
-
-
-
-

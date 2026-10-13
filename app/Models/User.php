@@ -55,4 +55,14 @@ class User extends Authenticatable
             'is_archived' => 'boolean',
         ];
     }
+
+    /**
+     * URL of the uploaded profile photo, or null when there is none. Host-relative on
+     * purpose: APP_URL may name another host (e.g. http://localhost while the app is
+     * opened at 127.0.0.1:8000), and an absolute URL built from it would not load.
+     */
+    public function profilePhotoUrl(): ?string
+    {
+        return $this->profile_photo_path ? '/storage/'.ltrim($this->profile_photo_path, '/') : null;
+    }
 }

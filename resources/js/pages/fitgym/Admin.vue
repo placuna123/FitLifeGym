@@ -17,6 +17,7 @@ import {
   gymClasses,
 } from '@/api/fitgym';
 import PasswordToggle from '@/components/PasswordToggle.vue';
+import ProfilePhotoPicker from '@/components/ProfilePhotoPicker.vue';
 import { useMobileNav } from '@/composables/useMobileNav';
 import { usePasswordVisibility } from '@/composables/usePasswordVisibility';
 import { useQrCheckinScanner } from '@/composables/useQrCheckinScanner';
@@ -28,7 +29,14 @@ const currentView = ref('dashboard');
 const { mobileNavOpen, closeMobileNav } = useMobileNav();
 const pw = usePasswordVisibility();
 let adminPortalRefreshTimer: number | null = null;
-const user = ref<{ id: number; name: string; email: string; role: string } | null>(null);
+const user = ref<{ id: number; name: string; email: string; role: string; photo_url?: string | null } | null>(null);
+/** The signed-in admin's profile photo; the Settings picker writes it back so the sidebar updates too. */
+const userPhotoUrl = computed<string | null>({
+  get: () => user.value?.photo_url ?? null,
+  set: (url) => {
+    if (user.value) user.value = { ...user.value, photo_url: url };
+  },
+});
 const loading = ref(true);
 const loginLoading = ref(false);
 const loginError = ref('');
@@ -1127,18 +1135,29 @@ function onGcashQrSelected(event: Event) {
   gcashQrFile.value = input?.files?.[0] ?? null;
 }
 
-async function exportAttendanceReport() {
+const excelDownloading = ref(false);
+const excelError = ref('');
+
+/** Downloads the branch report (summary, members, payments, attendance, plans) as an .xlsx file. */
+async function downloadExcelReport() {
+  if (excelDownloading.value) return;
+  excelDownloading.value = true;
+  excelError.value = '';
   try {
-    const { data } = await reports.exportCsv();
-    const blob = data as Blob;
-    const url = URL.createObjectURL(blob);
+    const response = await reports.exportExcel();
+    const disposition = String(response.headers?.['content-disposition'] || '');
+    const fromServer = /filename="?([^";]+)"?/i.exec(disposition)?.[1];
+    const slug = gymDisplayName.value.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'FitGym';
+    const url = URL.createObjectURL(response.data as Blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `FitLife_Gym_Report_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = fromServer || `${slug}_Report_${new Date().toISOString().slice(0, 10)}.xlsx`;
     a.click();
     URL.revokeObjectURL(url);
   } catch {
-    formError.value = 'Export failed. Try again.';
+    excelError.value = 'Could not download the Excel report. Try again.';
+  } finally {
+    excelDownloading.value = false;
   }
 }
 
@@ -1635,8 +1654,9 @@ onUnmounted(() => {
 
           <div class="admin-profile-card rounded-2xl border p-4">
             <div class="flex items-center gap-3">
-              <div class="admin-avatar flex h-12 w-12 items-center justify-center rounded-2xl text-lg font-bold">
-                {{ adminInitials }}
+              <div class="admin-avatar flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl text-lg font-bold">
+                <img v-if="userPhotoUrl" :src="userPhotoUrl" alt="" class="h-full w-full object-cover" />
+                <template v-else>{{ adminInitials }}</template>
               </div>
               <div class="min-w-0">
                 <p class="truncate font-semibold text-[var(--text-primary)]">{{ adminDisplayName }}</p>
@@ -2042,7 +2062,7 @@ onUnmounted(() => {
                 <i class="fas fa-qrcode"></i>
                 <span>Scan Member QR</span>
               </button>
-              <button type="button" class="btn-export" @click="exportAttendanceReport">
+              <button type="button" class="btn-export" :disabled="excelDownloading" @click="downloadExcelReport">
                 <i class="fas fa-download"></i>
                 <span>Export Report</span>
               </button>
@@ -2262,10 +2282,17 @@ onUnmounted(() => {
         <div v-if="currentView === 'reports'" class="view active">
           <div class="page-header">
             <h2>Reports</h2>
-            <button type="button" class="btn-refresh-plans" style="padding: 0.5rem 0.75rem; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 0.5rem; color: var(--text-primary); cursor: pointer; font-size: 0.875rem;" title="Refresh reports (same data as Blade when same DB)" @click="loadReportsData">
-              <i class="fas fa-sync-alt"></i> Refresh
-            </button>
+            <div class="reports-actions">
+              <button type="button" class="btn-export" :disabled="excelDownloading" @click="downloadExcelReport">
+                <i class="fas fa-file-excel"></i>
+                <span>{{ excelDownloading ? 'Preparing…' : 'Download Excel' }}</span>
+              </button>
+              <button type="button" class="btn-refresh-plans" style="padding: 0.5rem 0.75rem; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 0.5rem; color: var(--text-primary); cursor: pointer; font-size: 0.875rem;" title="Refresh reports (same data as Blade when same DB)" @click="loadReportsData">
+                <i class="fas fa-sync-alt"></i> Refresh
+              </button>
+            </div>
           </div>
+          <p v-if="excelError" class="notification-inline-error">{{ excelError }}</p>
           <div class="reports-tabs">
             <button type="button" :class="['report-tab', { active: reportsTab === 'overview' }]" @click="reportsTab = 'overview'">Overview</button>
             <button type="button" :class="['report-tab', { active: reportsTab === 'attendance' }]" @click="reportsTab = 'attendance'">Attendance</button>
@@ -2553,6 +2580,7 @@ onUnmounted(() => {
             <div class="settings-content">
               <div v-show="settingsTab === 'profile'" class="settings-tab-content">
                 <h3>Admin Profile</h3>
+                <ProfilePhotoPicker v-model:photo-url="userPhotoUrl" :initials="adminInitials" class="mb-6" />
                 <div class="settings-form">
                   <div class="form-group">
                     <label>Full Name</label>
@@ -4381,7 +4409,19 @@ onUnmounted(() => {
   gap: 0.5rem;
 }
 
+.btn-export:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
 /* Reports */
+.reports-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
 .reports-tabs {
   display: flex;
   gap: 0;

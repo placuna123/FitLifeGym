@@ -46,6 +46,10 @@ Route::get('api/admin/profile', [App\Http\Controllers\AdminAuthController::class
 Route::put('api/admin/profile', [App\Http\Controllers\AdminAuthController::class, 'updateProfile'])->middleware(['auth', 'tenant', 'role:Admin'])->name('admin.update-profile');
 Route::post('api/admin/change-password', [App\Http\Controllers\AdminAuthController::class, 'changePassword'])->middleware(['auth', 'tenant', 'role:Admin'])->name('admin.change-password');
 
+// Profile photo for the signed-in account (Admin, Staff, Member or Super Admin)
+Route::post('api/profile/photo', [App\Http\Controllers\ProfilePhotoController::class, 'store'])->middleware('auth')->name('profile.photo.store');
+Route::delete('api/profile/photo', [App\Http\Controllers\ProfilePhotoController::class, 'destroy'])->middleware('auth')->name('profile.photo.destroy');
+
 // Admin notifications
 Route::get('api/admin/notifications', [App\Http\Controllers\AdminNotificationController::class, 'index'])
     ->middleware(['auth', 'tenant', 'role:Admin'])

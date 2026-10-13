@@ -89,6 +89,7 @@ class PlatformAuthController extends Controller
                     'name' => $user->name,
                     'email' => $user->email,
                     'role' => $user->role,
+                    'photo_url' => $user->profilePhotoUrl(),
                 ]
             ]);
         }
@@ -117,6 +118,7 @@ class PlatformAuthController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'role' => $user->role,
+                'photo_url' => $user->profilePhotoUrl(),
             ]
         ]);
     }

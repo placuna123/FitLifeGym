@@ -328,3 +328,56 @@
     --fg-card-ink-soft: #a8a196;
     --fg-card-gold: #d9b45a;
 }
+
+/* Black-and-white smoky marble on every box (cards, tables, sidebars, modals, forms).
+   Only the image is added: each box keeps its own color underneath, its size and layout.
+   !important beats the pages' scoped `background:` shorthands, which would reset it. */
+.fg-marble-bg :is(
+    .admin-sidebar, .admin-profile-card, .admin-header-card, .admin-header-button, .admin-notification-panel,
+    .metric-card, .table-container, .summary-card, .plan-card, .attendance-card, .current-member-card,
+    .report-card, .reports-chart-card, .notification-card, .settings-content, .dashboard-card, .recent-activity,
+    .modal-content,
+    .trainer-sidebar, .trainer-profile-card, .trainer-header-card,
+    .member-sidebar,
+    .stat-card, .modal-card,
+    .entry-card, .fg-auth-card
+),
+.fg-marble-bg.trainer-portal :is(.bg-\[\#2A3042\].rounded-lg, .bg-\[\#2A3042\].rounded-xl),
+.member-portal main .rounded-xl.border,
+.member-portal header .rounded-xl.border,
+.member-portal .fixed .rounded-xl,
+.platform-shell .login-card {
+    background-image:
+        linear-gradient(rgba(10, 10, 10, 0.35), rgba(10, 10, 10, 0.35)),
+        url('../images/fitgym-box-marble.jpg') !important;
+    background-size: cover !important;
+    background-position: center !important;
+}
+
+/* Gold marks whatever is selected or being pressed: the open page in the menu,
+   the active tab, and any button while it is clicked. */
+.fg-marble-bg :is(.admin-nav-item.active, .trainer-nav-item.active, .member-nav-item.active, .report-tab.active, .settings-nav-item.active) {
+    background: linear-gradient(135deg, #f0d48a 0%, #d9b45a 55%, #b8923a 100%) !important;
+    border-color: #f0d48a !important;
+    box-shadow: 0 10px 26px rgba(217, 180, 90, 0.35) !important;
+    color: #151515 !important;
+}
+
+.fg-marble-bg :is(.admin-nav-item.active, .trainer-nav-item.active, .member-nav-item.active, .report-tab.active, .settings-nav-item.active) * {
+    color: #151515 !important;
+}
+
+.fg-marble-bg :is(.admin-nav-item, .trainer-nav-item, .member-nav-item):not(.active):hover {
+    border-color: rgba(217, 180, 90, 0.45) !important;
+    background: rgba(217, 180, 90, 0.12) !important;
+}
+
+.fg-marble-bg :is(button, a, [role='button']):not(:disabled):active {
+    box-shadow: 0 0 0 2px #d9b45a, 0 0 22px rgba(217, 180, 90, 0.6) !important;
+}
+
+/* The chosen role card on the sign-in page is gold too. */
+.fg-marble-bg .entry-role.entry-role--active {
+    border-color: #d9b45a !important;
+    box-shadow: 0 0 0 1px #d9b45a, 0 10px 26px rgba(217, 180, 90, 0.35) !important;
+}

@@ -58,6 +58,7 @@ class AdminAuthController extends Controller
                     'name' => $user->name,
                     'email' => $user->email,
                     'role' => $user->role ?? 'Admin',
+                    'photo_url' => $user->profilePhotoUrl(),
                 ]
             ]);
         }
@@ -96,6 +97,7 @@ class AdminAuthController extends Controller
                     'name' => $user->name,
                     'email' => $user->email,
                     'role' => $user->role ?? 'Admin',
+                    'photo_url' => $user->profilePhotoUrl(),
                 ]
             ]);
         }
@@ -118,6 +120,7 @@ class AdminAuthController extends Controller
                 'phone' => $user->phone ?? '',
                 'address' => $user->address ?? '',
                 'role' => $user->role ?? 'Admin',
+                'photo_url' => $user->profilePhotoUrl(),
             ]
         ]);
     }
@@ -156,6 +159,7 @@ class AdminAuthController extends Controller
                 'phone' => $user->phone ?? '',
                 'address' => $user->address ?? '',
                 'role' => $user->role ?? 'Admin',
+                'photo_url' => $user->profilePhotoUrl(),
             ]
         ]);
     }
