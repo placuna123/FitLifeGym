@@ -2166,7 +2166,7 @@ onUnmounted(() => {
                   <h4 class="text-xl font-bold text-white">{{ profileForm.full_name || '-' }}</h4>
                   <p class="text-gray-400">{{ (profileTrainer as Record<string, unknown>)?.role || 'Staff' }}</p>
                 </div>
-                <div class="md:col-span-2">
+                <div class="trainer-profile-form md:col-span-2">
                   <h4 class="mb-4 border-b border-gray-700 pb-2 text-lg font-semibold text-white">Personal Information</h4>
                   <div class="space-y-4">
                     <div>
