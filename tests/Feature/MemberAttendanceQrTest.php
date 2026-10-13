@@ -189,6 +189,56 @@ class MemberAttendanceQrTest extends TestCase
     /**
      * @return array{user: User, member: Member}
      */
+    public function test_staff_can_check_a_member_in_and_out_by_hand(): void
+    {
+        ['member' => $member] = $this->createMemberAccount();
+        $staff = User::factory()->create(['role' => 'Staff', 'gym_id' => $this->gym->id]);
+
+        $this->actingAs($staff)->postJson(route('trainer.attendance.checkin'), ['member_id' => $member->id])->assertOk();
+        $visit = DB::table('attendance')->where('member_id', $member->id)->first();
+        $this->assertNull($visit->check_out_time);
+
+        $this->actingAs($staff)->postJson(route('trainer.attendance.checkout'), ['attendance_id' => $visit->id])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+        $this->assertNotNull(DB::table('attendance')->where('id', $visit->id)->value('check_out_time'));
+
+        // already out: a second check-out is refused, and a new check-in works again
+        $this->actingAs($staff)->postJson(route('trainer.attendance.checkout'), ['attendance_id' => $visit->id])->assertNotFound();
+        $this->actingAs($staff)->postJson(route('trainer.attendance.checkin'), ['member_id' => $member->id])->assertOk();
+    }
+
+    public function test_staff_cannot_check_out_a_visit_from_another_branch(): void
+    {
+        ['member' => $member] = $this->createMemberAccount();
+        $otherGym = Gym::create(['name' => 'Gym B', 'slug' => 'gym-b']);
+        $otherStaff = User::factory()->create(['role' => 'Staff', 'gym_id' => $otherGym->id]);
+        $visitId = DB::table('attendance')->insertGetId([
+            'gym_id' => $this->gym->id, 'member_id' => $member->id, 'check_in_time' => now(), 'is_archived' => 0,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $this->actingAs($otherStaff)->postJson(route('trainer.attendance.checkout'), ['attendance_id' => $visitId])->assertNotFound();
+        $this->assertNull(DB::table('attendance')->where('id', $visitId)->value('check_out_time'));
+    }
+
+    public function test_attendance_report_counts_real_check_ins(): void
+    {
+        ['member' => $member] = $this->createMemberAccount();
+        $staff = User::factory()->create(['role' => 'Staff', 'gym_id' => $this->gym->id]);
+        $visit = fn ($at) => DB::table('attendance')->insert([
+            'gym_id' => $this->gym->id, 'member_id' => $member->id, 'check_in_time' => $at, 'check_out_time' => $at,
+            'is_archived' => 0, 'created_at' => $at, 'updated_at' => $at,
+        ]);
+        $visit(now());
+        $visit(now()->subDays(40));
+
+        $response = $this->actingAs($staff)->getJson(route('reports.attendance'))->assertOk();
+
+        $response->assertJsonPath('today_checkins', 1)->assertJsonPath('total_checkins', 2);
+        $this->assertSame(1, collect($response->json('daily_stats'))->sum('count'));
+    }
+
     private function createMemberAccount(array $userOverrides = []): array
     {
         $plan = MembershipPlan::create([

@@ -286,7 +286,7 @@ function buildDashboardChart() {
       datasets: [
         {
           data: [
-            Number(recentCheckins.value.length || 0),
+            trainerCheckinsToday.value,
             Number(currentlyInGym.value.length || 0),
             Number(reportAttendance.value?.active_members ?? 0),
             Number(expiringMembers.value.length || 0),
@@ -467,6 +467,28 @@ async function submitCheckin(scannedMemberId?: number) {
     formError.value = ax.response?.data?.message || 'Check-in failed.';
   } finally {
     formLoading.value = false;
+  }
+}
+
+const checkingOutId = ref<number | null>(null);
+const attendanceError = ref('');
+
+/** Checks a member out by hand from the "Inside the Gym Now" list. */
+async function checkOutVisit(visit: Record<string, unknown>) {
+  const id = Number(visit.id);
+  if (!id || checkingOutId.value) return;
+  if (!confirm(`Check out ${visit.member_name}?`)) return;
+  checkingOutId.value = id;
+  attendanceError.value = '';
+  try {
+    await trainerAttendance.checkOut(id);
+    await Promise.all([loadAttendanceData(), loadDashboardData()]);
+  } catch (err: unknown) {
+    const ax = err as { response?: { data?: { message?: string } } };
+    attendanceError.value = ax.response?.data?.message || 'Check-out failed. Try again.';
+    await loadAttendanceData();
+  } finally {
+    checkingOutId.value = null;
   }
 }
 
@@ -819,8 +841,6 @@ async function exportReports() {
   }
 }
 
-const checkinsToday = ref(0);
-const membersInsideCount = ref(0);
 
 async function handleLogin() {
   if (loginLoading.value) return;
@@ -1607,7 +1627,7 @@ onUnmounted(() => {
               <div class="flex items-center justify-between rounded-lg bg-[#2A3042] p-6 shadow">
                 <div>
                   <p class="text-sm text-gray-400">Check-ins Today</p>
-                  <p class="text-xl font-bold text-white">{{ dataLoading ? '-' : recentCheckins.length }}</p>
+                  <p class="text-xl font-bold text-white">{{ dataLoading ? '-' : trainerCheckinsToday }}</p>
                 </div>
                 <div class="rounded-full bg-blue-500 p-3 text-white">&#10003;</div>
               </div>
@@ -1715,59 +1735,133 @@ onUnmounted(() => {
           </div>
 
           <!-- Attendance -->
-          <div v-if="currentView === 'attendance'" class="space-y-6">
-            <div class="flex flex-wrap items-center justify-between gap-4">
-              <h2 class="sr-only">Attendance Management</h2>
-              <button type="button" class="rounded bg-blue-500 px-4 py-2 font-medium text-white hover:opacity-90" @click="openCheckinModal">
-                Record Check-in
-              </button>
-            </div>
-            <div class="rounded-lg bg-[#2A3042] p-6 shadow">
-              <input v-model="attendanceSearch" type="text" placeholder="Search by member name..." class="mb-4 w-full max-w-md rounded border border-gray-600 bg-gray-900/50 px-4 py-2 text-white placeholder-gray-500 focus:border-[#A3E635] focus:outline-none focus:ring-1 focus:ring-[#A3E635]" />
-              <div class="overflow-x-auto">
-                <table class="w-full text-left text-gray-300">
-                  <thead class="border-b border-gray-700">
-                    <tr>
-                      <th class="py-3 px-4">Member</th>
-                      <th class="py-3 px-4">Date</th>
-                      <th class="py-3 px-4">Check-in</th>
-                      <th class="py-3 px-4">Check-out</th>
-                      <th class="py-3 px-4">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="l in filteredLogs()" :key="String((l as Record<string, unknown>).id)">
-                      <td class="py-3 px-4">{{ (l as Record<string, unknown>).member_name }}</td>
-                      <td class="py-3 px-4">{{ (l as Record<string, unknown>).date }}</td>
-                      <td class="py-3 px-4">{{ (l as Record<string, unknown>).check_in }}</td>
-                      <td class="py-3 px-4">{{ (l as Record<string, unknown>).check_out }}</td>
-                      <td class="py-3 px-4">{{ (l as Record<string, unknown>).status }}</td>
-                    </tr>
-                    <tr v-if="filteredLogs().length === 0">
-                      <td colspan="5" class="py-4 px-4 text-center text-gray-400">{{ dataLoading ? 'Loading...' : 'No logs.' }}</td>
-                    </tr>
-                  </tbody>
-                </table>
+          <!-- Attendance: who is inside now (with Check Out), how recording works, and the full log -->
+          <div v-if="currentView === 'attendance'" class="staff-admin-view staff-attendance">
+            <div class="page-header">
+              <h2>Attendance</h2>
+              <div class="header-actions" style="display: flex; gap: 0.5rem; align-items: center;">
+                <button type="button" class="btn-add-plan" @click="openCheckinModal">
+                  <i class="fas fa-qrcode"></i>
+                  <span>Record Check-in</span>
+                </button>
               </div>
             </div>
-            <div class="rounded-lg bg-[#2A3042] p-6 shadow">
-              <h4 class="mb-4 text-lg font-semibold text-white">Members Currently Inside ({{ currentlyInGym.length }})</h4>
-              <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-                <div v-for="c in currentlyInGym" :key="String((c as Record<string, unknown>).id)" class="rounded-lg bg-gray-900/50 p-4">
-                  <div class="flex items-center gap-3">
-                    <div class="flex h-10 w-10 items-center justify-center rounded-full bg-green-500/30 text-sm font-bold text-white">
-                      {{ (c as Record<string, unknown>).initials }}
-                    </div>
-                    <div>
-                      <p class="font-medium text-white">{{ (c as Record<string, unknown>).member_name }}</p>
-                      <p class="text-xs text-gray-400">{{ (c as Record<string, unknown>).check_in_time }}</p>
-                    </div>
-                  </div>
+
+            <ol class="attendance-steps">
+              <li class="fg-tile">
+                <span class="attendance-step-no">1</span>
+                <div>
+                  <p class="attendance-step-title">Member arrives</p>
+                  <p class="attendance-step-text">They open <b>Attendance → Get Attendance QR</b> in their Member portal.</p>
                 </div>
-                <p v-if="currentlyInGym.length === 0 && !dataLoading" class="col-span-full py-4 text-center text-gray-400">No members currently inside.</p>
+              </li>
+              <li class="fg-tile">
+                <span class="attendance-step-no">2</span>
+                <div>
+                  <p class="attendance-step-title">Record Check-in</p>
+                  <p class="attendance-step-text">Scan their QR. No phone? Pick their name from the list instead.</p>
+                </div>
+              </li>
+              <li class="fg-tile">
+                <span class="attendance-step-no">3</span>
+                <div>
+                  <p class="attendance-step-title">Member leaves</p>
+                  <p class="attendance-step-text">Scan the same QR again, or press <b>Check Out</b> below.</p>
+                </div>
+              </li>
+            </ol>
+
+            <div class="plans-summary">
+              <div class="summary-card">
+                <i class="fas fa-sign-in-alt"></i>
+                <div>
+                  <h3>{{ trainerCheckinsToday }}</h3>
+                  <p>Check-ins today</p>
+                </div>
+              </div>
+              <div class="summary-card">
+                <i class="fas fa-dumbbell"></i>
+                <div>
+                  <h3>{{ currentlyInGym.length }}</h3>
+                  <p>Inside the gym now</p>
+                </div>
+              </div>
+              <div class="summary-card">
+                <i class="fas fa-list"></i>
+                <div>
+                  <h3>{{ attendanceLogs.length }}</h3>
+                  <p>Visits in the log</p>
+                </div>
               </div>
             </div>
-          </div>          <!-- Members -->
+
+            <section class="table-container attendance-panel">
+              <div class="attendance-panel-head">
+                <h3>Inside the Gym Now <span class="attendance-count">{{ currentlyInGym.length }}</span></h3>
+                <p>Checked in and not yet checked out.</p>
+              </div>
+              <div v-if="currentlyInGym.length" class="attendance-inside-grid">
+                <div v-for="c in currentlyInGym" :key="String((c as Record<string, unknown>).id)" class="fg-tile attendance-inside-card">
+                  <div class="member-avatar">{{ (c as Record<string, unknown>).initials }}</div>
+                  <div class="attendance-inside-info">
+                    <p>{{ (c as Record<string, unknown>).member_name }}</p>
+                    <span>In since {{ (c as Record<string, unknown>).check_in_time }}</span>
+                  </div>
+                  <button type="button" class="attendance-checkout-btn" :disabled="checkingOutId === Number((c as Record<string, unknown>).id)" @click="checkOutVisit(c as Record<string, unknown>)">
+                    {{ checkingOutId === Number((c as Record<string, unknown>).id) ? 'Saving…' : 'Check Out' }}
+                  </button>
+                </div>
+              </div>
+              <p v-else class="attendance-empty">{{ dataLoading ? 'Loading...' : 'Nobody is inside right now.' }}</p>
+              <p v-if="attendanceError" class="attendance-error" role="alert">{{ attendanceError }}</p>
+            </section>
+
+            <section class="table-container attendance-panel">
+              <div class="attendance-panel-head attendance-panel-head--row">
+                <div>
+                  <h3>Attendance Log</h3>
+                  <p>Every visit, newest first.</p>
+                </div>
+                <div class="search-bar attendance-search">
+                  <i class="fas fa-search"></i>
+                  <input v-model="attendanceSearch" type="text" placeholder="Search by member name..." />
+                </div>
+              </div>
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Member</th>
+                    <th>Date</th>
+                    <th>Check-in</th>
+                    <th>Check-out</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="l in filteredLogs()" :key="String((l as Record<string, unknown>).id)">
+                    <td>
+                      <div class="member-cell">
+                        <div class="member-avatar">{{ (l as Record<string, unknown>).initials || String((l as Record<string, unknown>).member_name || '').slice(0, 2).toUpperCase() }}</div>
+                        <div><p>{{ (l as Record<string, unknown>).member_name }}</p></div>
+                      </div>
+                    </td>
+                    <td>{{ (l as Record<string, unknown>).date }}</td>
+                    <td>{{ (l as Record<string, unknown>).check_in }}</td>
+                    <td>{{ (l as Record<string, unknown>).check_out }}</td>
+                    <td>
+                      <span :class="['status-badge', (l as Record<string, unknown>).check_out === '-' ? 'pending' : 'active']">
+                        {{ (l as Record<string, unknown>).check_out === '-' ? 'In gym' : 'Completed' }}
+                      </span>
+                    </td>
+                  </tr>
+                  <tr v-if="filteredLogs().length === 0">
+                    <td colspan="5" class="empty-row">{{ dataLoading ? 'Loading...' : 'No visits yet.' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </section>
+          </div>
+          <!-- Members -->
           <!-- Members: same layout as Admin > Members (Staff has no SMS action) -->
           <div v-if="currentView === 'members'" class="staff-admin-view">
             <div class="page-controls">
@@ -2113,10 +2207,11 @@ onUnmounted(() => {
     <!-- Check-in Modal -->
     <div v-if="showCheckinModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" @click.self="stopTrainerQrScanner(); showCheckinModal = false">
       <div class="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-lg bg-[#2A3042] p-6 shadow-xl" @click.stop>
-        <h3 class="mb-4 text-xl font-bold text-white">Record Attendance</h3>
+        <h3 class="mb-1 text-xl font-bold text-white">Record Attendance</h3>
+        <p class="mb-4 text-sm text-gray-400">Scanning a member who is already inside checks them <b>out</b>.</p>
         <div class="mb-4 rounded-lg border border-gray-700 bg-[#1A2035] p-4">
           <div class="mb-3 flex items-center justify-between gap-3">
-            <p class="text-sm font-semibold text-white">Scan Member QR</p>
+            <p class="text-sm font-semibold text-white">Option 1 · Scan the member's QR</p>
             <button
               type="button"
               class="rounded px-3 py-1 text-sm font-medium text-black"
@@ -2136,7 +2231,7 @@ onUnmounted(() => {
             v-model="trainerQrManualQrPayload"
             class="mt-3 w-full rounded border border-gray-600 bg-[#12182A] px-3 py-2 text-sm text-white"
             rows="3"
-            placeholder="Paste the member attendance QR payload here if camera scan is unavailable."
+            placeholder="Camera not working? Paste the member's backup code here (Member portal → Copy Backup Code)."
           />
           <button
             type="button"
@@ -2144,11 +2239,11 @@ onUnmounted(() => {
             :disabled="formLoading || trainerQrScannerBusy"
             @click="submitTrainerQrPayload()"
           >
-            Process QR Payload
+            Use Backup Code
           </button>
         </div>
         <div class="mb-4">
-          <label class="block text-sm font-medium text-gray-300">Member</label>
+          <label class="block text-sm font-medium text-gray-300">Option 2 · No phone? Choose the member</label>
           <select v-model="checkinForm.member_id" class="mt-1 w-full rounded border border-gray-600 bg-[#1A2035] px-3 py-2 text-white">
             <option value="">Select member</option>
             <option v-for="m in activeMembersForCheckin" :key="String((m as Record<string, unknown>).id)" :value="String((m as Record<string, unknown>).id)">
@@ -3461,5 +3556,175 @@ onUnmounted(() => {
     padding: 0 0.5rem;
     font-size: 0.875rem;
   }
+}
+
+/* Staff > Attendance */
+.trainer-portal .staff-attendance .attendance-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 1rem;
+  margin: 0 0 1.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.trainer-portal .staff-attendance .attendance-steps li {
+  display: flex;
+  gap: 0.85rem;
+  align-items: flex-start;
+  border-radius: 0.85rem;
+  padding: 1rem;
+}
+
+.trainer-portal .staff-attendance .attendance-step-no {
+  display: grid;
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, #f0d48a, #b8923a);
+  color: #151515;
+  font-weight: 700;
+}
+
+.trainer-portal .staff-attendance .attendance-step-title {
+  margin: 0;
+  font-weight: 700;
+  color: #2b2418;
+}
+
+.trainer-portal .staff-attendance .attendance-step-text {
+  margin: 0.2rem 0 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: #6b5d45;
+}
+
+.trainer-portal .staff-attendance .attendance-panel {
+  margin-bottom: 1.5rem;
+  padding: 1.25rem;
+}
+
+.trainer-portal .staff-attendance .attendance-panel-head {
+  margin-bottom: 1rem;
+}
+
+.trainer-portal .staff-attendance .attendance-panel-head--row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.trainer-portal .staff-attendance .attendance-panel-head h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.trainer-portal .staff-attendance .attendance-panel-head p {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.trainer-portal .staff-attendance .attendance-count {
+  border-radius: 9999px;
+  background: #d9b45a;
+  padding: 0.1rem 0.6rem;
+  font-size: 0.8rem;
+  color: #151515;
+}
+
+.trainer-portal .staff-attendance .attendance-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: min(100%, 20rem);
+}
+
+.trainer-portal .staff-attendance .attendance-search i {
+  position: absolute;
+  left: 0.85rem;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+
+.trainer-portal .staff-attendance .attendance-search input {
+  width: 100%;
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  background: var(--bg-input);
+  padding: 0.6rem 0.85rem 0.6rem 2.4rem;
+  color: var(--text-primary);
+}
+
+.trainer-portal .staff-attendance .attendance-inside-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 0.85rem;
+}
+
+.trainer-portal .staff-attendance .attendance-inside-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border-radius: 0.75rem;
+  padding: 0.85rem;
+}
+
+.trainer-portal .staff-attendance .attendance-inside-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.trainer-portal .staff-attendance .attendance-inside-info p {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: #2b2418;
+}
+
+.trainer-portal .staff-attendance .attendance-inside-info span {
+  font-size: 0.8rem;
+  color: #6b5d45;
+}
+
+.trainer-portal .staff-attendance .attendance-checkout-btn {
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 0.5rem;
+  background: #e0565b;
+  padding: 0.45rem 0.8rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+}
+
+.trainer-portal .staff-attendance .attendance-checkout-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.trainer-portal .staff-attendance .attendance-empty {
+  margin: 0;
+  padding: 1.25rem 0;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.trainer-portal .staff-attendance .attendance-error {
+  margin: 0.75rem 0 0;
+  color: #f08a8e;
+  font-size: 0.85rem;
 }
 </style>

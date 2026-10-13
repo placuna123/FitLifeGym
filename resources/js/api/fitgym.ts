@@ -81,6 +81,7 @@ export const trainer = {
 
 export const trainerAttendance = {
     checkIn: (data: Record<string, unknown>) => api.post('/trainer/attendance/check-in', data),
+    checkOut: (attendanceId: number) => api.post('/trainer/attendance/check-out', { attendance_id: attendanceId }),
     processQr: (payload: string) => api.post('/trainer/attendance/process-qr', { payload }),
     logs: (params?: { search?: string }) => api.get('/trainer/attendance/logs', { params }),
     recent: () => api.get('/trainer/attendance/recent'),

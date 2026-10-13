@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use App\Models\Attendance;
 use App\Models\Gym;
 use App\Models\Member;
 use App\Models\MembershipPlan;
@@ -75,81 +76,50 @@ class ReportsController extends Controller
     }
     
     /**
-     * Get attendance analysis data
+     * Attendance analysis counted from the branch's real check-ins. Days and hours
+     * follow Philippine time (check-ins are stored in UTC).
      */
     public function attendance()
     {
         try {
-            // Get active members count for realistic estimates
-            $activeMembers = Member::where('is_archived', 0)
-                ->where('status', 'Active')
-                ->count();
-            
-            // Calculate estimated check-ins based on active members
-            // Average: 3-4 visits per week per active member
-            $avgWeeklyVisits = $activeMembers > 0 ? round($activeMembers * 3.5) : 0;
-            
-            // Today's check-ins (estimated: 15-20% of active members visit daily)
-            $todayCheckins = $activeMembers > 0 ? round($activeMembers * 0.18) : 0;
-            
-            // This week's check-ins
-            $weekCheckins = $avgWeeklyVisits;
-            
-            // This month's check-ins (estimated: 4 weeks)
-            $monthCheckins = $weekCheckins * 4;
-            
-            // Total check-ins (estimated based on member registration dates)
-            $totalCheckins = Member::where('is_archived', 0)
-                ->where('status', 'Active')
-                ->get()
-                ->sum(function($member) {
-                    // Estimate: member visits 3.5 times per week since registration
-                    $weeksSinceRegistration = Carbon::now()->diffInWeeks($member->created_at);
-                    return max(0, round($weeksSinceRegistration * 3.5));
-                });
-            
-            // Daily stats for last 7 days (estimated based on active members)
+            $tz = 'Asia/Manila';
+            $now = Carbon::now($tz);
+            $since = fn (Carbon $local) => $local->copy()->utc();
+            // Same visits as the attendance log: those of members still on the books.
+            $visits = Attendance::where('is_archived', 0)
+                ->whereHas('member', fn ($q) => $q->where('is_archived', 0));
+
+            $todayCheckins = (clone $visits)->where('check_in_time', '>=', $since($now->copy()->startOfDay()))->count();
+            $weekCheckins = (clone $visits)->where('check_in_time', '>=', $since($now->copy()->startOfWeek()))->count();
+            $monthCheckins = (clone $visits)->where('check_in_time', '>=', $since($now->copy()->startOfMonth()))->count();
+            $totalCheckins = (clone $visits)->count();
+
+            $lastWeek = (clone $visits)
+                ->where('check_in_time', '>=', $since($now->copy()->subDays(6)->startOfDay()))
+                ->pluck('check_in_time')
+                ->map(fn ($t) => Carbon::parse($t)->setTimezone($tz));
+
             $dailyStats = [];
             for ($i = 6; $i >= 0; $i--) {
-                $date = Carbon::now()->subDays($i);
-                $dayOfWeek = $date->dayOfWeek; // 0 = Sunday, 6 = Saturday
-                
-                // Weekends typically have more visits (20-25% of active members)
-                // Weekdays have fewer (15-18% of active members)
-                $basePercentage = ($dayOfWeek == 0 || $dayOfWeek == 6) ? 0.22 : 0.16;
-                $count = $activeMembers > 0 ? round($activeMembers * $basePercentage) : 0;
-                
+                $day = $now->copy()->subDays($i);
                 $dailyStats[] = [
-                    'date' => $date->format('M d, Y'),
-                    'count' => $count,
+                    'date' => $day->format('M d, Y'),
+                    'count' => $lastWeek->filter(fn (Carbon $t) => $t->isSameDay($day))->count(),
                 ];
             }
-            
-            // Peak hours (estimated based on typical gym patterns)
-            $peakHours = [];
-            $hourPatterns = [
-                '6AM' => 0.12, '7AM' => 0.15, '8AM' => 0.18, '9AM' => 0.16,
-                '10AM' => 0.10, '11AM' => 0.08, '12PM' => 0.12, '1PM' => 0.10,
-                '2PM' => 0.08, '3PM' => 0.10, '4PM' => 0.12, '5PM' => 0.18,
-                '6PM' => 0.20, '7PM' => 0.22, '8PM' => 0.15, '9PM' => 0.08,
-            ];
-            
-            foreach ($hourPatterns as $hour => $percentage) {
-                $count = $activeMembers > 0 ? round($activeMembers * $percentage) : 0;
-                $peakHours[] = [
-                    'hour' => $hour,
-                    'count' => $count,
-                ];
-            }
-            
-            // Sort by count descending
-            usort($peakHours, function($a, $b) {
-                return $b['count'] - $a['count'];
-            });
-            
-            // Get top 8 peak hours
-            $peakHours = array_slice($peakHours, 0, 8);
-            
+
+            // Busiest hours over the last 30 days, most visits first.
+            $peakHours = (clone $visits)
+                ->where('check_in_time', '>=', $since($now->copy()->subDays(30)))
+                ->pluck('check_in_time')
+                ->map(fn ($t) => Carbon::parse($t)->setTimezone($tz)->format('gA'))
+                ->countBy()
+                ->sortDesc()
+                ->take(8)
+                ->map(fn ($count, $hour) => ['hour' => $hour, 'count' => $count])
+                ->values()
+                ->all();
+
             return response()->json([
                 'success' => true,
                 'total_checkins' => $totalCheckins,
@@ -158,7 +128,7 @@ class ReportsController extends Controller
                 'month_checkins' => $monthCheckins,
                 'daily_stats' => $dailyStats,
                 'peak_hours' => $peakHours,
-                'active_members' => $activeMembers, // Added for reference
+                'active_members' => Member::where('is_archived', 0)->where('status', 'Active')->count(),
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -167,7 +137,7 @@ class ReportsController extends Controller
             ], 500);
         }
     }
-    
+
     /**
      * Get membership overview data
      */

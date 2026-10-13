@@ -94,6 +94,44 @@ class TrainerAttendanceController extends Controller
     }
 
     /**
+     * Check a member out by hand (the "Check out" button on Members Currently Inside),
+     * for when the member has no phone to scan their QR a second time.
+     */
+    public function checkOut(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'attendance_id' => 'required|integer',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'message' => 'Choose a member to check out.'], 422);
+        }
+
+        $visit = DB::table('attendance')
+            ->where('id', $request->integer('attendance_id'))
+            ->where('gym_id', Tenancy::gymId())
+            ->whereNull('check_out_time')
+            ->where('is_archived', 0)
+            ->first();
+        if (! $visit) {
+            return response()->json(['success' => false, 'message' => 'This member is not checked in anymore.'], 404);
+        }
+
+        $now = now();
+        $minutes = Carbon::parse($visit->check_in_time)->diffInMinutes($now);
+        DB::table('attendance')->where('id', $visit->id)->update([
+            'check_out_time' => $now,
+            'duration_minutes' => (int) $minutes,
+            'updated_at' => $now,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Check-out recorded successfully',
+            'duration_minutes' => (int) $minutes,
+        ]);
+    }
+
+    /**
      * Issue or reuse the authenticated member's attendance QR payload.
      */
     public function issueMemberAttendanceQr(): JsonResponse

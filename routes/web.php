@@ -146,6 +146,7 @@ Route::put('api/trainer/{id}/schedule', [App\Http\Controllers\TrainerController:
 
 // Member attendance (check-in, logs, recent)
 Route::post('api/trainer/attendance/check-in', [App\Http\Controllers\TrainerAttendanceController::class, 'checkIn'])->middleware(['auth', 'tenant'])->name('trainer.attendance.checkin');
+Route::post('api/trainer/attendance/check-out', [App\Http\Controllers\TrainerAttendanceController::class, 'checkOut'])->middleware(['auth', 'tenant', 'role:Admin,Staff'])->name('trainer.attendance.checkout');
 Route::post('api/trainer/attendance/process-qr', [App\Http\Controllers\TrainerAttendanceController::class, 'processMemberQr'])->middleware(['auth', 'tenant'])->name('trainer.attendance.process-qr');
 Route::get('api/trainer/attendance/logs', [App\Http\Controllers\TrainerAttendanceController::class, 'getLogs'])->middleware(['auth', 'tenant'])->name('trainer.attendance.logs');
 Route::get('api/trainer/attendance/recent', [App\Http\Controllers\TrainerAttendanceController::class, 'getRecentCheckIns'])->middleware(['auth', 'tenant'])->name('trainer.attendance.recent');
