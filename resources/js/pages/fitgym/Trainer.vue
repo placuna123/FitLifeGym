@@ -1748,54 +1748,53 @@ onUnmounted(() => {
             </div>
 
             <div class="overflow-x-auto rounded-lg border border-gray-700 bg-[#2A3042]">
-              <table class="w-full min-w-[1150px] text-left text-gray-300">
+              <!-- 5 compact columns so the whole table fits the content area; phones still scroll sideways -->
+              <table class="w-full min-w-[560px] text-left text-sm text-gray-300">
                 <thead class="border-b border-gray-700">
                   <tr>
                     <th class="px-4 py-3">Member</th>
-                    <th class="px-4 py-3">ID</th>
                     <th class="px-4 py-3">Contact</th>
-                    <th class="px-4 py-3">Address</th>
-                    <th class="px-4 py-3">Plan</th>
+                    <th class="px-4 py-3">Plan &amp; Expiry</th>
                     <th class="px-4 py-3">Status</th>
-                    <th class="px-4 py-3">Expiry</th>
-                    <th class="px-4 py-3">Payment</th>
-                    <th class="px-4 py-3">Actions</th>
+                    <th class="px-4 py-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-for="m in filteredMembers()" :key="String((m as Record<string, unknown>).id)" class="border-b border-gray-800/70">
-                    <td class="px-4 py-4">
+                    <td class="px-4 py-3">
                       <div class="flex items-center gap-3">
-                        <div class="flex h-10 w-10 items-center justify-center rounded-full bg-purple-500/40 text-sm font-bold text-white">
+                        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-purple-500/40 text-sm font-bold text-white">
                           {{ String((m as Record<string, unknown>).full_name || '').slice(0, 2).toUpperCase() }}
                         </div>
-                        <div>
+                        <div class="min-w-0">
                           <p class="font-semibold text-white">{{ (m as Record<string, unknown>).full_name }}</p>
-                          <p class="text-sm text-gray-400">{{ (m as Record<string, unknown>).email || '—' }}</p>
+                          <p class="break-all text-xs text-gray-400">{{ (m as Record<string, unknown>).email || '—' }}</p>
+                          <p class="text-xs text-gray-400">ID {{ (m as Record<string, unknown>).member_id || '—' }}</p>
                         </div>
                       </div>
                     </td>
-                    <td class="px-4 py-4">{{ (m as Record<string, unknown>).member_id || '—' }}</td>
-                    <td class="px-4 py-4">{{ (m as Record<string, unknown>).phone || '—' }}</td>
-                    <td class="px-4 py-4">
-                      <span class="block max-w-[240px] truncate" :title="memberStreetAddress((m as Record<string, unknown>).address)">
+                    <td class="px-4 py-3">
+                      <p>{{ (m as Record<string, unknown>).phone || '—' }}</p>
+                      <p class="max-w-[160px] truncate text-xs text-gray-400" :title="memberStreetAddress((m as Record<string, unknown>).address)">
                         {{ memberStreetAddress((m as Record<string, unknown>).address) || '—' }}
-                      </span>
+                      </p>
                     </td>
-                    <td class="px-4 py-4">{{ (m as Record<string, unknown>).membership_plan || '—' }}</td>
-                    <td class="px-4 py-4">
-                      <span :class="['rounded-full px-3 py-1 text-xs font-semibold', statusBadgeClass((m as Record<string, unknown>).status, (m as Record<string, unknown>).expiry_date as string)]">
-                        {{ memberStatusLabel((m as Record<string, unknown>).status, (m as Record<string, unknown>).expiry_date as string) }}
-                      </span>
+                    <td class="px-4 py-3">
+                      <p>{{ (m as Record<string, unknown>).membership_plan || '—' }}</p>
+                      <p class="text-xs text-gray-400">Expires <span class="whitespace-nowrap">{{ (m as Record<string, unknown>).expiry_date || '—' }}</span></p>
                     </td>
-                    <td class="px-4 py-4">{{ (m as Record<string, unknown>).expiry_date || '—' }}</td>
-                    <td class="px-4 py-4">
-                      <span :class="['rounded-full px-3 py-1 text-xs font-semibold', paymentBadgeClass((m as Record<string, unknown>).payment_status)]">
-                        {{ String((m as Record<string, unknown>).payment_status || '—').toLowerCase() }}
-                      </span>
+                    <td class="px-4 py-3">
+                      <div class="flex flex-col items-start gap-1.5">
+                        <span :class="['whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold', statusBadgeClass((m as Record<string, unknown>).status, (m as Record<string, unknown>).expiry_date as string)]">
+                          {{ memberStatusLabel((m as Record<string, unknown>).status, (m as Record<string, unknown>).expiry_date as string) }}
+                        </span>
+                        <span :class="['whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold', paymentBadgeClass((m as Record<string, unknown>).payment_status)]">
+                          {{ String((m as Record<string, unknown>).payment_status || '—').toLowerCase() }}
+                        </span>
+                      </div>
                     </td>
-                    <td class="px-4 py-4">
-                      <div class="flex gap-2">
+                    <td class="px-4 py-3">
+                      <div class="flex flex-wrap justify-end gap-1.5">
                         <button v-if="String((m as Record<string, unknown>).status).toLowerCase() === 'pending'" type="button" class="rounded bg-green-600 px-3 py-1 text-xs font-medium text-white hover:bg-green-700" :disabled="formLoading" @click="approveMember(m as Record<string, unknown>)">Approve</button>
                         <button type="button" class="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700" @click="viewMember(m as Record<string, unknown>)">View</button>
                         <button type="button" class="rounded bg-purple-600 px-3 py-1 text-xs font-medium text-white hover:bg-purple-700" @click="editMember(m as Record<string, unknown>)">Edit</button>
@@ -1804,7 +1803,7 @@ onUnmounted(() => {
                     </td>
                   </tr>
                   <tr v-if="filteredMembers().length === 0">
-                    <td colspan="9" class="px-4 py-6 text-center text-gray-400">{{ dataLoading ? 'Loading...' : 'No members.' }}</td>
+                    <td colspan="5" class="px-4 py-6 text-center text-gray-400">{{ dataLoading ? 'Loading...' : 'No members.' }}</td>
                   </tr>
                 </tbody>
               </table>
