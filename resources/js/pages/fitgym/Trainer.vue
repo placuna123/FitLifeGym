@@ -2094,10 +2094,10 @@ onUnmounted(() => {
                         </td>
                         <td v-for="day in SCHEDULE_DAYS" :key="day" class="py-4 px-2 align-top">
                           <div class="flex flex-col space-y-1">
-                            <div v-for="cls in classesTaughtBy(staff.id, day)" :key="cls.id" class="px-2 py-1 text-xs rounded bg-blue-500/20 text-blue-300">
+                            <div v-for="cls in classesTaughtBy(staff.id, day)" :key="cls.id" class="availability-slot availability-slot--busy" :title="`Teaching ${cls.name} at ${cls.start_time}`">
                               {{ cls.start_time }} {{ cls.name }}
                             </div>
-                            <div v-if="classesTaughtBy(staff.id, day).length === 0" class="px-2 py-1 text-xs rounded bg-green-500/20 text-green-300">Free</div>
+                            <div v-if="classesTaughtBy(staff.id, day).length === 0" class="availability-slot availability-slot--open" title="No class to teach this day">Available</div>
                           </div>
                         </td>
                       </tr>
@@ -3726,5 +3726,26 @@ onUnmounted(() => {
   margin: 0.75rem 0 0;
   color: #f08a8e;
   font-size: 0.85rem;
+}
+
+/* Staff > Schedule > Trainer Availability: open days are white-and-gold, teaching days solid gold */
+.trainer-portal .availability-slot {
+  border-radius: 0.375rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.trainer-portal .availability-slot--open {
+  border: 1px solid #e6d3a3;
+  background: linear-gradient(160deg, #fffefb 0%, #f8f0de 100%);
+  box-shadow: inset 0 2px 0 #d9b45a;
+  color: #6b5d45;
+}
+
+.trainer-portal .availability-slot--busy {
+  border: 1px solid #f0d48a;
+  background: linear-gradient(135deg, #f0d48a 0%, #d9b45a 55%, #b8923a 100%);
+  color: #151515;
 }
 </style>
