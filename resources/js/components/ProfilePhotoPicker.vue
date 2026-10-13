@@ -117,11 +117,19 @@ async function remove() {
     cursor: pointer;
 }
 
+/* Pinned to the round frame: a percentage height on a grid item resolves to auto,
+   which let tall (portrait) photos grow past the circle and over the buttons. */
 .fg-photo-picker__avatar img {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     border-radius: 9999px;
     object-fit: cover;
+}
+
+.fg-photo-picker__badge {
+    z-index: 1;
 }
 
 .fg-photo-picker__badge {

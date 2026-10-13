@@ -1050,7 +1050,7 @@ onUnmounted(() => {
               </div>
               <button
                 type="button"
-                class="fg-light-surface flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition-opacity hover:opacity-90"
+                class="flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition-opacity hover:opacity-90"
                 :style="{ backgroundColor: portal.dark3, color: 'var(--fg-card-ink)', border: `1px solid ${portal.border}` }"
                 @click="showNotificationsPanel = !showNotificationsPanel"
               >
