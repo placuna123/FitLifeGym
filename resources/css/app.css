@@ -335,7 +335,6 @@
    size and layout stay. !important beats the pages' scoped `background:` shorthands. */
 .fg-marble-bg :is(
     .admin-sidebar, .admin-notification-panel,
-    .admin-header-card, .admin-header-button, .trainer-header-card,
     .table-container, .plan-card, .current-member-card,
     .reports-chart-card, .notification-card, .settings-content, .dashboard-card, .recent-activity,
     .trainer-sidebar,
@@ -344,7 +343,6 @@
 ),
 .fg-marble-bg.trainer-portal :is(.bg-\[\#2A3042\].rounded-lg, .bg-\[\#2A3042\].rounded-xl),
 .member-portal main .rounded-xl.border,
-.member-portal header :is(.rounded-xl.border, button.rounded-xl),
 .platform-shell .login-card {
     background-image:
         linear-gradient(rgba(10, 10, 10, 0.35), rgba(10, 10, 10, 0.35)),
@@ -365,7 +363,9 @@
 ),
 .fg-marble-bg.trainer-portal .lg\:grid-cols-4 > .bg-\[\#2A3042\],
 :is(.fitgym-admin, .trainer-portal) .fixed.inset-0.z-50 > div,
-body > .fixed.inset-0.z-50 > div {
+body > .fixed.inset-0.z-50 > div,
+.fg-marble-bg :is(.admin-header-card, .admin-header-button, .trainer-header-card),
+.member-portal header :is(.rounded-xl.border, button.rounded-xl) {
     --fg-card: #fffdf8;
     --fg-card-2: #f6efdf;
     --fg-card-sidebar: #fffdf8;
@@ -480,5 +480,5 @@ body > .fixed.inset-0.z-50 > div {
 
 /* Boxes inside the band get a gold rim so they stand off the same marble. */
 .fg-marble-bg :is(.admin-header, .trainer-header, .member-header) :is(.admin-header-card, .admin-header-button, .trainer-header-card, .rounded-xl.border, button.rounded-xl) {
-    box-shadow: 0 0 0 1px rgba(217, 180, 90, 0.5), 0 8px 20px rgba(0, 0, 0, 0.35) !important;
+    box-shadow: inset 0 3px 0 #d9b45a, 0 0 0 1px rgba(217, 180, 90, 0.6), 0 10px 24px rgba(0, 0, 0, 0.45) !important;
 }
