@@ -462,3 +462,23 @@ body > .fixed.inset-0.z-50 > div {
 :is(.fg-marble-bg, body > .fixed) :is(button, a, [role='button']):not(:disabled):active {
     box-shadow: 0 0 0 2px #d9b45a, 0 0 22px rgba(217, 180, 90, 0.6) !important;
 }
+
+/* The page header strip (workspace label, page title, account boxes) is a black
+   marble band; its text tokens flip to light so the title stays readable. */
+.fg-marble-bg :is(.admin-header, .trainer-header, .member-header) {
+    --fg-ink: #f5f1e8;
+    --fg-ink-soft: #b9b2a5;
+    --fg-gold: #e2c172;
+
+    background-image:
+        linear-gradient(rgba(10, 10, 10, 0.25), rgba(10, 10, 10, 0.25)),
+        url('../images/fitgym-box-marble.jpg') !important;
+    background-size: cover !important;
+    background-position: center 30% !important;
+    border-bottom: 1px solid rgba(217, 180, 90, 0.45) !important;
+}
+
+/* Boxes inside the band get a gold rim so they stand off the same marble. */
+.fg-marble-bg :is(.admin-header, .trainer-header, .member-header) :is(.admin-header-card, .admin-header-button, .trainer-header-card, .rounded-xl.border, button.rounded-xl) {
+    box-shadow: 0 0 0 1px rgba(217, 180, 90, 0.5), 0 8px 20px rgba(0, 0, 0, 0.35) !important;
+}
