@@ -184,6 +184,16 @@ Route::post('api/platform/gyms', [App\Http\Controllers\PlatformGymController::cl
 Route::get('api/platform/gyms/{id}', [App\Http\Controllers\PlatformGymController::class, 'show'])->middleware(['auth', 'role:SuperAdmin'])->name('platform.gyms.show');
 Route::put('api/platform/gyms/{id}', [App\Http\Controllers\PlatformGymController::class, 'update'])->middleware(['auth', 'role:SuperAdmin'])->name('platform.gyms.update');
 Route::delete('api/platform/gyms/{id}', [App\Http\Controllers\PlatformGymController::class, 'destroy'])->middleware(['auth', 'role:SuperAdmin'])->name('platform.gyms.destroy');
+Route::post('api/platform/gyms/{id}/restore', [App\Http\Controllers\PlatformGymController::class, 'restore'])->middleware(['auth', 'role:SuperAdmin'])->name('platform.gyms.restore');
+Route::post('api/platform/gyms/{id}/send-admin-reset', [App\Http\Controllers\PlatformGymController::class, 'sendAdminReset'])->middleware(['auth', 'role:SuperAdmin'])->name('platform.gyms.send-admin-reset');
+Route::put('api/platform/payment-details', [App\Http\Controllers\PlatformBillingController::class, 'savePaymentDetails'])->middleware(['auth', 'role:SuperAdmin'])->name('platform.payment-details.update');
+Route::get('api/admin/subscription', [App\Http\Controllers\GymSubscriptionController::class, 'show'])->middleware(['auth', 'tenant', 'role:Admin'])->name('admin.subscription.show');
+Route::post('api/admin/subscription/payment-proof', [App\Http\Controllers\GymSubscriptionController::class, 'submitProof'])->middleware(['auth', 'tenant', 'role:Admin'])->name('admin.subscription.proof');
+Route::post('api/platform/payment-proofs/{id}/approve', [App\Http\Controllers\PlatformBillingController::class, 'approveProof'])->middleware(['auth', 'role:SuperAdmin'])->name('platform.billing.proof.approve');
+Route::post('api/platform/payment-proofs/{id}/reject', [App\Http\Controllers\PlatformBillingController::class, 'rejectProof'])->middleware(['auth', 'role:SuperAdmin'])->name('platform.billing.proof.reject');
+Route::get('api/platform/subscription-payments',[App\Http\Controllers\PlatformBillingController::class, 'index'])->middleware(['auth', 'role:SuperAdmin'])->name('platform.billing.index');
+Route::post('api/platform/gyms/{id}/subscription-payments', [App\Http\Controllers\PlatformBillingController::class, 'store'])->middleware(['auth', 'role:SuperAdmin'])->name('platform.billing.store');
+Route::post('api/platform/announcements',[App\Http\Controllers\PlatformGymController::class, 'announce'])->middleware(['auth', 'role:SuperAdmin'])->name('platform.announcements.store');
 Route::get('api/platform/analytics', [App\Http\Controllers\PlatformGymController::class, 'analytics'])->middleware(['auth', 'role:SuperAdmin'])->name('platform.analytics');
 Route::get('api/platform/audit-logs', [App\Http\Controllers\PlatformAuditLogController::class, 'index'])->middleware(['auth', 'role:SuperAdmin'])->name('platform.audit-logs');
 

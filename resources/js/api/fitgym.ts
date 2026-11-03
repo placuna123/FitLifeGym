@@ -202,11 +202,13 @@ export const platformAuth = {
 };
 
 export const platformGyms = {
-    list: () => api.get('/platform/gyms'),
+    list: (params?: { archived?: 1 }) => api.get('/platform/gyms', { params }),
     get: (id: string | number) => api.get(`/platform/gyms/${id}`),
     create: (data: Record<string, unknown>) => api.post('/platform/gyms', data),
     update: (id: string | number, data: Record<string, unknown>) => api.put(`/platform/gyms/${id}`, data),
     delete: (id: string | number) => api.delete(`/platform/gyms/${id}`),
+    restore: (id: string | number) => api.post(`/platform/gyms/${id}/restore`),
+    sendAdminReset: (id: string | number) => api.post(`/platform/gyms/${id}/send-admin-reset`),
 };
 
 export const platformAnalytics = {
@@ -214,7 +216,28 @@ export const platformAnalytics = {
 };
 
 export const platformAuditLogs = {
-    list: (params?: { gym_id?: string | number; action?: string }) => api.get('/platform/audit-logs', { params }),
+    list: (params?: { gym_id?: string | number; action?: string; q?: string; from?: string; to?: string }) =>
+        api.get('/platform/audit-logs', { params }),
+};
+
+export const platformBilling = {
+    list: (params?: { gym_id?: number }) => api.get('/platform/subscription-payments', { params }),
+    record: (gymId: number, data: Record<string, unknown>) => api.post(`/platform/gyms/${gymId}/subscription-payments`, data),
+    savePaymentDetails: (data: { gcash_number: string; gcash_name: string; bank_details: string; instructions: string }) =>
+        api.put('/platform/payment-details', data),
+    approveProof: (id: number) => api.post(`/platform/payment-proofs/${id}/approve`),
+    rejectProof: (id: number, reason: string) => api.post(`/platform/payment-proofs/${id}/reject`, { reason }),
+};
+
+/** The signed-in branch Admin's own FitGym subscription. */
+export const adminSubscription = {
+    get: () => api.get('/admin/subscription'),
+    sendProof: (data: FormData) =>
+        api.post('/admin/subscription/payment-proof', data, { headers: { 'Content-Type': 'multipart/form-data' } }),
+};
+
+export const platformAnnouncements = {
+    send: (data: { title: string; message: string; gym_id?: number | null }) => api.post('/platform/announcements', data),
 };
 
 /** Profile photo of the signed-in account (any role). */

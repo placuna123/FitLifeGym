@@ -30,6 +30,8 @@ class GymInfoController extends Controller
                     'gcash_account_name' => '',
                     'gcash_qr_url' => null,
                     'address' => '',
+                    'description' => '',
+                    'cover_photo_url' => null,
                     'operating_hours' => self::DEFAULT_HOURS,
                     'textbee_device_id' => '',
                     'textbee_sim_subscription_id' => '',
@@ -53,6 +55,8 @@ class GymInfoController extends Controller
             'gcash_account_name' => 'nullable|string|max:255',
             'gcash_qr' => 'nullable|file|mimes:jpg,jpeg,png,webp|max:5120',
             'address' => 'nullable|string',
+            'description' => 'nullable|string|max:1000',
+            'cover_photo' => 'nullable|file|mimes:jpg,jpeg,png,webp|max:5120',
             'operating_hours' => 'nullable|array',
             'textbee_device_id' => 'nullable|string|max:255',
             'textbee_sim_subscription_id' => 'nullable|integer',
@@ -79,6 +83,14 @@ class GymInfoController extends Controller
                 $gcashQrPath = $request->file('gcash_qr')->store('gcash-qr', 'public');
             }
 
+            $coverPhotoPath = $gym->cover_photo_path;
+            if ($request->hasFile('cover_photo')) {
+                $coverPhotoPath = $request->file('cover_photo')->store('gym-photos', 'public');
+                if ($gym->cover_photo_path) {
+                    Storage::disk('public')->delete($gym->cover_photo_path);
+                }
+            }
+
             $gym->update([
                 'name' => $request->name,
                 'email' => $request->email ?? '',
@@ -87,6 +99,8 @@ class GymInfoController extends Controller
                 'gcash_account_name' => $request->gcash_account_name ?? '',
                 'gcash_qr_path' => $gcashQrPath,
                 'address' => $request->address ?? '',
+                'description' => $request->description ?: null,
+                'cover_photo_path' => $coverPhotoPath,
                 'operating_hours' => $request->operating_hours ?? [],
                 'textbee_device_id' => $request->textbee_device_id ?: null,
                 'textbee_sim_subscription_id' => $request->textbee_sim_subscription_id ?: null,
@@ -122,8 +136,10 @@ class GymInfoController extends Controller
             'phone' => $gym->phone,
             'gcash_number' => $gym->gcash_number ?? '',
             'gcash_account_name' => $gym->gcash_account_name ?? '',
-            'gcash_qr_url' => ! empty($gym->gcash_qr_path) ? Storage::url($gym->gcash_qr_path) : null,
+            'gcash_qr_url' => $gym->publicFileUrl($gym->gcash_qr_path),
             'address' => $gym->address,
+            'description' => $gym->description ?? '',
+            'cover_photo_url' => $gym->publicFileUrl($gym->cover_photo_path),
             'operating_hours' => $gym->operating_hours ?: self::DEFAULT_HOURS,
             'textbee_device_id' => $gym->textbee_device_id ?? '',
             'textbee_sim_subscription_id' => $gym->textbee_sim_subscription_id ?? '',

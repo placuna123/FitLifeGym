@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
-import { Menu, X } from 'lucide-vue-next';
+import { BadgeCheck, Dumbbell, Flame, Menu, Star, Target, Trophy, X } from 'lucide-vue-next';
 import { ref, onMounted, onUnmounted, watch, computed } from 'vue';
 import { memberAuth, memberAttendance, membershipPlans, memberPayments, memberNotifications, memberClasses, memberProgress, gymInfo } from '@/api/fitgym';
+import FgThemeToggle from '@/components/FgThemeToggle.vue';
 import PasswordToggle from '@/components/PasswordToggle.vue';
 import ProfilePhotoPicker from '@/components/ProfilePhotoPicker.vue';
 import { useMobileNav } from '@/composables/useMobileNav';
@@ -11,7 +12,8 @@ import { useSessionGuard } from '@/composables/useSessionGuard';
 import { goToEntry } from '@/lib/portal';
 import QRCode from 'qrcode';
 
-// Portal colors aligned with the admin/trainer portals
+// One palette across the portals: gold for actions and highlights, bronze for secondary
+// buttons, red only for warnings
 // Box colors come from the shared --fg-card-* tokens in app.css (the keys keep their old names)
 const portal = {
   dark: 'var(--fg-card)',
@@ -19,13 +21,14 @@ const portal = {
   dark3: 'var(--fg-card)',
   sidebar: 'var(--fg-card-sidebar)',
   border: 'var(--fg-card-border)',
-  purple: '#8A2BE2',
-  purpleLight: '#6A4BC4',
-  pink: '#E0565B',
-  cyan: '#1E88C8',
-  lime: '#5FA82E',
+  purple: 'var(--fg-accent)',
+  purpleLight: 'var(--fg-card-gold)',
+  pink: '#C4544C',
+  cyan: '#C9B48A',
+  bronze: 'var(--fg-secondary)',
+  lime: 'var(--fg-card-gold)',
   textDim: 'var(--fg-card-ink-soft)',
-  primaryText: '#FFFFFF',
+  primaryText: 'var(--fg-accent-ink)',
 };
 
 const isLoggedIn = ref(false);
@@ -87,9 +90,45 @@ const member = ref<{
   created_at?: string;
 } | null>(null);
 
-type PageId = 'Dashboard' | 'Attendance' | 'Membership' | 'Payments' | 'Progress' | 'Schedule' | 'Profile' | 'Support';
+type PageId = 'Dashboard' | 'Attendance' | 'Membership' | 'Payments' | 'Progress' | 'Schedule' | 'Profile' | 'Feedback';
 const currentPage = ref<PageId>('Dashboard');
 const hasPendingPayment = computed(() => String(member.value?.payment_status || '').toLowerCase() === 'pending');
+
+// What the member's status really is today: an Active account whose paid time ran
+// out shows as Expired, not Active.
+const membershipIsExpired = computed(() => {
+  if (!member.value?.expiry_date) return false;
+  const now = new Date();
+  return new Date(`${member.value.expiry_date}T00:00:00`) < new Date(now.getFullYear(), now.getMonth(), now.getDate());
+});
+const membershipIsActive = computed(() => member.value?.status === 'Active' && !membershipIsExpired.value);
+const membershipStatusLabel = computed(() => (member.value?.status === 'Active' && membershipIsExpired.value ? 'Expired' : member.value?.status || 'Inactive'));
+
+// Banner at the top of every page when the membership ends within 3 days, today,
+// or has ended: worked out from the real expiry date, so it shows even before the
+// daily SMS/email reminder has gone out.
+const membershipNotice = computed(() => {
+  if (member.value?.status !== 'Active' || !member.value?.expiry_date) return null;
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const expiry = new Date(`${member.value.expiry_date}T00:00:00`);
+  const daysLeft = Math.round((expiry.getTime() - today.getTime()) / 86_400_000);
+  if (daysLeft > 3) return null;
+  const date = expiry.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+  const renewalWaiting = paymentHistory.value.some((p) => String(p.status).toLowerCase() === 'pending');
+  const waitingNote = renewalWaiting ? ' Your renewal payment is waiting for approval.' : '';
+  if (daysLeft < 0) {
+    return { expired: true, title: 'Membership Expired', text: `Your membership expired on ${date}, so you can't check in for now. Renew to start checking in again.${waitingNote}` };
+  }
+  if (daysLeft === 0) {
+    return { expired: false, title: 'Membership Ends Today', text: `Your membership ends today (${date}). Renew today to keep checking in.${waitingNote}` };
+  }
+  return {
+    expired: false,
+    title: 'Membership Expiring Soon',
+    text: `Your membership ends on ${date} (in ${daysLeft} day${daysLeft === 1 ? '' : 's'}). Renew on the Payments page or at the front desk to keep checking in.${waitingNote}`,
+  };
+});
 const memberSinceLabel = computed(() => {
   if (!member.value?.created_at) return '–';
   return new Date(`${member.value.created_at}T00:00:00`).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
@@ -104,7 +143,7 @@ const navItems: { page: PageId; label: string; description: string }[] = [
   { page: 'Progress', label: 'Progress', description: 'Goals and achievements' },
   { page: 'Schedule', label: 'Schedule', description: 'Classes and bookings' },
   { page: 'Profile', label: 'Profile', description: 'Account and preferences' },
-  { page: 'Support', label: 'Support', description: 'Help and contact options' },
+  { page: 'Feedback', label: 'Feedback', description: 'Tell the gym what you think' },
 ];
 
 // Attendance (same as Blade: data + Check In/Out + Recent Activity + Calendar)
@@ -145,34 +184,69 @@ interface ScheduleClass {
   booked_by_me: boolean;
   my_booking_id?: number;
 }
-const scheduleClasses = ref<ScheduleClass[]>([]);
+// The page shows a whole week at once (a strip of 7 days starting at
+// scheduleWeekStart) so members can see at a glance which days have classes.
+const scheduleWeekStart = ref(toLocalDateStr(new Date()));
 const scheduleDate = ref(toLocalDateStr(new Date()));
+const scheduleWeek = ref<{ date: string; classes: ScheduleClass[] }[]>([]);
 const scheduleLoading = ref(false);
 const scheduleActionLoading = ref(false);
 const scheduleError = ref('');
-const scheduleDateLabel = computed(() =>
-  new Date(`${scheduleDate.value}T00:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+const scheduleClasses = computed(() => scheduleWeek.value.find((d) => d.date === scheduleDate.value)?.classes ?? []);
+const scheduleIsThisWeek = computed(() => scheduleWeekStart.value === toLocalDateStr(new Date()));
+const scheduleDays = computed(() => {
+  const today = toLocalDateStr(new Date());
+  return scheduleWeek.value.map((day) => {
+    const d = new Date(`${day.date}T00:00:00`);
+    return {
+      date: day.date,
+      weekday: day.date === today ? 'Today' : d.toLocaleDateString(undefined, { weekday: 'short' }),
+      dayNumber: d.getDate(),
+      month: d.toLocaleDateString(undefined, { month: 'short' }),
+      count: day.classes.length,
+      booked: day.classes.some((c) => c.booked_by_me),
+    };
+  });
+});
+const scheduleSelectedLabel = computed(() =>
+  new Date(`${scheduleDate.value}T00:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
 );
+// When the chosen day is empty, point to the next day this week that has a class.
+const scheduleNextDay = computed(() => scheduleDays.value.find((d) => d.date > scheduleDate.value && d.count > 0) ?? null);
+
+function formatClassTime(time: string) {
+  const [h, m] = time.split(':').map(Number);
+  if (Number.isNaN(h)) return time;
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  return `${h % 12 || 12}:${String(m || 0).padStart(2, '0')} ${suffix}`;
+}
 
 async function loadScheduleData() {
   scheduleLoading.value = true;
   scheduleError.value = '';
   try {
-    const { data } = await memberClasses.list(scheduleDate.value);
-    if (data.success && Array.isArray(data.classes)) {
-      scheduleClasses.value = data.classes;
-    }
+    const start = new Date(`${scheduleWeekStart.value}T00:00:00`);
+    const dates = Array.from({ length: 7 }, (_, i) => toLocalDateStr(new Date(start.getFullYear(), start.getMonth(), start.getDate() + i)));
+    const results = await Promise.all(dates.map((date) => memberClasses.list(date)));
+    scheduleWeek.value = dates.map((date, i) => {
+      const data = results[i].data as { success?: boolean; classes?: ScheduleClass[] };
+      return { date, classes: data.success && Array.isArray(data.classes) ? data.classes : [] };
+    });
+    if (!dates.includes(scheduleDate.value)) scheduleDate.value = dates[0];
   } catch {
-    scheduleError.value = 'Failed to load classes.';
+    scheduleError.value = 'Failed to load classes. Please try again.';
   } finally {
     scheduleLoading.value = false;
   }
 }
 
-function shiftScheduleDate(days: number) {
-  const d = new Date(`${scheduleDate.value}T00:00:00`);
-  d.setDate(d.getDate() + days);
-  scheduleDate.value = toLocalDateStr(d);
+function shiftScheduleWeek(weeks: number) {
+  const today = toLocalDateStr(new Date());
+  const d = new Date(`${scheduleWeekStart.value}T00:00:00`);
+  d.setDate(d.getDate() + weeks * 7);
+  // Never go back before today: past classes can't be booked.
+  scheduleWeekStart.value = toLocalDateStr(d) < today ? today : toLocalDateStr(d);
+  scheduleDate.value = scheduleWeekStart.value;
   void loadScheduleData();
 }
 
@@ -241,9 +315,9 @@ const pw = usePasswordVisibility();
 const passwordError = ref('');
 const showEditProfile = ref(false);
 
-// Support (same as Blade: Contact form + success state)
+// Feedback: a message to the gym (shows in the Admin's notifications) + success state
 const supportSubmitted = ref(false);
-const supportSubject = ref('Equipment Issue');
+const supportSubject = ref('General Feedback');
 const supportMessage = ref('');
 const supportSending = ref(false);
 const supportError = ref('');
@@ -285,7 +359,7 @@ const currentPageInfo = computed(() => navItems.find((item) => item.page === cur
 const unreadNotificationCount = computed(() => notificationItems.value.filter((item) => !item.read).length);
 const memberDisplayName = computed(() => member.value?.full_name || user.value?.name || 'Member');
 const memberFirstName = computed(() => memberDisplayName.value.split(/\s+/)[0] || 'Member');
-const bookedClassesCount = computed(() => scheduleClasses.value.filter((item) => item.booked_by_me).length);
+const bookedClassesCount = computed(() => scheduleWeek.value.reduce((n, day) => n + day.classes.filter((item) => item.booked_by_me).length, 0));
 
 /**
  * `isInitial` marks the on-mount check. checkAuth also runs on the periodic
@@ -647,12 +721,12 @@ async function submitGoal() {
 const progressAchievements = computed(() => {
   const completedCount = attendanceLogs.value.filter((l) => l.status === 'Completed').length;
   return [
-    { title: '30-Day Streak', description: 'Completed 30 consecutive days', icon: '🔥', achieved: currentStreak.value >= 30 },
-    { title: 'Consistent Attendee', description: 'Checked in 20 times', icon: '💪', achieved: completedCount >= 20 },
-    { title: 'First Check-In', description: 'Completed your first gym visit', icon: '⭐', achieved: completedCount >= 1 },
-    { title: 'Halfway There', description: 'Reached 50% of your weight goal', icon: '🎯', achieved: (progressData.value.goal_progress_percent ?? 0) >= 50 },
-    { title: 'Goal Getter', description: 'Reached your weight goal', icon: '🏆', achieved: (progressData.value.goal_progress_percent ?? 0) >= 100 },
-    { title: 'Paid Member', description: 'Membership payment fully verified', icon: '✅', achieved: !hasPendingPayment.value },
+    { title: '30-Day Streak', description: 'Completed 30 consecutive days', icon: Flame, achieved: currentStreak.value >= 30 },
+    { title: 'Consistent Attendee', description: 'Checked in 20 times', icon: Dumbbell, achieved: completedCount >= 20 },
+    { title: 'First Check-In', description: 'Completed your first gym visit', icon: Star, achieved: completedCount >= 1 },
+    { title: 'Halfway There', description: 'Reached 50% of your weight goal', icon: Target, achieved: (progressData.value.goal_progress_percent ?? 0) >= 50 },
+    { title: 'Goal Getter', description: 'Reached your weight goal', icon: Trophy, achieved: (progressData.value.goal_progress_percent ?? 0) >= 100 },
+    { title: 'Paid Member', description: 'Membership payment fully verified', icon: BadgeCheck, achieved: !hasPendingPayment.value },
   ];
 });
 
@@ -787,15 +861,20 @@ async function handleProceedToPayment() {
     alert('Invalid amount.');
     return;
   }
-  if (!paymentReceiptFile.value) {
+  // Cash is the manual option: no receipt, the member pays at the front desk and
+  // staff approve it there, so it stays Pending until the money is received.
+  const isCash = selectedPaymentMethod.value === 'Cash';
+  if (!isCash && !paymentReceiptFile.value) {
     alert('Please upload your GCash receipt proof.');
     return;
   }
-  if (!gymPaymentInfo.value.gcash_number) {
+  if (!isCash && !gymPaymentInfo.value.gcash_number) {
     alert('GCash receiver number is not set yet. Please contact admin.');
     return;
   }
-  const confirmMsg = `Confirm payment:\n\nPlan: ${plan.name}\nPayment Method: GCash\nAmount: PHP ${amount.toLocaleString()}\n\nProceed with payment?`;
+  const confirmMsg = isCash
+    ? `Confirm cash payment:\n\nPlan: ${plan.name}\nPayment Method: Cash (pay at the front desk)\nAmount: PHP ${amount.toLocaleString()}\n\nYour membership activates once you pay at the front desk. Continue?`
+    : `Confirm payment:\n\nPlan: ${plan.name}\nPayment Method: GCash\nAmount: PHP ${amount.toLocaleString()}\n\nProceed with payment?`;
   if (!confirm(confirmMsg)) return;
   paymentProcessing.value = true;
   paymentsError.value = '';
@@ -803,12 +882,17 @@ async function handleProceedToPayment() {
     const payload = new FormData();
     payload.append('membership_plan_id', String(selectedPlanId.value));
     payload.append('amount', String(amount));
-    payload.append('payment_method', 'GCash');
-    payload.append('receipt_proof', paymentReceiptFile.value);
+    payload.append('payment_method', isCash ? 'Cash' : 'GCash');
+    if (!isCash && paymentReceiptFile.value) {
+      payload.append('receipt_proof', paymentReceiptFile.value);
+    }
 
     const { data } = await memberPayments.create(payload);
     if (data.success) {
-      alert(`Payment submitted!\n\nPlan: ${plan.name}\nPayment Method: GCash\nAmount: PHP ${amount.toLocaleString()}\nStatus: Pending (for admin verification)\n\nThank you!`);
+      const invoice = (data as { payment?: { invoice_number?: string } }).payment?.invoice_number;
+      alert(isCash
+        ? `Cash payment request sent!\n\nPlan: ${plan.name}\nAmount: PHP ${amount.toLocaleString()}\n${invoice ? `Reference: ${invoice}\n` : ''}Status: Pending\n\nPay this amount at the front desk and show your reference number. Staff will mark it paid and your membership will activate.`
+        : `Payment submitted!\n\nPlan: ${plan.name}\nPayment Method: GCash\nAmount: PHP ${amount.toLocaleString()}\nStatus: Pending (for admin verification)\n\nThank you!`);
       paymentReceiptFile.value = null;
       paymentReceiptInputKey.value += 1;
       await loadPaymentsData();
@@ -911,10 +995,10 @@ async function handleSupportSubmit(event: Event) {
     await memberAuth.submitSupportTicket({ subject: supportSubject.value, message: supportMessage.value.trim() });
     supportSubmitted.value = true;
     supportMessage.value = '';
-    supportSubject.value = 'Equipment Issue';
+    supportSubject.value = 'General Feedback';
   } catch (err: unknown) {
     const ax = err as { response?: { data?: { message?: string } } };
-    supportError.value = ax.response?.data?.message || 'Failed to send your ticket. Please try again.';
+    supportError.value = ax.response?.data?.message || 'Failed to send your feedback. Please try again.';
   } finally {
     supportSending.value = false;
   }
@@ -962,8 +1046,8 @@ onUnmounted(() => {
       <p :style="{ color: portal.textDim }">Loading...</p>
     </div>
 
-    <div v-else class="sm:p-4 lg:p-6">
-      <div class="member-shell fg-shell fg-marble-bg mx-auto flex min-h-[calc(100vh-2rem)] max-w-[1500px] overflow-hidden rounded-[1.75rem] border shadow-2xl" style="border-color: rgba(160, 122, 31, 0.35)">
+    <div v-else>
+      <div class="member-shell fg-shell fg-marble-bg mx-auto flex min-h-[calc(100vh-2rem)] max-w-[1500px] overflow-hidden rounded-[1.75rem] border shadow-2xl" style="border-color: rgba(var(--fg-accent-deep-rgb), 0.35)">
         <div v-if="mobileNavOpen" class="fg-nav-backdrop" aria-hidden="true" @click="closeMobileNav" />
         <aside id="member-sidebar" class="member-sidebar fg-sidebar flex w-[17.5rem] shrink-0 flex-col px-5 py-8" :class="{ 'is-open': mobileNavOpen }" :style="{ backgroundColor: portal.sidebar }">
           <div class="flex items-start justify-between gap-3 pb-6">
@@ -1009,7 +1093,7 @@ onUnmounted(() => {
           <div class="pt-6">
             <button
               type="button"
-              class="w-full rounded-xl px-4 py-3 text-sm font-semibold transition-opacity hover:opacity-90"
+              class="member-logout-btn w-full rounded-xl px-4 py-3 text-sm font-semibold transition-opacity hover:opacity-90"
               :style="{ backgroundColor: portal.pink, color: '#fff' }"
               @click="handleLogout"
             >
@@ -1036,14 +1120,17 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <header class="member-header flex flex-col gap-4 border-b px-4 py-5 sm:px-6 sm:py-6 lg:flex-row lg:items-center lg:justify-between lg:px-10" style="border-color: rgba(160, 122, 31, 0.3)">
+          <header class="member-header flex flex-col gap-4 border-b px-4 py-5 sm:px-6 sm:py-6 lg:flex-row lg:items-center lg:justify-between lg:px-10" style="border-color: rgba(var(--fg-accent-deep-rgb), 0.3)">
             <div class="min-w-0">
-              <p class="text-sm font-semibold uppercase tracking-[0.24em] text-[var(--fg-gold)]">Member Workspace</p>
-              <h2 class="mt-2 text-2xl font-bold text-[var(--fg-ink)] sm:text-3xl">{{ currentPageInfo.label }}</h2>
-              <p class="mt-2 max-w-2xl text-sm text-[var(--fg-ink-soft)]">{{ currentPageInfo.description }}</p>
+              <h2 class="text-2xl font-bold text-[var(--fg-ink)]">{{ currentPageInfo.label }}</h2>
+              <p class="mt-1 max-w-2xl text-sm text-[var(--fg-ink-soft)]">{{ currentPageInfo.description }}</p>
             </div>
 
             <div class="relative flex flex-wrap items-center gap-3">
+              <FgThemeToggle
+                class="rounded-xl px-4 py-3 text-sm transition-opacity hover:opacity-90"
+                :style="{ backgroundColor: portal.dark3, color: 'var(--fg-card-ink)', border: `1px solid ${portal.border}` }"
+              />
               <div class="rounded-xl border px-4 py-3" :style="{ backgroundColor: portal.dark3, borderColor: portal.border }">
                 <p class="text-xs uppercase tracking-[0.2em]" :style="{ color: portal.textDim }">Member ID</p>
                 <p class="mt-1 text-sm font-semibold text-[var(--fg-card-ink)]">{{ member?.member_id || 'Pending' }}</p>
@@ -1061,7 +1148,7 @@ onUnmounted(() => {
               </button>
               <div class="rounded-xl border px-4 py-3" :style="{ backgroundColor: portal.dark3, borderColor: portal.border }">
                 <p class="text-xs uppercase tracking-[0.2em]" :style="{ color: portal.textDim }">Status</p>
-                <p class="mt-1 text-sm font-semibold" :style="{ color: member?.status === 'Active' ? portal.lime : portal.pink }">{{ member?.status || 'Inactive' }}</p>
+                <p class="mt-1 text-sm font-semibold" :style="{ color: membershipIsActive ? portal.lime : portal.pink }">{{ membershipStatusLabel }}</p>
               </div>
 
               <div
@@ -1107,7 +1194,7 @@ onUnmounted(() => {
             :style="{ backgroundColor: 'rgba(255, 107, 107, 0.12)', borderColor: portal.pink }"
           >
             <div>
-              <p class="text-sm font-semibold" :style="{ color: portal.pink }">⚠ Payment Pending</p>
+              <p class="text-sm font-semibold" :style="{ color: portal.pink }">Payment Pending</p>
               <p class="mt-1 text-sm" :style="{ color: portal.textDim }">
                 Complete your GCash payment below, or pay in person at the front desk, to activate your membership.
               </p>
@@ -1119,6 +1206,28 @@ onUnmounted(() => {
               @click="currentPage = 'Payments'"
             >
               Go to Payments
+            </button>
+          </div>
+
+          <div
+            v-else-if="membershipNotice"
+            class="mx-4 mt-5 flex flex-col items-start justify-between gap-3 rounded-xl border px-5 py-4 sm:mx-6 sm:mt-6 sm:flex-row sm:items-center lg:mx-10"
+            role="status"
+            :style="membershipNotice.expired
+              ? { backgroundColor: 'rgba(255, 107, 107, 0.12)', borderColor: portal.pink }
+              : { backgroundColor: 'rgba(var(--fg-accent-rgb), 0.16)', borderColor: 'var(--fg-accent)' }"
+          >
+            <div>
+              <p class="text-sm font-semibold" :style="{ color: membershipNotice.expired ? portal.pink : 'var(--fg-accent-deep)' }">{{ membershipNotice.title }}</p>
+              <p class="mt-1 text-sm" :style="{ color: portal.textDim }">{{ membershipNotice.text }}</p>
+            </div>
+            <button
+              type="button"
+              class="shrink-0 rounded-lg px-4 py-2 text-sm font-semibold transition-opacity hover:opacity-90"
+              :style="membershipNotice.expired ? { backgroundColor: portal.pink, color: '#fff' } : { backgroundColor: 'var(--fg-accent)', color: 'var(--fg-accent-ink)' }"
+              @click="currentPage = 'Payments'"
+            >
+              Renew Membership
             </button>
           </div>
 
@@ -1145,7 +1254,7 @@ onUnmounted(() => {
               </div>
               <div class="flex flex-col space-y-3 sm:flex-row sm:space-x-3 sm:space-y-0">
                 <button type="button" class="flex-1 rounded-lg py-3 font-semibold transition-opacity hover:opacity-90" :style="{ backgroundColor: portal.purple, color: portal.primaryText }" @click="currentPage = 'Attendance'">Check Attendance</button>
-                <button type="button" class="flex-1 rounded-lg py-3 font-semibold transition-opacity hover:opacity-90" :style="{ backgroundColor: portal.pink, color: portal.primaryText }" @click="currentPage = 'Membership'">Renew Membership</button>
+                <button type="button" class="flex-1 rounded-lg py-3 font-semibold transition-opacity hover:opacity-90" :style="{ backgroundColor: portal.bronze, color: '#F5F1E8' }" @click="currentPage = 'Membership'">Renew Membership</button>
                 <button type="button" class="fg-tile flex-1 rounded-lg py-3 font-semibold text-[var(--fg-card-ink)] transition-opacity hover:opacity-90" :style="{ backgroundColor: portal.dark2, border: `1px solid ${portal.border}` }" @click="currentPage = 'Schedule'">View Schedule</button>
               </div>
             </div>
@@ -1154,13 +1263,13 @@ onUnmounted(() => {
               <div class="flex flex-col items-center text-center">
                 <div
                   class="mb-3 rounded-full p-4"
-                  :style="member?.status === 'Active'
-                    ? { backgroundColor: 'rgba(163, 230, 53, 0.16)', color: portal.lime }
+                  :style="membershipIsActive
+                    ? { backgroundColor: 'rgba(var(--fg-accent-rgb), 0.16)', color: portal.lime }
                     : { backgroundColor: 'rgba(255, 107, 107, 0.16)', color: portal.pink }"
                 >
-                  {{ member?.status === 'Active' ? '✓' : '✕' }}
+                  {{ membershipIsActive ? '✓' : '✕' }}
                 </div>
-                <p class="text-lg font-semibold text-[var(--fg-card-ink)]">{{ member?.status || 'Inactive' }}</p>
+                <p class="text-lg font-semibold text-[var(--fg-card-ink)]">{{ membershipStatusLabel }}</p>
                 <p class="text-sm" :style="{ color: portal.textDim }">{{ member?.membership_plan || 'No Plan' }}</p>
                 <div v-if="member?.expiry_date" class="mt-6 w-full">
                   <div class="mb-1 flex justify-between text-xs" :style="{ color: portal.textDim }">
@@ -1179,14 +1288,14 @@ onUnmounted(() => {
               <h2 class="mb-4 text-xl font-bold text-[var(--fg-card-ink)]">Current Membership</h2>
               <div
                 class="mb-3 inline-block rounded-full p-4"
-                :style="member?.status === 'Active'
-                  ? { backgroundColor: 'rgba(163, 230, 53, 0.16)', color: portal.lime }
+                :style="membershipIsActive
+                  ? { backgroundColor: 'rgba(var(--fg-accent-rgb), 0.16)', color: portal.lime }
                   : { backgroundColor: 'rgba(255, 107, 107, 0.16)', color: portal.pink }"
               >
-                {{ member?.status === 'Active' ? '✓' : '✕' }}
+                {{ membershipIsActive ? '✓' : '✕' }}
               </div>
               <p class="text-2xl font-bold text-[var(--fg-card-ink)]">{{ member?.membership_plan || 'No Plan' }}</p>
-              <p class="mb-6 font-semibold" :style="member?.status === 'Active' ? { color: portal.lime } : { color: portal.pink }">{{ member?.status || 'Inactive' }} Membership</p>
+              <p class="mb-6 font-semibold" :style="membershipIsActive ? { color: portal.lime } : { color: portal.pink }">{{ membershipStatusLabel }} Membership</p>
               <div class="member-detail-list my-6 border-t border-b py-6 text-left" :style="{ borderColor: portal.border }">
                 <div class="flex justify-between text-sm">
                   <span :style="{ color: portal.textDim }">Plan Type:</span>
@@ -1194,7 +1303,7 @@ onUnmounted(() => {
                 </div>
                 <div class="mt-3 flex justify-between text-sm">
                   <span :style="{ color: portal.textDim }">Status:</span>
-                  <span class="font-medium" :style="member?.status === 'Active' ? { color: portal.lime } : { color: portal.pink }">{{ member?.status || 'Inactive' }}</span>
+                  <span class="font-medium" :style="membershipIsActive ? { color: portal.lime } : { color: portal.pink }">{{ membershipStatusLabel }}</span>
                 </div>
                 <div class="mt-3 flex justify-between text-sm">
                   <span :style="{ color: portal.textDim }">Payment Status:</span>
@@ -1210,6 +1319,9 @@ onUnmounted(() => {
                     <span class="text-lg font-bold text-[var(--fg-card-ink)]">{{ daysRemaining(member.expiry_date) }} days</span>
                   </div>
                 </template>
+                <p v-else class="mt-3 text-sm" :style="{ color: portal.textDim }">
+                  Your membership starts on the day your first payment is approved. Pay by GCash, or in cash at the front desk.
+                </p>
               </div>
               <button type="button" class="w-full rounded-lg py-3 font-semibold transition-opacity hover:opacity-90" :style="{ backgroundColor: portal.purple, color: portal.primaryText }" @click="currentPage = 'Payments'">Renew Membership</button>
             </div>
@@ -1217,7 +1329,7 @@ onUnmounted(() => {
               <h2 class="mb-4 text-xl font-bold text-[var(--fg-card-ink)]">Membership Benefits</h2>
               <div class="space-y-4">
                 <div class="fg-tile rounded-lg border p-4" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }">
-                  <h3 class="mb-1 flex items-center text-lg font-semibold text-[var(--fg-card-ink)]">⭐ {{ currentPlan?.name || member?.membership_plan || 'Your Plan' }}</h3>
+                  <h3 class="mb-1 flex items-center text-lg font-semibold text-[var(--fg-card-ink)]">{{ currentPlan?.name || member?.membership_plan || 'Your Plan' }}</h3>
                   <p v-if="currentPlan?.description" class="mb-3 text-sm" :style="{ color: portal.textDim }">{{ currentPlan.description }}</p>
                   <ul v-if="currentPlan?.features.length" class="list-inside list-disc space-y-2 text-sm leading-relaxed text-[var(--fg-card-ink)]">
                     <li v-for="feature in currentPlan.features" :key="feature">{{ feature }}</li>
@@ -1226,7 +1338,7 @@ onUnmounted(() => {
                   <p v-else class="text-sm" :style="{ color: portal.textDim }">Your gym hasn't listed the features of this plan yet. Ask the front desk for details.</p>
                 </div>
                 <div class="fg-tile rounded-lg border p-4" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }">
-                  <h3 class="mb-3 flex items-center text-lg font-semibold text-[var(--fg-card-ink)]">📱 Included With Every Membership</h3>
+                  <h3 class="mb-3 flex items-center text-lg font-semibold text-[var(--fg-card-ink)]">Included With Every Membership</h3>
                   <ul class="list-inside list-disc space-y-2 text-sm leading-relaxed text-[var(--fg-card-ink)]">
                     <li>QR code check-in and attendance history</li>
                     <li>Class schedule and online class booking</li>
@@ -1272,7 +1384,7 @@ onUnmounted(() => {
                         : 'Show this QR to Staff/Admin to check in. The same QR can also be scanned once more for check-out.'
                     }}
                   </p>
-                  <p v-if="attendanceQrExpiresAt" class="mb-4 text-[11px] uppercase tracking-wide font-semibold text-[#8fd16a]">
+                  <p v-if="attendanceQrExpiresAt" class="mb-4 text-[11px] uppercase tracking-wide font-semibold text-[var(--fg-card-gold)]">
                     Valid until {{ new Date(attendanceQrExpiresAt).toLocaleString([], { month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' }) }}
                   </p>
                   <div class="mx-auto mb-3 w-fit rounded-lg bg-white p-3">
@@ -1298,7 +1410,7 @@ onUnmounted(() => {
                       Copy Backup Code
                     </button>
                   </div>
-                  <p v-if="attendanceQrCopyStatus" class="mt-3 text-xs text-cyan-300">
+                  <p v-if="attendanceQrCopyStatus" class="mt-3 text-xs text-[var(--fg-card-gold)]">
                     {{ attendanceQrCopyStatus }}
                   </p>
                 </div>
@@ -1358,7 +1470,7 @@ onUnmounted(() => {
                       'font-bold': cell.isToday && !cell.isPad,
                       'text-black': (cell.isToday || cell.isVisited) && !cell.isPad,
                     }"
-                    :style="cell.isPad ? {} : cell.isToday ? { backgroundColor: portal.cyan } : cell.isVisited ? { backgroundColor: portal.lime } : cell.isPast ? { backgroundColor: portal.dark2, color: portal.textDim } : { color: 'var(--fg-card-ink)' }"
+                    :style="cell.isPad ? {} : cell.isToday ? { backgroundColor: portal.bronze, color: '#F5F1E8' } : cell.isVisited ? { backgroundColor: portal.lime, color: 'var(--fg-accent-ink)' } : cell.isPast ? { backgroundColor: portal.dark2, color: portal.textDim } : { color: 'var(--fg-card-ink)' }"
                   >
                     {{ cell.isPad ? '' : cell.day }}
                   </div>
@@ -1384,12 +1496,41 @@ onUnmounted(() => {
               <p v-if="paymentsError" class="mb-3 text-sm text-red-400">{{ paymentsError }}</p>
               <div class="mb-6">
                 <h3 class="mb-3 text-sm font-semibold" :style="{ color: portal.textDim }">Payment Method</h3>
-                <div class="rounded-lg p-4 text-center" :style="{ backgroundColor: portal.purple, color: portal.primaryText }">
-                  GCash
+                <div class="grid grid-cols-2 gap-3" role="radiogroup" aria-label="Payment method">
+                  <button
+                    v-for="method in [{ value: 'GCash', label: 'GCash', hint: 'Pay online, upload receipt' }, { value: 'Cash', label: 'Cash (Manual)', hint: 'Pay at the front desk' }]"
+                    :key="method.value"
+                    type="button"
+                    role="radio"
+                    :aria-checked="selectedPaymentMethod === method.value"
+                    class="rounded-lg border p-4 text-center transition-colors"
+                    :style="selectedPaymentMethod === method.value
+                      ? { backgroundColor: portal.purple, color: portal.primaryText, borderColor: portal.purple }
+                      : { backgroundColor: portal.dark2, color: 'var(--fg-card-ink)', borderColor: portal.border }"
+                    @click="selectedPaymentMethod = method.value"
+                  >
+                    <span class="block font-semibold">{{ method.label }}</span>
+                    <span class="mt-1 block text-xs" :style="{ opacity: 0.8 }">{{ method.hint }}</span>
+                  </button>
                 </div>
-                <p class="mt-2 text-xs" :style="{ color: portal.textDim }">
-                  Paying cash in person instead? Visit the front desk — staff will record your payment there.
-                </p>
+              </div>
+              <div v-if="selectedPaymentMethod === 'Cash'" class="mb-6 rounded-lg border p-4" :style="{ borderColor: portal.border, backgroundColor: portal.dark2 }">
+                <h3 class="mb-2 text-sm font-semibold text-[var(--fg-card-ink)]">How to Pay in Cash</h3>
+                <ol class="list-decimal space-y-1.5 pl-5 text-sm text-[var(--fg-card-ink)]">
+                  <li>Choose your membership plan below and tap <strong>Request Cash Payment</strong>.</li>
+                  <li>Go to the front desk and pay the exact amount. Show the reference number you'll get.</li>
+                  <li>Staff will mark your payment as paid, and your membership activates right away.</li>
+                </ol>
+                <div v-if="gymContact.address || gymContact.hours.length || gymContact.phone" class="mt-4 rounded-lg border p-3 text-sm" :style="{ borderColor: portal.border, backgroundColor: portal.dark }">
+                  <p v-if="gymContact.address" class="text-[var(--fg-card-ink)]"><span :style="{ color: portal.textDim }">Front desk:</span> {{ gymContact.address }}</p>
+                  <p v-if="gymContact.phone" class="mt-1 text-[var(--fg-card-ink)]"><span :style="{ color: portal.textDim }">Phone:</span> {{ gymContact.phone }}</p>
+                  <div v-if="gymContact.hours.length" class="mt-2">
+                    <p :style="{ color: portal.textDim }">Open hours:</p>
+                    <ul class="mt-1 space-y-0.5 text-xs text-[var(--fg-card-ink)]">
+                      <li v-for="line in gymContact.hours" :key="line">{{ line }}</li>
+                    </ul>
+                  </div>
+                </div>
               </div>
               <div v-if="selectedPaymentMethod === 'GCash'" class="mb-6 rounded-lg border p-4" :style="{ borderColor: portal.border, backgroundColor: portal.dark2 }">
                 <h3 class="mb-2 text-sm font-semibold text-[var(--fg-card-ink)]">Send Payment To</h3>
@@ -1449,7 +1590,7 @@ onUnmounted(() => {
                   : { backgroundColor: portal.purple, color: portal.primaryText }"
                 @click="handleProceedToPayment"
               >
-                {{ paymentProcessing ? 'Processing Payment...' : 'Proceed to Payment' }}
+                {{ paymentProcessing ? 'Processing Payment...' : selectedPaymentMethod === 'Cash' ? 'Request Cash Payment' : 'Proceed to Payment' }}
               </button>
             </div>
             <div class="rounded-xl border p-4 sm:p-6" :style="{ backgroundColor: portal.dark3, borderColor: portal.border }">
@@ -1472,10 +1613,11 @@ onUnmounted(() => {
                       <p class="font-semibold text-[var(--fg-card-ink)]">{{ item.plan_name }}</p>
                       <p class="text-xs" :style="{ color: portal.textDim }">{{ item.payment_date_formatted || item.payment_date }}</p>
                       <p class="text-xs" :style="{ color: portal.textDim }">{{ item.payment_method }}</p>
+                      <p v-if="item.payment_method === 'Cash' && String(item.status).toLowerCase() === 'pending'" class="mt-1 text-xs font-semibold" :style="{ color: portal.lime }">Pay at the front desk to activate</p>
                     </div>
                     <div class="text-right">
                       <p class="text-lg font-bold text-[var(--fg-card-ink)]">₱{{ item.amount }}</p>
-                      <p class="text-xs font-semibold" :style="{ color: portal.lime }">{{ item.status }}</p>
+                      <p class="text-xs font-semibold" :style="{ color: String(item.status).toLowerCase() === 'paid' ? portal.lime : String(item.status).toLowerCase() === 'pending' ? portal.textDim : portal.pink }">{{ item.status }}</p>
                     </div>
                   </div>
                 </template>
@@ -1486,7 +1628,7 @@ onUnmounted(() => {
           <!-- Progress (same as Blade: Fitness Progress + Achievements) -->
           <div v-else-if="currentPage === 'Progress'" class="grid grid-cols-1 gap-6 lg:grid-cols-5">
             <div class="rounded-xl border p-4 sm:p-6 lg:col-span-2" :style="{ backgroundColor: portal.dark3, borderColor: portal.border }">
-              <h2 class="mb-4 flex items-center text-xl font-bold text-[var(--fg-card-ink)]">🏋️ Fitness Progress</h2>
+              <h2 class="mb-4 flex items-center text-xl font-bold text-[var(--fg-card-ink)]">Fitness Progress</h2>
               <div class="space-y-6">
                 <div>
                   <div class="mb-1 flex justify-between text-sm">
@@ -1571,7 +1713,7 @@ onUnmounted(() => {
               </div>
             </div>
             <div class="rounded-xl border p-4 sm:p-6 lg:col-span-3" :style="{ backgroundColor: portal.dark3, borderColor: portal.border }">
-              <h2 class="mb-4 flex items-center text-xl font-bold text-[var(--fg-card-ink)]">🏆 Achievements</h2>
+              <h2 class="mb-4 flex items-center text-xl font-bold text-[var(--fg-card-ink)]">Achievements</h2>
               <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div
                   v-for="a in progressAchievements"
@@ -1579,7 +1721,7 @@ onUnmounted(() => {
                   class="flex items-center space-x-4 rounded-lg p-4"
                   :class="['fg-tile', { 'fg-tile--earned': a.achieved }]"
                 >
-                  <span class="text-3xl" :style="{ color: a.achieved ? portal.lime : portal.textDim }">{{ a.icon }}</span>
+                  <component :is="a.icon" class="h-7 w-7 shrink-0" aria-hidden="true" :style="{ color: a.achieved ? portal.lime : portal.textDim }" />
                   <div>
                     <p class="font-semibold" :style="{ color: a.achieved ? 'var(--fg-card-ink)' : portal.textDim }">{{ a.title }}</p>
                     <p class="text-xs" :style="{ color: portal.textDim }">{{ a.description }}</p>
@@ -1591,19 +1733,53 @@ onUnmounted(() => {
 
           <!-- Schedule (same as Blade: Class Schedule + Book Class) -->
           <div v-else-if="currentPage === 'Schedule'" class="rounded-xl border p-4 sm:p-6" :style="{ backgroundColor: portal.dark3, borderColor: portal.border }">
-            <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <h2 class="flex items-center text-xl font-bold text-[var(--fg-card-ink)]">📅 Class Schedule</h2>
-              <div class="flex flex-wrap items-center gap-2">
-                <button type="button" class="fg-tile rounded-md px-3 py-1.5 text-sm font-semibold" :style="{ backgroundColor: portal.dark2, color: 'var(--fg-card-ink)' }" @click="shiftScheduleDate(-1)">‹ Prev</button>
-                <span class="text-sm font-semibold text-[var(--fg-card-ink)]">{{ scheduleDateLabel }}</span>
-                <button type="button" class="fg-tile rounded-md px-3 py-1.5 text-sm font-semibold" :style="{ backgroundColor: portal.dark2, color: 'var(--fg-card-ink)' }" @click="shiftScheduleDate(1)">Next ›</button>
+            <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 class="text-xl font-bold text-[var(--fg-card-ink)]">Class Schedule</h2>
+                <p class="mt-1 text-sm" :style="{ color: portal.textDim }">Pick a day to see its classes, then tap Book Class to reserve your spot.</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <button type="button" class="fg-tile rounded-md px-3 py-1.5 text-sm font-semibold disabled:opacity-40" :style="{ backgroundColor: portal.dark2, color: 'var(--fg-card-ink)' }" :disabled="scheduleIsThisWeek || scheduleLoading" @click="shiftScheduleWeek(-1)">‹ Previous week</button>
+                <button type="button" class="fg-tile rounded-md px-3 py-1.5 text-sm font-semibold disabled:opacity-40" :style="{ backgroundColor: portal.dark2, color: 'var(--fg-card-ink)' }" :disabled="scheduleLoading" @click="shiftScheduleWeek(1)">Next week ›</button>
               </div>
             </div>
+
+            <div class="mb-6 grid grid-cols-4 gap-2 sm:grid-cols-7" role="tablist" aria-label="Days">
+              <template v-if="scheduleDays.length">
+                <button
+                  v-for="day in scheduleDays"
+                  :key="day.date"
+                  type="button"
+                  role="tab"
+                  :aria-selected="scheduleDate === day.date"
+                  class="flex flex-col items-center rounded-lg border px-1 py-2.5 text-center transition-colors"
+                  :style="scheduleDate === day.date
+                    ? { backgroundColor: portal.purple, borderColor: portal.purple, color: portal.primaryText }
+                    : { backgroundColor: portal.dark2, borderColor: portal.border, color: 'var(--fg-card-ink)' }"
+                  @click="scheduleDate = day.date"
+                >
+                  <span class="text-xs font-semibold uppercase tracking-wide">{{ day.weekday }}</span>
+                  <span class="text-xl font-bold leading-tight">{{ day.dayNumber }}</span>
+                  <span class="text-[11px]" :style="{ opacity: 0.75 }">{{ day.month }}</span>
+                  <span class="mt-1 text-[11px] font-semibold" :style="scheduleDate === day.date ? {} : { color: day.count ? portal.lime : portal.textDim }">
+                    {{ day.count === 0 ? 'No class' : day.count === 1 ? '1 class' : `${day.count} classes` }}
+                  </span>
+                  <span v-if="day.booked" class="mt-0.5 text-[10px] font-bold uppercase">✓ Booked</span>
+                </button>
+              </template>
+              <div v-else v-for="n in 7" :key="n" class="h-[5.5rem] animate-pulse rounded-lg" :style="{ backgroundColor: portal.dark2 }" />
+            </div>
+
+            <h3 class="mb-3 text-base font-semibold text-[var(--fg-card-ink)]">{{ scheduleSelectedLabel }}</h3>
             <p v-if="scheduleError" class="mb-3 text-sm text-red-400">{{ scheduleError }}</p>
-            <p v-if="scheduleLoading" class="text-sm" :style="{ color: portal.textDim }">Loading classes...</p>
-            <p v-else-if="scheduleClasses.length === 0" class="text-sm" :style="{ color: portal.textDim }">
-              No classes scheduled for this day.
-            </p>
+            <p v-if="scheduleLoading && !scheduleDays.length" class="text-sm" :style="{ color: portal.textDim }">Loading classes...</p>
+            <div v-else-if="scheduleClasses.length === 0" class="fg-tile rounded-lg p-5 text-center" :style="{ backgroundColor: portal.dark2 }">
+              <p class="font-semibold text-[var(--fg-card-ink)]">No classes on this day.</p>
+              <p class="mt-1 text-sm" :style="{ color: portal.textDim }">
+                <template v-if="scheduleNextDay">Next class: <button type="button" class="font-semibold underline" :style="{ color: portal.lime }" @click="scheduleDate = scheduleNextDay.date">{{ scheduleNextDay.weekday }}, {{ scheduleNextDay.month }} {{ scheduleNextDay.dayNumber }}</button></template>
+                <template v-else>No more classes this week. Try <button type="button" class="font-semibold underline" :style="{ color: portal.lime }" @click="shiftScheduleWeek(1)">next week</button>.</template>
+              </p>
+            </div>
             <div v-else class="space-y-4">
               <div
                 v-for="cls in scheduleClasses"
@@ -1613,8 +1789,8 @@ onUnmounted(() => {
               >
                 <div>
                   <p class="text-lg font-bold text-[var(--fg-card-ink)]">{{ cls.name }}</p>
-                  <p class="text-sm" :style="{ color: portal.textDim }">Time: {{ cls.start_time }} - {{ cls.end_time }}</p>
-                  <p class="text-sm" :style="{ color: portal.textDim }">Trainer: {{ cls.trainer_name }}</p>
+                  <p class="text-sm" :style="{ color: portal.textDim }">Time: {{ formatClassTime(cls.start_time) }} – {{ formatClassTime(cls.end_time) }}</p>
+                  <p class="text-sm" :style="{ color: portal.textDim }">Staff: {{ cls.trainer_name }}</p>
                   <p class="text-xs" :style="{ color: portal.textDim }">{{ cls.booked_count }} / {{ cls.capacity }} booked</p>
                 </div>
                 <div class="mt-3 sm:mt-0">
@@ -1622,7 +1798,7 @@ onUnmounted(() => {
                     v-if="cls.booked_by_me"
                     type="button"
                     class="inline-flex items-center gap-1.5 rounded-md border px-4 py-1.5 text-sm font-semibold transition-opacity hover:opacity-90"
-                    :style="{ borderColor: portal.lime, color: portal.lime, backgroundColor: 'rgba(163, 230, 53, 0.16)' }"
+                    :style="{ borderColor: portal.lime, color: portal.lime, backgroundColor: 'rgba(var(--fg-accent-rgb), 0.16)' }"
                     :disabled="scheduleActionLoading"
                     @click="cancelBooking(cls)"
                   >
@@ -1723,38 +1899,38 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <!-- Support (same as Blade: Contact Support form + success + Quick Contact) -->
-          <div v-else-if="currentPage === 'Support'" class="mx-auto max-w-2xl">
+          <!-- Feedback: form + success + Quick Contact -->
+          <div v-else-if="currentPage === 'Feedback'" class="mx-auto max-w-2xl">
             <div v-if="supportSubmitted" class="rounded-xl border p-4 sm:p-6 text-center" :style="{ backgroundColor: portal.dark3, borderColor: portal.border }">
-              <div class="mb-4 inline-block rounded-full p-4" :style="{ backgroundColor: 'rgba(163, 230, 53, 0.16)', color: portal.lime }">
+              <div class="mb-4 inline-block rounded-full p-4" :style="{ backgroundColor: 'rgba(var(--fg-accent-rgb), 0.16)', color: portal.lime }">
                 <span class="text-2xl">✓</span>
               </div>
-              <h2 class="mb-2 text-2xl font-bold text-[var(--fg-card-ink)]">Ticket Submitted!</h2>
-              <p class="mb-6 text-sm" :style="{ color: portal.textDim }">The gym staff has been notified and will get back to you. Thank you for your patience.</p>
+              <h2 class="mb-2 text-2xl font-bold text-[var(--fg-card-ink)]">Thank you for your feedback!</h2>
+              <p class="mb-6 text-sm" :style="{ color: portal.textDim }">The gym has received your message and will get back to you if needed.</p>
               <button
                 type="button"
                 class="rounded-lg py-2 px-6 font-semibold text-[var(--fg-card-ink)] transition-opacity hover:opacity-90"
                 :style="{ backgroundColor: portal.purple, color: portal.primaryText }"
                 @click="supportSubmitted = false"
               >
-                Submit Another Ticket
+                Send More Feedback
               </button>
             </div>
             <div v-else class="rounded-xl border p-4 sm:p-6" :style="{ backgroundColor: portal.dark3, borderColor: portal.border }">
-              <h2 class="mb-4 flex items-center text-xl font-bold text-[var(--fg-card-ink)]">💬 Contact Support</h2>
+              <h2 class="mb-4 flex items-center text-xl font-bold text-[var(--fg-card-ink)]">Send Feedback</h2>
               <form @submit="handleSupportSubmit" class="space-y-4">
                 <div>
-                  <label for="support-subject" class="mb-1 block text-sm font-medium" :style="{ color: portal.textDim }">Subject</label>
+                  <label for="support-subject" class="mb-1 block text-sm font-medium" :style="{ color: portal.textDim }">Topic</label>
                   <select
                     id="support-subject"
                     v-model="supportSubject"
                     class="w-full rounded-lg border p-2.5 text-[var(--fg-card-ink)]"
                     :style="{ backgroundColor: portal.dark2, borderColor: portal.border }"
                   >
+                    <option value="General Feedback">General Feedback</option>
                     <option value="Equipment Issue">Equipment Issue</option>
                     <option value="Billing Inquiry">Billing Inquiry</option>
                     <option value="Membership Question">Membership Question</option>
-                    <option value="General Feedback">General Feedback</option>
                   </select>
                 </div>
                 <div>
@@ -1764,7 +1940,7 @@ onUnmounted(() => {
                     v-model="supportMessage"
                     rows="5"
                     required
-                    placeholder="Describe your issue..."
+                    placeholder="Tell us what you liked, what we can improve, or any problem you had..."
                     maxlength="2000"
                     class="w-full rounded-lg border p-2.5 text-[var(--fg-card-ink)] placeholder-gray-500"
                     :style="{ backgroundColor: portal.dark2, borderColor: portal.border }"
@@ -1777,17 +1953,17 @@ onUnmounted(() => {
                   :style="{ backgroundColor: portal.purple, color: portal.primaryText }"
                   :disabled="supportSending"
                 >
-                  {{ supportSending ? 'Sending...' : 'Submit Ticket' }}
+                  {{ supportSending ? 'Sending...' : 'Send Feedback' }}
                 </button>
               </form>
               <div class="mt-6 border-t pt-6" :style="{ borderColor: portal.border }">
                 <h3 class="mb-3 text-lg font-semibold text-[var(--fg-card-ink)]">Quick Contact — {{ gymDisplayName }}</h3>
                 <div class="space-y-2 text-sm [overflow-wrap:anywhere]" :style="{ color: portal.textDim }">
-                  <p v-if="gymContact.phone">📞 Phone: {{ gymContact.phone }}</p>
-                  <p v-if="gymContact.email">✉️ Email: {{ gymContact.email }}</p>
-                  <p v-if="gymContact.address">📍 Address: {{ gymContact.address }}</p>
+                  <p v-if="gymContact.phone">Phone: {{ gymContact.phone }}</p>
+                  <p v-if="gymContact.email">Email: {{ gymContact.email }}</p>
+                  <p v-if="gymContact.address">Address: {{ gymContact.address }}</p>
                   <div v-if="gymContact.hours.length">
-                    <p>🕒 Hours:</p>
+                    <p>Hours:</p>
                     <ul class="mt-1 ml-6 list-disc space-y-0.5">
                       <li v-for="line in gymContact.hours" :key="line">{{ line }}</li>
                     </ul>
@@ -1926,7 +2102,7 @@ onUnmounted(() => {
 .member-sidebar {
   border-right: 1px solid var(--fg-card-border);
   background:
-    linear-gradient(180deg, rgba(217, 180, 90, 0.07) 0%, rgba(217, 180, 90, 0) 45%),
+    linear-gradient(180deg, rgba(var(--fg-accent-rgb), 0.07) 0%, rgba(var(--fg-accent-rgb), 0) 45%),
     var(--fg-card-sidebar);
 }
 
@@ -1936,12 +2112,12 @@ onUnmounted(() => {
 }
 
 .member-nav-item:hover {
-  background: rgba(217, 180, 90, 0.1);
-  border-color: rgba(106, 90, 205, 0.3);
+  background: rgba(var(--fg-accent-rgb), 0.1);
+  border-color: rgba(var(--fg-accent-rgb), 0.3);
 }
 
 .member-nav-item.active {
-  box-shadow: 0 14px 28px rgba(138, 43, 226, 0.28);
+  box-shadow: 0 14px 28px rgba(var(--fg-accent-rgb), 0.28);
 }
 
 .member-header {
@@ -1962,8 +2138,8 @@ onUnmounted(() => {
 .member-portal input:focus,
 .member-portal select:focus,
 .member-portal textarea:focus {
-  border-color: rgba(138, 43, 226, 0.72) !important;
-  box-shadow: 0 0 0 1px rgba(138, 43, 226, 0.4);
+  border-color: rgba(var(--fg-accent-rgb), 0.72) !important;
+  box-shadow: 0 0 0 1px rgba(var(--fg-accent-rgb), 0.4);
 }
 
 /* 16px inputs stop iOS Safari from zooming the page on focus */

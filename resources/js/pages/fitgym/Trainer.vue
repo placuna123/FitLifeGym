@@ -1,6 +1,6 @@
 ﻿<script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
-import { Menu, X } from 'lucide-vue-next';
+import { CheckCircle2, Clock, Menu, UserCheck, Users, X } from 'lucide-vue-next';
 import { ref, shallowRef, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import {
   trainerAuth,
@@ -16,6 +16,7 @@ import {
   trainer,
 } from '@/api/fitgym';
 import { Chart, type ChartConfiguration } from 'chart.js/auto';
+import FgThemeToggle from '@/components/FgThemeToggle.vue';
 import PasswordToggle from '@/components/PasswordToggle.vue';
 import ProfilePhotoPicker from '@/components/ProfilePhotoPicker.vue';
 import { useMobileNav } from '@/composables/useMobileNav';
@@ -140,7 +141,7 @@ const navItems = [
   { id: 'attendance', label: 'Attendance', description: 'Check-ins, logs, and gym activity' },
   { id: 'members', label: 'Members', description: 'Accounts, status, and updates' },
   { id: 'memberships', label: 'Membership Plans', description: 'Plans, pricing, and summaries' },
-  { id: 'schedule', label: 'Schedule', description: 'Classes, trainers, and availability' },
+  { id: 'schedule', label: 'Schedule', description: 'Classes, staff, and availability' },
   { id: 'profile', label: 'Profile', description: 'Account and staff preferences' },
 ] as const;
 const currentViewInfo = computed(() => navItems.find((item) => item.id === currentView.value) ?? navItems[0]);
@@ -276,35 +277,84 @@ function destroyDashboardChart() {
   }
 }
 
+// Check-ins per day for the last 7 days (today last), from the attendance report.
+const staffWeek = computed(() => {
+  const daily = (reportAttendance.value?.daily_stats as Array<{ date?: string; count?: number }>) || [];
+  return daily.slice(-7).map((d, i, all) => ({
+    label: i === all.length - 1 ? 'Today' : new Date(String(d.date)).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' }),
+    count: Number(d.count ?? 0),
+  }));
+});
+const staffWeekTotal = computed(() => Number(reportAttendance.value?.week_checkins ?? staffWeek.value.reduce((n, d) => n + d.count, 0)));
+
+function initialsOf(name: unknown): string {
+  return String(name || '').trim().split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '-';
+}
+
+function to12Hour(time: unknown): string {
+  const [h, m] = String(time ?? '').split(':').map(Number);
+  if (Number.isNaN(h)) return String(time ?? '');
+  return `${h % 12 || 12}:${String(m || 0).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+}
+
+// Expiring memberships with a readable date and how soon; the next 3 days are flagged.
+const expiringRows = computed(() => {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return expiringMembers.value.map((m) => {
+    const expiry = new Date(`${String(m.expiry_date)}T00:00:00`);
+    const days = Math.round((expiry.getTime() - today.getTime()) / 86_400_000);
+    return {
+      id: String(m.id),
+      name: String(m.full_name || ''),
+      initials: initialsOf(m.full_name),
+      date: expiry.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
+      when: days === 0 ? 'ends today' : days === 1 ? 'ends tomorrow' : `in ${days} days`,
+      urgent: days <= 3,
+    };
+  });
+});
+
 function buildDashboardChart() {
   if (currentView.value !== 'dashboard' || !dashboardChartCanvas.value) return;
   destroyDashboardChart();
+  const days = staffWeek.value;
   dashboardChart = new Chart(dashboardChartCanvas.value, {
-    type: 'doughnut',
+    type: 'bar',
     data: {
-      labels: ['Check-ins Today', 'Members Inside', 'Active Members', 'Expiring Soon'],
+      labels: days.map((d) => d.label),
       datasets: [
         {
-          data: [
-            trainerCheckinsToday.value,
-            Number(currentlyInGym.value.length || 0),
-            Number(reportAttendance.value?.active_members ?? 0),
-            Number(expiringMembers.value.length || 0),
-          ],
-          backgroundColor: ['#00BFFF', '#8DFF00', '#8A2BE2', '#FF6B6B'],
-          borderColor: '#151515',
-          borderWidth: 2,
-          hoverOffset: 8,
+          label: 'Check-ins',
+          data: days.map((d) => d.count),
+          // today stands out in bright gold, the other days a softer gold
+          backgroundColor: days.map((_, i) => (i === days.length - 1 ? '#F0D48A' : '#B8923A')),
+          borderWidth: 0,
+          borderRadius: 6,
+          maxBarThickness: 46,
         },
       ],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: '#A8A196' } } },
-    } as ChartConfiguration<'doughnut'>['options'],
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.y} check-in${ctx.parsed.y === 1 ? '' : 's'}` } },
+      },
+      scales: {
+        y: { beginAtZero: true, grid: { color: 'rgba(168,161,150,0.15)' }, ticks: { color: '#A8A196', precision: 0 } },
+        x: { grid: { display: false }, ticks: { color: '#A8A196' } },
+      },
+    } as ChartConfiguration<'bar'>['options'],
   });
 }
+
+// The canvas only exists once the dashboard is on screen; draw when it appears and
+// whenever the week's numbers change.
+watch([dashboardChartCanvas, staffWeek], ([canvas]) => {
+  if (canvas) buildDashboardChart();
+});
 
 async function loadAttendanceData() {
   dataLoading.value = true;
@@ -1020,13 +1070,9 @@ async function submitChangePassword() {
 const weeklyActivityData = computed(() => {
   const daily = (reportAttendance.value?.daily_stats as Array<{ date?: string; count?: number }>) || [];
   const checkins = daily.length >= 7 ? daily.slice(-7).map((d) => Number(d.count ?? 0)) : [0, 0, 0, 0, 0, 0, 0];
-  const rev = reportRevenue.value;
-  const monthly = typeof (rev as Record<string, unknown>)?.monthly_revenue === 'number' ? Number((rev as Record<string, unknown>).monthly_revenue) : 0;
-  const totalCheckins = checkins.reduce((sum, n) => sum + n, 0);
-  const revenuePerDay = checkins.map((c) => {
-    if (monthly <= 0 || totalCheckins <= 0) return 0;
-    return Math.round((monthly / totalCheckins) * c);
-  });
+  // Money actually received on each of those days (Paid payments), from the revenue report
+  const dailyRevenue = (reportRevenue.value?.daily_revenue as Array<{ amount?: number }>) || [];
+  const revenuePerDay = checkins.map((_, i) => Number(dailyRevenue.slice(-7)[i]?.amount ?? 0));
   return { checkins: checkins.length === 7 ? checkins : [0, 0, 0, 0, 0, 0, 0], revenue: revenuePerDay };
 });
 
@@ -1096,8 +1142,8 @@ function buildReportsCharts() {
         data: {
           labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
           datasets: [
-            { label: 'Check-ins', data: w.checkins, backgroundColor: 'rgba(79, 70, 229, 0.6)', borderColor: 'rgba(79, 70, 229, 1)', borderWidth: 1, borderRadius: 4 },
-            { label: 'Revenue', data: w.revenue, backgroundColor: 'rgba(168, 85, 247, 0.6)', borderColor: 'rgba(168, 85, 247, 1)', borderWidth: 1, borderRadius: 4 },
+            { label: 'Check-ins', data: w.checkins, backgroundColor: 'rgba(217, 180, 90, 0.6)', borderColor: '#D9B45A', borderWidth: 1, borderRadius: 4 },
+            { label: 'Revenue', data: w.revenue, backgroundColor: 'rgba(140, 122, 85, 0.6)', borderColor: '#8C7A55', borderWidth: 1, borderRadius: 4 },
           ],
         },
         options: commonOptions as ChartConfiguration<'bar'>['options'],
@@ -1108,7 +1154,7 @@ function buildReportsCharts() {
         type: 'line',
         data: {
           labels: ['Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan'],
-          datasets: [{ label: 'Total Members', data: membershipGrowthData.value, fill: false, borderColor: '#A3E635', tension: 0.1 }],
+          datasets: [{ label: 'Total Members', data: membershipGrowthData.value, fill: false, borderColor: '#D9B45A', tension: 0.1 }],
         },
         options: commonOptions as ChartConfiguration<'line'>['options'],
       });
@@ -1118,7 +1164,7 @@ function buildReportsCharts() {
         const p = planDistributionChartData.value;
         reportCharts.value.planDist = new Chart(planDistCanvas.value, {
           type: 'doughnut',
-          data: { labels: p.labels, datasets: [{ label: 'Members', data: p.data, backgroundColor: ['#A855F7', '#EC4899', '#4F46E5'], hoverOffset: 4 }] },
+          data: { labels: p.labels, datasets: [{ label: 'Members', data: p.data, backgroundColor: ['#D9B45A', '#8C7A55', '#F0D48A'], hoverOffset: 4 }] },
           options: doughnutPieOptions as ChartConfiguration<'doughnut'>['options'],
         });
       }
@@ -1126,7 +1172,7 @@ function buildReportsCharts() {
         const r = revenueByPlanChartData.value;
         reportCharts.value.revenue = new Chart(revenueChartCanvas.value, {
           type: 'pie',
-          data: { labels: r.labels, datasets: [{ label: 'Revenue (PHP)', data: r.data, backgroundColor: ['#A855F7', '#EC4899', '#4F46E5'], hoverOffset: 4 }] },
+          data: { labels: r.labels, datasets: [{ label: 'Revenue (PHP)', data: r.data, backgroundColor: ['#D9B45A', '#8C7A55', '#F0D48A'], hoverOffset: 4 }] },
           options: doughnutPieOptions as ChartConfiguration<'pie'>['options'],
         });
       }
@@ -1145,8 +1191,8 @@ function plansWithStats(): Record<string, unknown>[] {
   return plans.map((p) => {
     const rev = revPlans.find((r) => Number(r.id) === Number((p as Record<string, unknown>).id));
     const count = rev?.member_count ?? 0;
-    const price = Number((p as Record<string, unknown>).price) || 0;
-    return { ...p, member_count: count, monthly_revenue: price * count };
+    // what was actually received for the plan this month, not price x members
+    return { ...p, member_count: count, monthly_revenue: Number((rev as { monthly_revenue?: number } | undefined)?.monthly_revenue ?? 0) };
   });
 }
 
@@ -1177,14 +1223,11 @@ function mostSubscribedPlanName(): string {
   return top.member_count > 0 ? (top.name || '-') : '-';
 }
 
+// Same as Admin > Membership Plans: only the features saved on the plan, so both
+// portals (and members) see the same list instead of one guessed from the name.
 function planFeatures(plan: Record<string, unknown>): string[] {
   const saved = Array.isArray(plan.features) ? (plan.features as unknown[]).map(String).filter(Boolean) : [];
-  if (saved.length) return saved;
-  const name = String(plan.name || '').toLowerCase();
-  if (name.includes('basic')) return ['Gym Access', 'Locker Room', 'Free Wifi'];
-  if (name.includes('vip')) return ['All Equipment', 'Group Classes', 'Locker Room', 'Towel Service'];
-  if (name.includes('premium')) return ['Personal Training', 'Group Classes', 'Sauna/Steam', 'Towel Service', 'Free Wifi', 'Guest Access'];
-  return ['Gym Access'];
+  return saved;
 }
 
 const SCHEDULE_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -1488,7 +1531,7 @@ onUnmounted(() => {
               required
               autocomplete="email"
               class="w-full rounded-lg border px-3 py-3 text-white placeholder-gray-500"
-              placeholder="trainer@example.com"
+              placeholder="staff@example.com"
             />
           </div>
           <div>
@@ -1528,7 +1571,7 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div v-else class="sm:p-4 lg:p-6">
+    <div v-else>
       <div class="trainer-shell fg-shell fg-marble-bg mx-auto flex min-h-[calc(100vh-2rem)] max-w-[1500px] overflow-hidden rounded-[1.75rem] border shadow-2xl">
         <div v-if="mobileNavOpen" class="fg-nav-backdrop" aria-hidden="true" @click="closeMobileNav" />
         <aside id="trainer-sidebar" class="trainer-sidebar fg-sidebar flex w-[17.5rem] shrink-0 flex-col px-5 py-8" :class="{ 'is-open': mobileNavOpen }">
@@ -1598,12 +1641,12 @@ onUnmounted(() => {
 
           <header class="trainer-header flex flex-col gap-4 border-b px-4 py-5 sm:px-6 sm:py-6 lg:flex-row lg:items-center lg:justify-between lg:px-10">
             <div class="min-w-0">
-              <p class="text-sm font-semibold uppercase tracking-[0.24em] text-[var(--fg-gold)]">Staff Workspace</p>
-              <h2 class="mt-2 text-2xl font-bold text-[var(--fg-ink)] sm:text-3xl">{{ currentViewInfo.label }}</h2>
-              <p class="mt-2 max-w-2xl text-sm text-[var(--fg-ink-soft)]">{{ currentViewInfo.description }}</p>
+              <h2 class="text-2xl font-bold text-[var(--fg-ink)]">{{ currentViewInfo.label }}</h2>
+              <p class="mt-1 max-w-2xl text-sm text-[var(--fg-ink-soft)]">{{ currentViewInfo.description }}</p>
             </div>
 
             <div class="flex flex-wrap items-center gap-3">
+              <FgThemeToggle class="trainer-header-card rounded-xl border px-4 py-3 text-sm text-[var(--text-primary)]" />
               <div class="trainer-header-card rounded-xl border px-4 py-3">
                 <p class="text-xs uppercase tracking-[0.2em] text-[var(--text-secondary)]">Staff Email</p>
                 <p class="mt-1 text-sm font-semibold break-all text-white">{{ user?.email || 'No email' }}</p>
@@ -1628,36 +1671,46 @@ onUnmounted(() => {
                 <div>
                   <p class="text-sm text-gray-400">Check-ins Today</p>
                   <p class="text-xl font-bold text-white">{{ dataLoading ? '-' : trainerCheckinsToday }}</p>
+                  <p class="mt-1 text-xs text-gray-400">{{ staffWeekTotal }} this week</p>
                 </div>
-                <div class="rounded-full bg-blue-500 p-3 text-white">&#10003;</div>
+                <div class="rounded-full bg-green-500 p-3 text-white"><CheckCircle2 class="h-5 w-5" aria-hidden="true" /></div>
               </div>
               <div class="flex items-center justify-between rounded-lg bg-[#2A3042] p-6 shadow">
                 <div>
                   <p class="text-sm text-gray-400">Members Inside</p>
                   <p class="text-xl font-bold text-white">{{ dataLoading ? '-' : currentlyInGym.length }}</p>
+                  <p class="mt-1 text-xs text-gray-400">In the gym right now</p>
                 </div>
-                <div class="rounded-full bg-green-500 p-3 text-white">&#128101;</div>
+                <div class="rounded-full bg-green-500 p-3 text-white"><Users class="h-5 w-5" aria-hidden="true" /></div>
               </div>
               <div class="flex items-center justify-between rounded-lg bg-[#2A3042] p-6 shadow">
                 <div>
                   <p class="text-sm text-gray-400">Active Members</p>
                   <p class="text-xl font-bold text-white">{{ reportAttendance?.active_members ?? 0 }}</p>
+                  <p class="mt-1 text-xs text-gray-400">Approved member accounts</p>
                 </div>
-                <div class="rounded-full bg-yellow-500 p-3 text-white">+</div>
+                <div class="rounded-full bg-green-500 p-3 text-white"><UserCheck class="h-5 w-5" aria-hidden="true" /></div>
               </div>
               <div class="flex items-center justify-between rounded-lg bg-[#2A3042] p-6 shadow">
                 <div>
                   <p class="text-sm text-gray-400">Expiring Soon</p>
                   <p class="text-xl font-bold text-white">{{ expiringMembers.length }}</p>
+                  <p class="mt-1 text-xs text-gray-400">{{ expiringRows[0] ? `Next: ${expiringRows[0].name}, ${expiringRows[0].date}` : 'None in the next 30 days' }}</p>
                 </div>
-                <div class="rounded-full bg-purple-500 p-3 text-white">&#9201;</div>
+                <div class="rounded-full bg-green-500 p-3 text-white"><Clock class="h-5 w-5" aria-hidden="true" /></div>
               </div>
             </div>
 
             <div class="rounded-lg bg-[#2A3042] p-6 shadow">
-              <h4 class="mb-4 text-lg font-semibold text-white">Dashboard Analytics</h4>
+              <div class="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+                <h4 class="text-lg font-semibold text-white">Check-ins, Last 7 Days</h4>
+                <span class="text-sm text-gray-400">{{ staffWeekTotal }} visit{{ staffWeekTotal === 1 ? '' : 's' }} this week</span>
+              </div>
               <div class="relative h-60 sm:h-72">
                 <canvas ref="dashboardChartCanvas"></canvas>
+                <p v-if="staffWeekTotal === 0 && !dataLoading" class="pointer-events-none absolute inset-0 grid place-items-center px-4 text-center text-sm text-gray-400">
+                  No check-ins in the last 7 days. Visits show here as members scan in at the front desk.
+                </p>
               </div>
             </div>
 
@@ -1665,13 +1718,13 @@ onUnmounted(() => {
               <div class="rounded-lg bg-[#2A3042] p-6 shadow">
                 <h4 class="mb-4 text-lg font-semibold text-white">Quick Actions</h4>
                 <div class="space-y-3">
-                  <button type="button" class="w-full rounded-lg bg-blue-500 px-4 py-3 text-left font-medium text-white hover:opacity-90" @click="openCheckinModal">
+                  <button type="button" class="w-full rounded-lg bg-purple-600 px-4 py-3 text-left font-medium text-white hover:opacity-90" @click="openCheckinModal">
                     Record Check-in
                   </button>
-                  <button type="button" class="w-full rounded-lg bg-purple-600 px-4 py-3 text-left font-medium text-white hover:opacity-90" @click="openAddMemberModal">
+                  <button type="button" class="w-full rounded-lg bg-blue-500 px-4 py-3 text-left font-medium text-white hover:opacity-90" @click="openAddMemberModal">
                     Add New Member
                   </button>
-                  <button type="button" class="w-full rounded-lg bg-gray-600 px-4 py-3 text-left font-medium text-white hover:opacity-90" @click="currentView = 'attendance'">
+                  <button type="button" class="w-full rounded-lg bg-blue-500 px-4 py-3 text-left font-medium text-white hover:opacity-90" @click="currentView = 'attendance'">
                     View Attendance Logs
                   </button>
                 </div>
@@ -1682,18 +1735,18 @@ onUnmounted(() => {
                   <div v-for="c in recentCheckins.slice(0, 8)" :key="String((c as Record<string, unknown>).id)" class="flex items-center justify-between py-3">
                     <div class="flex items-center gap-3">
                       <div class="flex h-10 w-10 items-center justify-center rounded-full bg-gray-600 text-sm font-bold text-white">
-                        {{ (c as Record<string, unknown>).initials || '-' }}
+                        {{ initialsOf((c as Record<string, unknown>).member_name) }}
                       </div>
                       <div>
                         <p class="font-medium text-white">{{ (c as Record<string, unknown>).member_name }}</p>
-                        <p class="text-xs text-gray-400">Check-in: {{ (c as Record<string, unknown>).check_in_time }}</p>
+                        <p class="text-xs text-gray-400">Checked in at {{ to12Hour((c as Record<string, unknown>).check_in_time) }}</p>
                       </div>
                     </div>
                     <span :class="['rounded px-2 py-1 text-xs font-medium', (c as Record<string, unknown>).status === 'Inside' ? 'bg-green-500/20 text-green-300' : 'bg-gray-500/20 text-gray-300']">
-                      {{ (c as Record<string, unknown>).status }}
+                      {{ (c as Record<string, unknown>).status === 'Inside' ? 'In gym' : 'Done' }}
                     </span>
                   </div>
-                  <p v-if="recentCheckins.length === 0 && !dataLoading" class="py-4 text-center text-gray-400">No recent check-ins.</p>
+                  <p v-if="recentCheckins.length === 0 && !dataLoading" class="py-4 text-center text-gray-400">No check-ins yet today.</p>
                 </div>
               </div>
             </div>
@@ -1701,18 +1754,19 @@ onUnmounted(() => {
             <div class="rounded-lg bg-[#2A3042] p-6 shadow">
               <h4 class="mb-4 text-lg font-semibold text-white">Upcoming Membership Expirations</h4>
               <div class="space-y-3">
-                <div v-for="m in expiringMembers.slice(0, 5)" :key="String((m as Record<string, unknown>).id)" class="flex items-center justify-between rounded-lg bg-gray-900/50 p-4">
+                <div v-for="m in expiringRows.slice(0, 5)" :key="m.id" class="flex items-center justify-between gap-3 rounded-lg bg-gray-900/50 p-4">
                   <div class="flex items-center gap-4">
-                    <div class="flex h-10 w-10 items-center justify-center rounded-full bg-yellow-500 text-lg font-bold text-white">
-                      {{ String((m as Record<string, unknown>).full_name || '').slice(0, 2).toUpperCase() }}
+                    <div :class="['flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white', m.urgent ? 'bg-red-500' : 'bg-yellow-500']">
+                      {{ m.initials }}
                     </div>
                     <div>
-                      <p class="font-medium text-white">{{ (m as Record<string, unknown>).full_name }}</p>
-                      <p class="text-sm text-gray-400">Expires: {{ (m as Record<string, unknown>).expiry_date }}</p>
+                      <p class="font-medium text-white">{{ m.name }}</p>
+                      <p class="text-sm text-gray-400">Membership ends {{ m.date }}</p>
                     </div>
                   </div>
+                  <span :class="['shrink-0 rounded px-2 py-1 text-xs font-medium', m.urgent ? 'bg-red-500/20 text-red-300' : 'bg-yellow-500/20 text-yellow-300']">{{ m.when }}</span>
                 </div>
-                <p v-if="expiringMembers.length === 0 && !dataLoading" class="py-2 text-gray-400">No members expiring soon.</p>
+                <p v-if="expiringMembers.length === 0 && !dataLoading" class="py-2 text-gray-400">No memberships end in the next 30 days.</p>
               </div>
             </div>
 
@@ -2000,17 +2054,18 @@ onUnmounted(() => {
                 :class="['plan-card', (p as Record<string, unknown>).is_popular ? 'popular' : '', (p as Record<string, unknown>).is_deactivated ? 'deactivated' : '']"
               >
                 <span v-if="(p as Record<string, unknown>).is_popular" class="popular-badge">POPULAR</span>
-                <span v-if="(p as Record<string, unknown>).is_deactivated" class="popular-badge" style="right: auto; left: 1rem; background: #ef4444; color: #fff;">DEACTIVATED</span>
+                <span v-if="(p as Record<string, unknown>).is_deactivated" class="popular-badge" style="right: auto; left: 1rem; background: #C4544C; color: #fff;">DEACTIVATED</span>
                 <h3>{{ (p as Record<string, unknown>).name }}</h3>
                 <div class="plan-price">
                   <span class="price">{{ formatCurrency((p as Record<string, unknown>).price) }}</span>
                   <span class="period">{{ (p as Record<string, unknown>).period || 'per month' }}</span>
                 </div>
-                <p class="plan-description">{{ (p as Record<string, unknown>).description || 'A great membership plan for our valued members.' }}</p>
+                <p class="plan-description" :class="{ 'plan-empty-note': !(p as Record<string, unknown>).description }">{{ (p as Record<string, unknown>).description || 'No description added yet.' }}</p>
                 <div class="plan-features">
                   <p>Features Included</p>
                   <ul>
                     <li v-for="(feature, fi) in planFeatures(p as Record<string, unknown>)" :key="fi"><i class="fas fa-check"></i> {{ feature }}</li>
+                    <li v-if="planFeatures(p as Record<string, unknown>).length === 0" class="plan-empty-note">No features added yet. Use Edit Plan to list them.</li>
                   </ul>
                 </div>
                 <div class="plan-stats">
@@ -2036,7 +2091,7 @@ onUnmounted(() => {
             </div>
             <div class="flex flex-wrap items-center gap-2 mb-6 text-sm">
               <button type="button" :class="['px-4 py-2 font-medium rounded-md transition-colors', scheduleViewTab === 'Calendar' ? 'bg-blue-600 text-white' : 'bg-[#2A3042] text-gray-300 hover:bg-gray-700']" @click="scheduleViewTab = 'Calendar'">Calendar View</button>
-              <button type="button" :class="['px-4 py-2 font-medium rounded-md transition-colors', scheduleViewTab === 'TrainerAvailability' ? 'bg-blue-600 text-white' : 'bg-[#2A3042] text-gray-300 hover:bg-gray-700']" @click="scheduleViewTab = 'TrainerAvailability'">Trainer Availability</button>
+              <button type="button" :class="['px-4 py-2 font-medium rounded-md transition-colors', scheduleViewTab === 'TrainerAvailability' ? 'bg-blue-600 text-white' : 'bg-[#2A3042] text-gray-300 hover:bg-gray-700']" @click="scheduleViewTab = 'TrainerAvailability'">Staff Availability</button>
               <button type="button" :class="['px-4 py-2 font-medium rounded-md transition-colors', scheduleViewTab === 'ClassManagement' ? 'bg-blue-600 text-white' : 'bg-[#2A3042] text-gray-300 hover:bg-gray-700']" @click="scheduleViewTab = 'ClassManagement'">Class Management</button>
               <label class="relative ml-auto flex items-center gap-2 text-gray-300">
                 <span class="text-xs font-semibold text-[var(--fg-ink-soft)]">Week of</span>
@@ -2080,7 +2135,7 @@ onUnmounted(() => {
                   <table class="w-full min-w-[800px] text-left text-gray-300">
                     <thead class="border-b border-gray-700">
                       <tr>
-                        <th class="py-3 px-4">Trainer</th>
+                        <th class="py-3 px-4">Staff</th>
                         <th v-for="d in SCHEDULE_DAYS" :key="d" class="py-3 px-4 text-center">{{ d.slice(0, 3) }}</th>
                       </tr>
                     </thead>
@@ -2123,7 +2178,7 @@ onUnmounted(() => {
                     <thead class="border-b border-gray-700">
                       <tr>
                         <th class="py-3 px-4">Class Name</th>
-                        <th class="py-3 px-4">Trainer</th>
+                        <th class="py-3 px-4">Staff</th>
                         <th class="py-3 px-4">Schedule</th>
                         <th class="py-3 px-4 text-center">Booked / Capacity</th>
                         <th class="py-3 px-4 text-center">Status</th>
@@ -2214,8 +2269,8 @@ onUnmounted(() => {
             <p class="text-sm font-semibold text-white">Option 1 · Scan the member's QR</p>
             <button
               type="button"
-              class="rounded px-3 py-1 text-sm font-medium text-black"
-              :class="trainerQrScannerActive ? 'bg-red-400' : 'bg-[#A3E635]'"
+              class="rounded px-3 py-1 text-sm font-medium"
+              :class="trainerQrScannerActive ? 'bg-red-400 text-white' : 'bg-[#A3E635] text-[var(--fg-accent-ink)]'"
               :disabled="formLoading || trainerQrScannerBusy"
               @click="trainerQrScannerActive ? stopTrainerQrScanner() : startTrainerQrScanner()"
             >
@@ -2225,7 +2280,7 @@ onUnmounted(() => {
           <div class="overflow-hidden rounded-lg bg-black">
             <div ref="trainerQrVideoRef" class="h-56 w-full" />
           </div>
-          <p v-if="trainerQrScannerStatus" class="mt-3 text-sm text-cyan-300">{{ trainerQrScannerStatus }}</p>
+          <p v-if="trainerQrScannerStatus" class="mt-3 text-sm text-[var(--fg-card-gold)]">{{ trainerQrScannerStatus }}</p>
           <p v-if="trainerQrScannerError" class="mt-2 text-sm text-red-400">{{ trainerQrScannerError }}</p>
           <textarea
             v-model="trainerQrManualQrPayload"
@@ -2254,7 +2309,7 @@ onUnmounted(() => {
         <p v-if="formError" class="mb-2 text-sm text-red-400">{{ formError }}</p>
         <div class="flex gap-2">
           <button type="button" class="flex-1 rounded bg-gray-600 py-2 text-white hover:bg-gray-500" @click="stopTrainerQrScanner(); showCheckinModal = false">Cancel</button>
-          <button type="button" class="flex-1 rounded bg-[#A3E635] py-2 font-semibold text-black hover:opacity-90" :disabled="formLoading" @click="submitCheckin()">
+          <button type="button" class="flex-1 rounded bg-[#A3E635] py-2 font-semibold text-[var(--fg-accent-ink)] hover:opacity-90" :disabled="formLoading" @click="submitCheckin()">
             {{ formLoading ? 'Saving...' : 'Check-in' }}
           </button>
         </div>
@@ -2334,7 +2389,7 @@ onUnmounted(() => {
         <p v-if="formError" class="mt-2 text-sm text-red-400">{{ formError }}</p>
         <div class="mt-4 flex gap-2">
           <button type="button" class="flex-1 rounded bg-gray-600 py-2 text-white hover:bg-gray-500" @click="showAddMemberModal = false">Cancel</button>
-          <button type="button" class="flex-1 rounded bg-[#A3E635] py-2 font-semibold text-black hover:opacity-90" :disabled="formLoading" @click="submitAddMember">
+          <button type="button" class="flex-1 rounded bg-[#A3E635] py-2 font-semibold text-[var(--fg-accent-ink)] hover:opacity-90" :disabled="formLoading" @click="submitAddMember">
             {{ formLoading ? 'Saving...' : (selectedMemberForEdit ? 'Update' : 'Add Member') }}
           </button>
         </div>
@@ -2385,7 +2440,7 @@ onUnmounted(() => {
                 <button type="button" class="shrink-0 rounded border border-gray-600 px-3 text-gray-300 hover:text-red-400" :aria-label="`Remove feature ${fi + 1}`" title="Remove" @click="removePlanFeature(fi)">&times;</button>
               </div>
             </div>
-            <button v-if="planForm.features.length < MAX_PLAN_FEATURES" type="button" class="mt-2 text-sm font-semibold text-[#b8923a] hover:underline" @click="addPlanFeature">+ Add feature</button>
+            <button v-if="planForm.features.length < MAX_PLAN_FEATURES" type="button" class="mt-2 text-sm font-semibold text-[var(--fg-accent-dark)] hover:underline" @click="addPlanFeature">+ Add feature</button>
           </div>
           <div class="flex items-center gap-2">
             <input v-model="planForm.is_popular" type="checkbox" id="trainer-plan-popular" class="rounded border-gray-600" />
@@ -2395,7 +2450,7 @@ onUnmounted(() => {
         <p v-if="formError" class="mt-2 text-sm text-red-400">{{ formError }}</p>
         <div class="mt-4 flex gap-2">
           <button type="button" class="flex-1 rounded bg-gray-600 py-2 text-white hover:bg-gray-500" @click="showAddPlanModal = false">Cancel</button>
-          <button type="button" class="flex-1 rounded bg-[#A3E635] py-2 font-semibold text-black hover:opacity-90" :disabled="formLoading" @click="submitAddPlan">
+          <button type="button" class="flex-1 rounded bg-[#A3E635] py-2 font-semibold text-[var(--fg-accent-ink)] hover:opacity-90" :disabled="formLoading" @click="submitAddPlan">
             {{ formLoading ? (selectedPlanForEdit ? 'Updating...' : 'Creating...') : (selectedPlanForEdit ? 'Update' : 'Create Plan') }}
           </button>
         </div>
@@ -2439,7 +2494,7 @@ onUnmounted(() => {
         <p v-if="formError" class="mt-2 text-sm text-red-400">{{ formError }}</p>
         <div class="mt-4 flex gap-2">
           <button type="button" class="flex-1 rounded bg-gray-600 py-2 text-white hover:bg-gray-500" @click="showAddPaymentModal = false; selectedPaymentForEdit = null">Cancel</button>
-          <button type="button" class="flex-1 rounded bg-[#A3E635] py-2 font-semibold text-black hover:opacity-90" :disabled="formLoading" @click="submitAddPayment">
+          <button type="button" class="flex-1 rounded bg-[#A3E635] py-2 font-semibold text-[var(--fg-accent-ink)] hover:opacity-90" :disabled="formLoading" @click="submitAddPayment">
             {{ formLoading ? 'Saving...' : (selectedPaymentForEdit ? 'Update' : 'Add Payment') }}
           </button>
         </div>
@@ -2476,7 +2531,7 @@ onUnmounted(() => {
             <input id="class-name" v-model="scheduleClassForm.name" type="text" maxlength="100" class="mt-1 w-full rounded border border-gray-600 bg-[#1A2035] px-3 py-2 text-white" placeholder="e.g. Morning Yoga" />
           </div>
           <div>
-            <label for="class-trainer" class="block text-sm font-medium text-gray-300">Trainer</label>
+            <label for="class-trainer" class="block text-sm font-medium text-gray-300">Staff</label>
             <select id="class-trainer" v-model="scheduleClassForm.trainer_id" class="mt-1 w-full rounded border border-gray-600 bg-[#1A2035] px-3 py-2 text-white">
               <option value="">TBA / Unassigned</option>
               <option v-for="s in scheduleStaff" :key="s.id" :value="String(s.id)">{{ s.name }}</option>
@@ -2516,7 +2571,7 @@ onUnmounted(() => {
         <p v-if="formError" class="mt-2 text-sm text-red-400" role="alert">{{ formError }}</p>
         <div class="mt-4 flex gap-2">
           <button type="button" class="flex-1 rounded bg-gray-600 py-2 text-white hover:bg-gray-500" @click="showScheduleModal = false">Cancel</button>
-          <button type="button" class="flex-1 rounded bg-[#A3E635] py-2 font-semibold text-black hover:opacity-90 disabled:opacity-50" :disabled="formLoading" @click="submitManagedClass">
+          <button type="button" class="flex-1 rounded bg-[#A3E635] py-2 font-semibold text-[var(--fg-accent-ink)] hover:opacity-90 disabled:opacity-50" :disabled="formLoading" @click="submitManagedClass">
             {{ formLoading ? 'Saving...' : selectedManagedClassForEdit !== null ? 'Update Class' : 'Add Class' }}
           </button>
         </div>
@@ -2553,7 +2608,7 @@ onUnmounted(() => {
         <p v-if="formError" class="mt-2 text-sm text-red-400">{{ formError }}</p>
         <div class="mt-4 flex gap-2">
           <button type="button" class="flex-1 rounded bg-gray-600 py-2 text-white hover:bg-gray-500" @click="showPasswordModal = false">Cancel</button>
-          <button type="button" class="flex-1 rounded bg-[#A3E635] py-2 font-semibold text-black hover:opacity-90" :disabled="formLoading" @click="submitChangePassword">
+          <button type="button" class="flex-1 rounded bg-[#A3E635] py-2 font-semibold text-[var(--fg-accent-ink)] hover:opacity-90" :disabled="formLoading" @click="submitChangePassword">
             {{ formLoading ? 'Changing...' : 'Change Password' }}
           </button>
         </div>
@@ -2572,18 +2627,18 @@ onUnmounted(() => {
   --text-primary: var(--fg-card-ink);
   --text-secondary: var(--fg-card-ink-soft);
   --border-color: var(--fg-card-border);
-  --accent-green: #5FA82E;
-  --accent-blue: #1E88C8;
-  --accent-purple: #8A2BE2;
-  --accent-purple-light: #6A4BC4;
-  --accent-pink: #E0565B;
-  --accent-yellow: #E2B54A;
+  --accent-green: var(--fg-accent);
+  --accent-blue: var(--fg-secondary);
+  --accent-purple: var(--fg-accent);
+  --accent-purple-light: var(--fg-accent);
+  --accent-pink: #C4544C;
+  --accent-yellow: var(--fg-accent);
   /* the page background is the shared .fg-marble-bg */
 }
 
 .trainer-auth-shell {
   background:
-    radial-gradient(circle at top, rgba(106, 90, 205, 0.18), transparent 28%),
+    radial-gradient(circle at top, rgba(var(--fg-accent-rgb), 0.18), transparent 28%),
     radial-gradient(circle at bottom right, rgba(255, 107, 107, 0.1), transparent 26%),
     transparent;
 }
@@ -2595,7 +2650,7 @@ onUnmounted(() => {
 }
 
 .trainer-auth-eyebrow {
-  color: var(--accent-purple-light);
+  color: var(--fg-card-gold);
   font-size: 0.85rem;
   font-weight: 700;
   letter-spacing: 0.24em;
@@ -2615,10 +2670,10 @@ onUnmounted(() => {
 }
 
 .trainer-auth-role-badge {
-  background: rgba(138, 43, 226, 0.16);
-  border: 1px solid rgba(106, 90, 205, 0.28);
+  background: rgba(var(--fg-accent-rgb), 0.16);
+  border: 1px solid rgba(var(--fg-accent-rgb), 0.28);
   border-radius: 999px;
-  color: var(--accent-purple-light);
+  color: var(--fg-card-gold);
   font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -2630,7 +2685,7 @@ onUnmounted(() => {
 }
 
 .trainer-auth-link {
-  color: var(--accent-purple-light);
+  color: var(--fg-card-gold);
 }
 
 .trainer-auth-error {
@@ -2642,8 +2697,8 @@ onUnmounted(() => {
 }
 
 .trainer-auth-primary {
-  background: linear-gradient(135deg, var(--accent-purple) 0%, #9b36f3 100%);
-  color: #fff;
+  background: var(--accent-purple);
+  color: var(--fg-accent-ink);
 }
 
 .trainer-auth-primary:hover:not(:disabled) {
@@ -2652,7 +2707,7 @@ onUnmounted(() => {
 
 .trainer-shell {
   background: var(--bg-primary);
-  border-color: rgba(160, 122, 31, 0.35);
+  border-color: rgba(var(--fg-accent-deep-rgb), 0.35);
 }
 
 /* backdrop-filter would trap the fixed-position mobile drawer inside the shell */
@@ -2664,7 +2719,7 @@ onUnmounted(() => {
 
 .trainer-sidebar {
   background:
-    linear-gradient(180deg, rgba(217, 180, 90, 0.07) 0%, rgba(217, 180, 90, 0) 45%),
+    linear-gradient(180deg, rgba(var(--fg-accent-rgb), 0.07) 0%, rgba(var(--fg-accent-rgb), 0) 45%),
     var(--bg-secondary) !important;
   border-right: 1px solid var(--border-color);
 }
@@ -2678,7 +2733,7 @@ onUnmounted(() => {
 
 .trainer-avatar {
   background: var(--accent-purple);
-  color: #fff;
+  color: var(--fg-accent-ink);
 }
 
 .trainer-nav-item {
@@ -2688,14 +2743,14 @@ onUnmounted(() => {
 }
 
 .trainer-nav-item:hover {
-  background: rgba(217, 180, 90, 0.1);
-  border-color: rgba(106, 90, 205, 0.3);
+  background: rgba(var(--fg-accent-rgb), 0.1);
+  border-color: rgba(var(--fg-accent-rgb), 0.3);
 }
 
 .trainer-nav-item.active {
-  background: linear-gradient(135deg, rgba(138, 43, 226, 0.92) 0%, rgba(155, 54, 243, 0.92) 100%);
-  box-shadow: 0 14px 28px rgba(138, 43, 226, 0.28);
-  color: #fff;
+  background: rgba(var(--fg-accent-rgb), 0.92);
+  box-shadow: 0 14px 28px rgba(var(--fg-accent-rgb), 0.28);
+  color: var(--fg-accent-ink);
 }
 
 .trainer-logout-btn {
@@ -2705,7 +2760,7 @@ onUnmounted(() => {
 
 .trainer-header {
   background: transparent;
-  border-color: rgba(160, 122, 31, 0.3);
+  border-color: rgba(var(--fg-accent-deep-rgb), 0.3);
 }
 
 .trainer-main {
@@ -2748,17 +2803,21 @@ onUnmounted(() => {
   border-color: var(--border-color) !important;
 }
 
-.trainer-portal .bg-purple-600 {
+.trainer-portal .bg-purple-600,
+.trainer-portal .bg-purple-500 {
   background: var(--accent-purple) !important;
+  color: var(--fg-accent-ink) !important;
 }
 
 .trainer-portal .hover\:bg-purple-700:hover {
   background: var(--accent-purple-light) !important;
+  color: var(--fg-accent-ink) !important;
 }
 
 .trainer-portal .bg-blue-500,
 .trainer-portal .bg-blue-600 {
   background: var(--accent-blue) !important;
+  color: #fff !important;
 }
 
 .trainer-portal .bg-blue-500\/20 {
@@ -2772,21 +2831,24 @@ onUnmounted(() => {
 .trainer-portal .bg-green-600,
 .trainer-portal .bg-green-700 {
   background: var(--accent-green) !important;
-  color: #111827 !important;
+  color: var(--fg-accent-ink) !important;
 }
 
 .trainer-portal .bg-green-500 {
   background: var(--accent-green) !important;
-  color: #111827 !important;
+  color: var(--fg-accent-ink) !important;
 }
 
 .trainer-portal .bg-green-500\/20 {
   background: color-mix(in srgb, var(--accent-green) 20%, transparent) !important;
 }
 
+.trainer-portal .bg-red-400,
+.trainer-portal .bg-red-500,
 .trainer-portal .bg-red-600,
 .trainer-portal .bg-red-700 {
   background: var(--accent-pink) !important;
+  color: #fff !important;
 }
 
 .trainer-portal .bg-red-500\/20 {
@@ -2798,10 +2860,11 @@ onUnmounted(() => {
 .trainer-portal .bg-amber-700,
 .trainer-portal .bg-yellow-500 {
   background: var(--accent-yellow) !important;
+  color: var(--fg-accent-ink) !important;
 }
 
 .trainer-portal .bg-yellow-500\/20 {
-  background: color-mix(in srgb, var(--accent-yellow) 20%, transparent) !important;
+  background: color-mix(in srgb, var(--text-secondary) 20%, transparent) !important;
 }
 
 .trainer-portal .bg-purple-500\/40 {
@@ -2813,11 +2876,11 @@ onUnmounted(() => {
 }
 
 .trainer-portal .text-green-300 {
-  color: var(--accent-green) !important;
+  color: var(--fg-card-gold) !important;
 }
 
 .trainer-portal .text-blue-300 {
-  color: var(--accent-blue) !important;
+  color: var(--fg-card-gold) !important;
 }
 
 .trainer-portal .text-red-300,
@@ -2826,12 +2889,12 @@ onUnmounted(() => {
 }
 
 .trainer-portal .text-yellow-300 {
-  color: var(--accent-yellow) !important;
+  color: var(--text-primary) !important;
 }
 
 .trainer-portal .bg-gray-300 {
   background: var(--accent-purple-light) !important;
-  color: #fff !important;
+  color: var(--fg-accent-ink) !important;
 }
 
 .trainer-portal .bg-gray-600,
@@ -2860,7 +2923,7 @@ onUnmounted(() => {
 
 .trainer-portal .bg-\[\#A3E635\] {
   background: var(--accent-green) !important;
-  color: #000 !important;
+  color: var(--fg-accent-ink) !important;
 }
 
 .trainer-portal .hover\:bg-gray-700:hover {
@@ -2900,9 +2963,14 @@ onUnmounted(() => {
   color: var(--text-primary) !important;
 }
 
-/* white text stays white on colored buttons, badges and avatars */
-.trainer-portal :is(.bg-purple-600, .bg-blue-500, .bg-blue-600, .bg-red-400, .bg-red-500, .bg-red-600, .bg-red-700, .bg-green-600, .bg-gray-300, .trainer-nav-item.active, .nav-item.bg-purple-600).text-white,
-.trainer-portal :is(.bg-purple-600, .bg-blue-500, .bg-blue-600, .bg-red-600, .bg-red-700, .trainer-nav-item.active) .text-white {
+/* text on the gold fills is dark; on the bronze and red fills it stays white */
+.trainer-portal :is(.bg-purple-500, .bg-purple-600, .bg-green-500, .bg-green-600, .bg-yellow-500, .bg-gray-300, .trainer-nav-item.active, .nav-item.bg-purple-600).text-white,
+.trainer-portal :is(.bg-purple-500, .bg-purple-600, .bg-green-500, .bg-green-600, .bg-yellow-500, .trainer-nav-item.active) .text-white {
+  color: var(--fg-accent-ink) !important;
+}
+
+.trainer-portal :is(.bg-blue-500, .bg-blue-600, .bg-red-400, .bg-red-500, .bg-red-600, .bg-red-700).text-white,
+.trainer-portal :is(.bg-blue-500, .bg-blue-600, .bg-red-600, .bg-red-700) .text-white {
   color: #fff !important;
 }
 
@@ -2923,7 +2991,7 @@ onUnmounted(() => {
 
 .trainer-portal .nav-item.bg-purple-600 {
   background: var(--accent-green) !important;
-  color: #000 !important;
+  color: var(--fg-accent-ink);
   font-weight: 600 !important;
 }
 
@@ -3065,7 +3133,7 @@ onUnmounted(() => {
 .trainer-portal .staff-admin-view .data-table th {
   padding: clamp(0.5rem, 1vw, 0.625rem) clamp(0.625rem, 1.2vw, 0.75rem);
   text-align: left;
-  font-size: clamp(0.65rem, 1.1vw, 0.8rem);
+  font-size: 0.88rem;
   font-weight: 600;
   color: var(--text-primary);
   border-bottom: 1px solid var(--border-color);
@@ -3075,7 +3143,7 @@ onUnmounted(() => {
 .trainer-portal .staff-admin-view .data-table td {
   padding: clamp(0.4rem, 0.8vw, 0.5625rem) clamp(0.625rem, 1.2vw, 0.75rem);
   border-bottom: 1px solid var(--border-color);
-  font-size: clamp(0.65rem, 1.1vw, 0.8rem);
+  font-size: 0.88rem;
   color: var(--text-primary);
 }
 
@@ -3095,20 +3163,20 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   font-weight: bold;
-  font-size: clamp(0.55rem, 0.9vw, 0.7rem);
-  color: #fff;
+  font-size: 0.75rem;
+  color: var(--fg-accent-ink);
   flex-shrink: 0;
 }
 
 .trainer-portal .staff-admin-view .member-cell p {
-  font-size: clamp(0.65rem, 1.1vw, 0.8rem);
+  font-size: 0.88rem;
   color: var(--text-primary);
   margin-bottom: 0.0625rem;
   line-height: 1.25;
 }
 
 .trainer-portal .staff-admin-view .member-cell span {
-  font-size: clamp(0.55rem, 0.9vw, 0.7rem);
+  font-size: 0.75rem;
   color: var(--text-secondary);
   line-height: 1.25;
 }
@@ -3116,14 +3184,14 @@ onUnmounted(() => {
 .trainer-portal .staff-admin-view .status-badge {
   padding: clamp(0.2rem, 0.5vw, 0.25rem) clamp(0.5rem, 1vw, 0.75rem);
   border-radius: 0.75rem;
-  font-size: clamp(0.6rem, 1vw, 0.75rem);
+  font-size: 0.75rem;
   font-weight: 600;
   display: inline-block;
 }
 
 .trainer-portal .staff-admin-view .status-badge.active {
   background: var(--accent-green);
-  color: #000;
+  color: var(--fg-accent-ink);
 }
 
 .trainer-portal .staff-admin-view .status-badge.inactive {
@@ -3156,7 +3224,7 @@ onUnmounted(() => {
 
 .trainer-portal .staff-admin-view .summary-card i {
   font-size: clamp(1.5rem, 3vw, 2rem);
-  color: var(--accent-green);
+  color: var(--fg-card-gold);
 }
 
 .trainer-portal .staff-admin-view .summary-card h3 {
@@ -3174,7 +3242,7 @@ onUnmounted(() => {
 .trainer-portal .staff-admin-view .btn-add-plan {
   padding: 0.75rem 1.25rem;
   background: var(--accent-green);
-  color: #000;
+  color: var(--fg-accent-ink);
   border: none;
   border-radius: 0.5rem;
   font-size: clamp(0.75rem, 1vw, 0.875rem);
@@ -3201,7 +3269,7 @@ onUnmounted(() => {
 
 .trainer-portal .staff-admin-view .plan-card.deactivated {
   opacity: 0.85;
-  border: 1px dashed #ef4444;
+  border: 1px dashed #C4544C;
 }
 
 .trainer-portal .staff-admin-view .plan-card.popular .popular-badge {
@@ -3209,7 +3277,7 @@ onUnmounted(() => {
   top: 0.9375rem;
   right: 0.9375rem;
   background: var(--accent-yellow);
-  color: #000;
+  color: var(--fg-accent-ink);
   padding: 0.25rem 0.75rem;
   border-radius: 0.75rem;
   font-size: clamp(0.625rem, 0.8vw, 0.75rem);
@@ -3262,6 +3330,11 @@ onUnmounted(() => {
   margin: 0;
 }
 
+.trainer-portal .staff-admin-view .plan-empty-note {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
 .trainer-portal .staff-admin-view .plan-features li {
   display: flex;
   align-items: center;
@@ -3272,7 +3345,7 @@ onUnmounted(() => {
 }
 
 .trainer-portal .staff-admin-view .plan-features li i {
-  color: var(--accent-green);
+  color: var(--fg-card-gold);
   font-size: clamp(0.625rem, 0.8vw, 0.75rem);
 }
 
@@ -3292,7 +3365,7 @@ onUnmounted(() => {
 
 .trainer-portal .staff-admin-view .plan-stats .revenue-badge {
   background: var(--accent-yellow);
-  color: #000;
+  color: var(--fg-accent-ink);
   padding: 0.25rem 0.625rem;
   border-radius: 0.5rem;
   font-size: clamp(0.625rem, 0.8vw, 0.75rem);
@@ -3305,43 +3378,32 @@ onUnmounted(() => {
   gap: 0.625rem;
 }
 
-.trainer-portal .staff-admin-view .plan-actions .btn-edit {
+/* Edit Plan, Deactivate and Delete share one gold, same as in the Admin portal */
+.trainer-portal .staff-admin-view .plan-actions :is(.btn-edit, .btn-deactivate, .btn-delete) {
   flex: 1;
   padding: 0.625rem;
-  background: var(--accent-blue);
-  color: #fff;
-  border: none;
+  background: linear-gradient(135deg, var(--fg-accent-light) 0%, var(--fg-accent) 55%, var(--fg-accent-dark) 100%);
+  color: var(--fg-accent-ink);
+  border: 1px solid var(--fg-accent-light);
   border-radius: 0.375rem;
   font-size: clamp(0.75rem, 1vw, 0.875rem);
+  font-weight: 700;
   cursor: pointer;
 }
 
-.trainer-portal .staff-admin-view .plan-actions .btn-deactivate {
-  flex: 1;
-  padding: 0.625rem;
-  background: var(--accent-pink);
-  color: #fff;
-  border: none;
-  border-radius: 0.375rem;
-  font-size: clamp(0.75rem, 1vw, 0.875rem);
-  cursor: pointer;
+.trainer-portal .staff-admin-view .plan-actions :is(.btn-edit, .btn-deactivate, .btn-delete):hover {
+  filter: brightness(1.06);
 }
 
-.trainer-portal .staff-admin-view .plan-actions .btn-delete {
-  flex: 1;
-  padding: 0.625rem;
-  background: var(--accent-purple);
-  color: #fff;
-  border: none;
-  border-radius: 0.375rem;
-  font-size: clamp(0.75rem, 1vw, 0.875rem);
-  cursor: pointer;
+.trainer-portal .staff-admin-view .plan-actions :is(.btn-edit, .btn-deactivate, .btn-delete):disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .trainer-portal .staff-admin-view .btn-add-member {
   padding: 0.75rem 1.25rem;
   background: var(--accent-green);
-  color: #fff;
+  color: var(--fg-accent-ink);
   border: none;
   border-radius: 0.75rem;
   font-size: clamp(0.8125rem, 1vw, 0.9375rem);
@@ -3350,7 +3412,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  box-shadow: 0 0 12px rgba(141, 255, 0, 0.3);
+  box-shadow: 0 0 12px rgba(var(--fg-accent-rgb), 0.3);
 }
 
 .trainer-portal .staff-admin-view .btn-add-member:hover {
@@ -3394,7 +3456,7 @@ onUnmounted(() => {
 
 .trainer-portal .staff-admin-view .action-btn.purple {
   background: var(--accent-purple);
-  color: #fff;
+  color: var(--fg-accent-ink);
 }
 
 .trainer-portal .staff-admin-view .action-btn.red {
@@ -3404,7 +3466,7 @@ onUnmounted(() => {
 
 .trainer-portal .staff-admin-view .action-btn.green {
   background: var(--accent-green);
-  color: #000;
+  color: var(--fg-accent-ink);
 }
 
 .trainer-portal .staff-admin-view .action-btn:disabled {
@@ -3414,12 +3476,12 @@ onUnmounted(() => {
 
 .trainer-portal .staff-admin-view .status-badge.paid {
   background: var(--accent-green);
-  color: #000;
+  color: var(--fg-accent-ink);
 }
 
 .trainer-portal .staff-admin-view .status-badge.pending {
   background: var(--accent-yellow);
-  color: #000;
+  color: var(--fg-accent-ink);
 }
 
 .trainer-portal .staff-admin-view .status-badge.cancelled {
@@ -3583,8 +3645,8 @@ onUnmounted(() => {
   height: 2rem;
   place-items: center;
   border-radius: 9999px;
-  background: linear-gradient(135deg, #f0d48a, #b8923a);
-  color: #151515;
+  background: linear-gradient(135deg, var(--fg-accent-light), var(--fg-accent-dark));
+  color: var(--fg-accent-ink);
   font-weight: 700;
 }
 
@@ -3636,10 +3698,10 @@ onUnmounted(() => {
 
 .trainer-portal .staff-attendance .attendance-count {
   border-radius: 9999px;
-  background: #d9b45a;
+  background: var(--fg-accent);
   padding: 0.1rem 0.6rem;
   font-size: 0.8rem;
-  color: #151515;
+  color: var(--fg-accent-ink);
 }
 
 .trainer-portal .staff-attendance .attendance-search {
@@ -3702,7 +3764,7 @@ onUnmounted(() => {
   flex-shrink: 0;
   border: 0;
   border-radius: 0.5rem;
-  background: #e0565b;
+  background: #C4544C;
   padding: 0.45rem 0.8rem;
   font-size: 0.8rem;
   font-weight: 600;
@@ -3728,7 +3790,7 @@ onUnmounted(() => {
   font-size: 0.85rem;
 }
 
-/* Staff > Schedule > Trainer Availability: open days are white-and-gold, teaching days solid gold */
+/* Staff > Schedule > Trainer Availability: open days are black-and-gold, teaching days solid gold */
 .trainer-portal .availability-slot {
   border-radius: 0.375rem;
   padding: 0.25rem 0.5rem;
@@ -3737,15 +3799,15 @@ onUnmounted(() => {
 }
 
 .trainer-portal .availability-slot--open {
-  border: 1px solid #e6d3a3;
-  background: linear-gradient(160deg, #fffefb 0%, #f8f0de 100%);
-  box-shadow: inset 0 2px 0 #d9b45a;
-  color: #6b5d45;
+  border: 1px solid rgba(var(--fg-accent-rgb), 0.45);
+  background: rgba(20, 17, 12, 0.72);
+  box-shadow: inset 0 2px 0 var(--fg-accent);
+  color: var(--fg-accent-light);
 }
 
 .trainer-portal .availability-slot--busy {
-  border: 1px solid #f0d48a;
-  background: linear-gradient(135deg, #f0d48a 0%, #d9b45a 55%, #b8923a 100%);
-  color: #151515;
+  border: 1px solid var(--fg-accent-light);
+  background: linear-gradient(135deg, var(--fg-accent-light) 0%, var(--fg-accent) 55%, var(--fg-accent-dark) 100%);
+  color: var(--fg-accent-ink);
 }
 </style>

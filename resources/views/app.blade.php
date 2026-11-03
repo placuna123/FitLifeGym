@@ -18,6 +18,13 @@
                         document.documentElement.classList.add('dark');
                     }
                 }
+
+                // FitGym white-and-gold light mode, before the page paints (no dark flash)
+                try {
+                    if (localStorage.getItem('fg-theme') === 'light') {
+                        document.documentElement.classList.add('fg-day');
+                    }
+                } catch (e) {}
             })();
         </script>
 

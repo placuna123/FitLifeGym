@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { adminAuth, gymSignup, gymsPublic, memberAuth, members, portalAuth, trainerAuth } from '@/api/fitgym';
+import FgThemeToggle from '@/components/FgThemeToggle.vue';
 import PasswordToggle from '@/components/PasswordToggle.vue';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { usePasswordVisibility } from '@/composables/usePasswordVisibility';
@@ -106,7 +107,64 @@ const authMode = ref<'login' | 'register' | 'gym-signup'>('login');
 
 // Gyms a new Member can join. Registration has no "current gym" yet (the
 // request is unauthenticated), so the registrant has to pick one.
-const availableGyms = ref<{ id: number; name: string; slug: string }[]>([]);
+type PublicGym = {
+  id: number;
+  name: string;
+  slug: string;
+  description: string;
+  cover_photo_url: string | null;
+  address: string;
+  phone: string;
+  email: string;
+  operating_hours: Record<string, string>;
+  plans: { name: string; price: number; period: string | null }[];
+  staff_count: number;
+  classes: string[];
+};
+const availableGyms = ref<PublicGym[]>([]);
+
+// The gym whose details are open in the pop-up while a new Member is choosing.
+const previewGym = ref<PublicGym | null>(null);
+
+// Member sign-in on a laptop/desktop: the form and "Create Member Account + our gyms"
+// sit side by side so nothing needs scrolling (see .entry-card--split).
+const memberSplit = computed(() => viewState.value === 'auth' && authMode.value === 'login' && selectedRole.value === 'member');
+const chosenGym = computed(() => availableGyms.value.find((g) => g.id === Number(registerForm.value.gym_id)) ?? null);
+const WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+function gymInitials(name: string) {
+  return name.split(/s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+}
+
+function gymHours(gym: PublicGym) {
+  return WEEK_DAYS.filter((day) => gym.operating_hours?.[day]).map((day) => ({ day: day.slice(0, 3), hours: gym.operating_hours[day] }));
+}
+
+function formatPeso(value: number) {
+  return `₱${Number(value).toLocaleString('en-PH', { maximumFractionDigits: 2 })}`;
+}
+
+function openGymPreview(gym: PublicGym) {
+  previewGym.value = gym;
+}
+
+function closeGymPreview() {
+  previewGym.value = null;
+}
+
+// From the sign-in screen this opens Create Member Account with the gym already chosen.
+function chooseGym(gym: PublicGym) {
+  if (authMode.value !== 'register') {
+    showRegisterForm();
+  }
+  registerForm.value.gym_id = String(gym.id);
+  if (registerError.value === "Please choose which gym you're joining.") registerError.value = '';
+  previewGym.value = null;
+}
+
+function onGymPreviewKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && previewGym.value) closeGymPreview();
+}
 
 const loginForm = ref({ email: '', password: '', remember: false });
 const loginLoading = ref(false);
@@ -443,11 +501,17 @@ onMounted(async () => {
   try {
     const { data } = await gymsPublic.list();
     if (data.success) {
-      availableGyms.value = data.gyms as { id: number; name: string; slug: string }[];
+      availableGyms.value = data.gyms as PublicGym[];
     }
   } catch {
     availableGyms.value = [];
   }
+
+  window.addEventListener('keydown', onGymPreviewKeydown);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', onGymPreviewKeydown);
 });
 </script>
 
@@ -455,6 +519,7 @@ onMounted(async () => {
   <Head title="FitGym - Sign In" />
 
   <div class="fitgym-entry fg-marble-bg">
+    <FgThemeToggle floating />
 
     <!-- Faint gym-equipment line art, purely decorative — keeps the page feeling like a gym without a photo asset. -->
     <svg class="entry-deco entry-deco--dumbbell-1" viewBox="0 0 100 40" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
@@ -483,7 +548,7 @@ onMounted(async () => {
       <circle cx="20" cy="20" r="7" />
     </svg>
 
-    <div class="entry-shell">
+    <div class="entry-shell" :class="{ 'entry-shell--wide': memberSplit && !checkingSession }">
       <!-- Brand -->
       <header class="entry-brand">
         <div class="entry-logo" :style="{ backgroundColor: portal.purple }">
@@ -595,7 +660,7 @@ onMounted(async () => {
       </section>
 
       <!-- Role picker + single sign-in form -->
-      <section v-else class="entry-card" :style="{ backgroundColor: portal.dark3, borderColor: portal.border }">
+      <section v-else class="entry-card" :class="{ 'entry-card--split': memberSplit }" :style="{ backgroundColor: portal.dark3, borderColor: portal.border }">
         <button type="button" class="entry-back" :style="{ color: portal.textDim }" @click="viewState = 'landing'">
           ← Back
         </button>
@@ -646,6 +711,7 @@ onMounted(async () => {
 
         <!-- Step 2a: sign in -->
         <template v-if="authMode === 'login'">
+          <div class="entry-signin">
           <p class="entry-kicker" :style="{ color: portal.textDim }">
             Step 2 — Sign in to the <span :style="{ color: activeRole.accent }">{{ activeRole.title }}</span>
           </p>
@@ -703,12 +769,37 @@ onMounted(async () => {
               {{ loginLoading ? 'Signing In…' : `Sign In as ${activeRole.label}` }}
             </button>
           </form>
+          </div>
 
           <div v-if="selectedRole === 'member'" class="entry-register">
             <p :style="{ color: portal.textDim }">Don't have an account?</p>
             <button type="button" class="entry-ghost" :style="{ borderColor: portal.pink, color: portal.pink }" @click="showRegisterForm">
               Create Member Account
             </button>
+
+            <div v-if="availableGyms.length" class="entry-gyms">
+              <p class="entry-gyms-title" :style="{ color: portal.textDim }">Our gyms — tap one to see what it offers</p>
+              <div class="gym-picker">
+                <button
+                  v-for="(gym, index) in availableGyms"
+                  :key="gym.id"
+                  type="button"
+                  class="gym-option"
+                  :style="{ animationDelay: `${index * 70}ms` }"
+                  @click="openGymPreview(gym)"
+                >
+                  <span class="gym-option-photo">
+                    <img v-if="gym.cover_photo_url" :src="gym.cover_photo_url" alt="" />
+                    <template v-else>{{ gymInitials(gym.name) }}</template>
+                  </span>
+                  <span class="gym-option-text">
+                    <span class="gym-option-name">{{ gym.name }}</span>
+                    <span class="gym-option-meta">{{ gym.address || (gym.plans.length ? `Plans from ${formatPeso(gym.plans[0].price)}` : 'See details') }}</span>
+                  </span>
+                  <span class="gym-option-action">View</span>
+                </button>
+              </div>
+            </div>
           </div>
         </template>
 
@@ -724,10 +815,38 @@ onMounted(async () => {
             <template v-if="!otpSent">
               <div class="entry-field">
                 <label :style="{ color: portal.textDim }">Which gym are you joining? *</label>
-                <select v-model="registerForm.gym_id" required :style="{ backgroundColor: portal.dark2, borderColor: portal.border }">
-                  <option value="" disabled>Select a gym</option>
-                  <option v-for="gym in availableGyms" :key="gym.id" :value="gym.id">{{ gym.name }}</option>
-                </select>
+                <p class="entry-hint" :style="{ color: portal.textDim }">Tap a gym to choose it. Use View to see what it offers.</p>
+                <div class="gym-picker" role="radiogroup" aria-label="Which gym are you joining?">
+                  <div
+                    v-for="(gym, index) in availableGyms"
+                    :key="gym.id"
+                    class="gym-option gym-option--split"
+                    :class="{ 'gym-option--chosen': chosenGym?.id === gym.id }"
+                    :style="{ animationDelay: `${index * 70}ms` }"
+                  >
+                    <button
+                      type="button"
+                      class="gym-option-main"
+                      role="radio"
+                      :aria-checked="chosenGym?.id === gym.id"
+                      @click="chooseGym(gym)"
+                    >
+                      <span class="gym-option-check" aria-hidden="true">
+                        <svg v-if="chosenGym?.id === gym.id" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+                      </span>
+                      <span class="gym-option-photo">
+                        <img v-if="gym.cover_photo_url" :src="gym.cover_photo_url" alt="" />
+                        <template v-else>{{ gymInitials(gym.name) }}</template>
+                      </span>
+                      <span class="gym-option-text">
+                        <span class="gym-option-name">{{ gym.name }}</span>
+                        <span class="gym-option-meta">{{ gym.address || (gym.plans.length ? `Plans from ${formatPeso(gym.plans[0].price)}` : 'See details') }}</span>
+                      </span>
+                    </button>
+                    <button type="button" class="gym-option-action" :aria-label="`View ${gym.name}`" @click="openGymPreview(gym)">View</button>
+                  </div>
+                  <p v-if="availableGyms.length === 0" class="entry-hint" :style="{ color: portal.textDim }">No gyms are open for sign-up right now.</p>
+                </div>
               </div>
 
               <div class="entry-field-row">
@@ -897,6 +1016,89 @@ onMounted(async () => {
       </p>
     </div>
   </div>
+
+  <!-- Gym details pop-up for people choosing a branch while creating a Member account -->
+  <Teleport to="body">
+    <Transition name="gym-pop">
+      <div v-if="previewGym" class="gym-preview-overlay" @click.self="closeGymPreview">
+        <div class="gym-preview fg-light-surface" role="dialog" aria-modal="true" :aria-label="previewGym.name">
+          <button type="button" class="gym-preview-close" aria-label="Close" @click="closeGymPreview">&times;</button>
+
+          <div class="gym-preview-cover">
+            <img v-if="previewGym.cover_photo_url" :src="previewGym.cover_photo_url" :alt="previewGym.name" />
+            <span v-else class="gym-preview-cover-initials">{{ gymInitials(previewGym.name) }}</span>
+          </div>
+
+          <div class="gym-preview-body">
+            <div class="gym-preview-step" style="--step: 0">
+              <h3 class="gym-preview-name">{{ previewGym.name }}</h3>
+              <p v-if="previewGym.address" class="gym-preview-sub">{{ previewGym.address }}</p>
+            </div>
+
+            <div class="gym-preview-stats gym-preview-step" style="--step: 1">
+              <div>
+                <strong>{{ previewGym.plans.length ? formatPeso(previewGym.plans[0].price) : '—' }}</strong>
+                <span>Plans from</span>
+              </div>
+              <div>
+                <strong>{{ previewGym.staff_count }}</strong>
+                <span>{{ previewGym.staff_count === 1 ? 'Staff member' : 'Staff' }}</span>
+              </div>
+              <div>
+                <strong>{{ previewGym.classes.length }}</strong>
+                <span>{{ previewGym.classes.length === 1 ? 'Class' : 'Classes' }}</span>
+              </div>
+            </div>
+
+            <div class="gym-preview-step" style="--step: 2">
+              <h4>About</h4>
+              <p class="gym-preview-text">{{ previewGym.description || 'No description yet. Check the plans and hours below, or contact the front desk.' }}</p>
+            </div>
+
+            <div v-if="previewGym.plans.length" class="gym-preview-step" style="--step: 3">
+              <h4>Membership plans</h4>
+              <ul class="gym-preview-plans">
+                <li v-for="plan in previewGym.plans" :key="plan.name">
+                  <span>{{ plan.name }}</span>
+                  <span><strong>{{ formatPeso(plan.price) }}</strong> <small v-if="plan.period">{{ plan.period }}</small></span>
+                </li>
+              </ul>
+            </div>
+
+            <div v-if="gymHours(previewGym).length" class="gym-preview-step" style="--step: 4">
+              <h4>Opening hours</h4>
+              <ul class="gym-preview-hours">
+                <li v-for="row in gymHours(previewGym)" :key="row.day"><span>{{ row.day }}</span><span>{{ row.hours }}</span></li>
+              </ul>
+            </div>
+
+            <div v-if="previewGym.classes.length" class="gym-preview-step" style="--step: 5">
+              <h4>Classes</h4>
+              <div class="gym-preview-chips">
+                <span v-for="name in previewGym.classes" :key="name">{{ name }}</span>
+              </div>
+            </div>
+
+            <div v-if="previewGym.phone || previewGym.email" class="gym-preview-step" style="--step: 6">
+              <h4>Contact</h4>
+              <p class="gym-preview-text">
+                <template v-if="previewGym.phone">{{ previewGym.phone }}</template>
+                <template v-if="previewGym.phone && previewGym.email"> · </template>
+                <template v-if="previewGym.email">{{ previewGym.email }}</template>
+              </p>
+            </div>
+          </div>
+
+          <div class="gym-preview-actions">
+            <button type="button" class="gym-preview-back" @click="closeGymPreview">Back</button>
+            <button type="button" class="gym-preview-join" @click="chooseGym(previewGym)">
+              {{ chosenGym?.id === previewGym.id ? 'Selected — continue' : 'Join this gym' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -907,7 +1109,7 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  padding: 2rem 1rem;
+  padding: 1.25rem 1rem;
   color: var(--fg-card-ink);
   font-family: 'Instrument Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
@@ -966,7 +1168,7 @@ onMounted(async () => {
   max-width: 34rem;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1rem;
 }
 
 .entry-brand {
@@ -1024,7 +1226,7 @@ onMounted(async () => {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  border: 1px solid rgba(160, 122, 31, 0.45);
+  border: 1px solid rgba(var(--fg-accent-deep-rgb), 0.45);
   border-radius: 999px;
   color: var(--fg-ink-soft);
   padding: 0.35rem 0.9rem;
@@ -1150,7 +1352,7 @@ onMounted(async () => {
   border-radius: 1.25rem;
   border-width: 1px;
   border-style: solid;
-  padding: 1.75rem;
+  padding: 1.4rem 1.6rem;
   box-shadow: 0 18px 44px rgba(92, 70, 30, 0.1);
 }
 
@@ -1222,11 +1424,11 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.3rem;
   border-radius: 0.9rem;
   border-width: 1px;
   border-style: solid;
-  padding: 1rem 0.6rem;
+  padding: 0.7rem 0.6rem;
   cursor: pointer;
   text-align: center;
   color: var(--fg-card-ink);
@@ -1264,15 +1466,14 @@ onMounted(async () => {
 }
 
 .entry-role-blurb {
-  margin: 0.9rem 0 0;
+  margin: 0.65rem 0 0;
   font-size: 0.8rem;
   line-height: 1.5;
-  min-height: 2.4rem;
 }
 
 .entry-divider {
   height: 1px;
-  margin: 1.4rem 0;
+  margin: 1rem 0;
 }
 
 .entry-notice {
@@ -1297,7 +1498,7 @@ onMounted(async () => {
 .entry-form {
   display: flex;
   flex-direction: column;
-  gap: 1.1rem;
+  gap: 0.85rem;
 }
 
 .entry-field {
@@ -1384,10 +1585,10 @@ onMounted(async () => {
 .entry-field input:-webkit-autofill:hover,
 .entry-field input:-webkit-autofill:focus,
 .entry-field input:-webkit-autofill:active {
-  -webkit-text-fill-color: #f5f1e8;
-  -webkit-box-shadow: 0 0 0px 1000px #222222 inset;
-  box-shadow: 0 0 0px 1000px #222222 inset;
-  caret-color: #f5f1e8;
+  -webkit-text-fill-color: #2b2418;
+  -webkit-box-shadow: 0 0 0px 1000px #fffaf0 inset;
+  box-shadow: 0 0 0px 1000px #fffaf0 inset;
+  caret-color: #2b2418;
   transition: background-color 5000s ease-in-out 0s;
 }
 
@@ -1450,13 +1651,67 @@ onMounted(async () => {
 }
 
 .entry-register {
-  margin-top: 1.4rem;
+  margin-top: 1rem;
   text-align: center;
 }
 
 .entry-register p {
   margin: 0;
   font-size: 0.85rem;
+}
+
+.entry-gyms {
+  margin-top: 1rem;
+  border-top: 1px solid var(--fg-card-border);
+  padding-top: 0.9rem;
+  text-align: left;
+}
+
+/* ---- Member sign-in on a laptop/desktop: two columns, no scrolling ----
+   Left: Step 2 sign-in form. Right: Create Member Account and our gyms.
+   Phones keep the single column (scrolling there is normal). */
+@media (min-width: 1024px) {
+  .entry-shell--wide {
+    max-width: 58rem;
+  }
+
+  .entry-card--split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 2rem;
+  }
+
+  .entry-card--split > * {
+    grid-column: 1 / -1;
+  }
+
+  .entry-card--split > .entry-back {
+    justify-self: start;
+  }
+
+  .entry-card--split > .entry-signin {
+    grid-column: 1;
+  }
+
+  .entry-card--split > .entry-register {
+    grid-column: 2;
+    display: flex;
+    flex-direction: column;
+    margin-top: 0;
+    border-left: 1px solid var(--fg-card-border);
+    padding-left: 2rem;
+    text-align: left;
+  }
+
+  .entry-card--split > .entry-register .entry-gyms {
+    margin-top: 0.9rem;
+  }
+}
+
+.entry-register p.entry-gyms-title {
+  margin-bottom: 0.6rem;
+  font-size: 0.78rem;
+  font-weight: 600;
 }
 
 .entry-footnote {
@@ -1517,6 +1772,441 @@ onMounted(async () => {
 
   .entry-role-blurb {
     min-height: 0;
+  }
+}
+
+/* ---- Gym picker on the Create Member Account form ---- */
+.gym-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.2rem;
+}
+
+.gym-option {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  width: 100%;
+  border: 1px solid var(--fg-card-border);
+  border-radius: 0.9rem;
+  background: var(--fg-card-2);
+  padding: 0.7rem 0.85rem;
+  color: var(--fg-card-ink);
+  text-align: left;
+  cursor: pointer;
+  animation: gym-option-in 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+}
+
+.gym-option:hover {
+  border-color: rgba(var(--fg-accent-rgb), 0.7);
+  transform: translateY(-2px);
+}
+
+.gym-option--chosen {
+  border-color: var(--fg-accent);
+  box-shadow: 0 0 0 1px var(--fg-accent), 0 10px 24px rgba(var(--fg-accent-rgb), 0.22);
+}
+
+.gym-option-photo {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  overflow: hidden;
+  border-radius: 0.7rem;
+  background: linear-gradient(135deg, var(--fg-accent-light) 0%, var(--fg-accent) 55%, var(--fg-accent-dark) 100%);
+  color: var(--fg-accent-ink);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.gym-option-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.gym-option-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.gym-option-name {
+  overflow: hidden;
+  font-size: 0.92rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gym-option-meta {
+  overflow: hidden;
+  color: var(--fg-card-ink-soft);
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gym-option-action {
+  flex-shrink: 0;
+  border: 1px solid rgba(var(--fg-accent-rgb), 0.6);
+  border-radius: 9999px;
+  padding: 0.25rem 0.7rem;
+  color: var(--fg-card-gold);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.gym-option--chosen .gym-option-action {
+  border-color: var(--fg-accent);
+  background: var(--fg-accent);
+  color: var(--fg-accent-ink);
+}
+
+/* Inside Create Member Account: the card picks the gym, View opens its details */
+.gym-option--split {
+  padding: 0;
+  cursor: default;
+}
+
+.gym-option-main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 0.85rem;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 0.7rem 0 0.7rem 0.85rem;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.gym-option--split .gym-option-action {
+  margin-right: 0.85rem;
+  background: transparent;
+  cursor: pointer;
+}
+
+.gym-option--split.gym-option--chosen .gym-option-action {
+  border-color: rgba(var(--fg-accent-rgb), 0.6);
+  background: transparent;
+  color: var(--fg-card-gold);
+}
+
+.gym-option--split .gym-option-action:hover {
+  background: rgba(var(--fg-accent-rgb), 0.14);
+}
+
+.gym-option-check {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid var(--fg-card-border);
+  border-radius: 9999px;
+  color: var(--fg-accent-ink);
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.gym-option--chosen .gym-option-check {
+  border-color: var(--fg-accent);
+  background: var(--fg-accent);
+}
+
+.gym-option-check svg {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+@keyframes gym-option-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* ---- Gym details pop-up ---- */
+.gym-preview-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(15, 12, 6, 0.6);
+  backdrop-filter: blur(3px);
+}
+
+.gym-preview {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: min(32rem, 100%);
+  max-height: calc(100dvh - 2rem);
+  overflow: hidden;
+  border: 1px solid var(--fg-card-border);
+  border-radius: 1.25rem;
+  color: var(--fg-card-ink);
+}
+
+.gym-preview-close {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border: 0;
+  border-radius: 9999px;
+  background: rgba(21, 21, 21, 0.6);
+  color: #fff;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.gym-preview-cover {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  height: 9.5rem;
+  overflow: hidden;
+  background:
+    linear-gradient(rgba(10, 10, 10, 0.35), rgba(10, 10, 10, 0.35)),
+    url('../../../images/fitgym-box-marble.jpg') center / cover;
+}
+
+.gym-preview-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.gym-preview-cover-initials {
+  display: grid;
+  place-items: center;
+  width: 4.5rem;
+  height: 4.5rem;
+  border-radius: 1.1rem;
+  background: linear-gradient(135deg, var(--fg-accent-light) 0%, var(--fg-accent) 55%, var(--fg-accent-dark) 100%);
+  color: var(--fg-accent-ink);
+  font-size: 1.6rem;
+  font-weight: 700;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+}
+
+.gym-preview-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  overflow-y: auto;
+  padding: 1.25rem 1.4rem;
+}
+
+.gym-preview-name {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.gym-preview-sub {
+  margin: 0.2rem 0 0;
+  color: var(--fg-card-ink-soft);
+  font-size: 0.85rem;
+}
+
+.gym-preview-body h4 {
+  margin: 0 0 0.45rem;
+  color: var(--fg-card-gold);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.gym-preview-text {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  white-space: pre-line;
+}
+
+.gym-preview-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.gym-preview-stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  border: 1px solid var(--fg-card-border);
+  border-radius: 0.75rem;
+  background: var(--fg-card-2);
+  padding: 0.6rem 0.7rem;
+}
+
+.gym-preview-stats strong {
+  font-size: 1.05rem;
+}
+
+.gym-preview-stats span {
+  color: var(--fg-card-ink-soft);
+  font-size: 0.72rem;
+}
+
+.gym-preview-plans,
+.gym-preview-hours {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gym-preview-plans li,
+.gym-preview-hours li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--fg-card-border);
+  padding: 0.45rem 0;
+  font-size: 0.86rem;
+}
+
+.gym-preview-plans li:last-child,
+.gym-preview-hours li:last-child {
+  border-bottom: 0;
+}
+
+.gym-preview-plans small {
+  color: var(--fg-card-ink-soft);
+}
+
+.gym-preview-hours {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 1.25rem;
+}
+
+.gym-preview-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.gym-preview-chips span {
+  border: 1px solid rgba(var(--fg-accent-rgb), 0.6);
+  border-radius: 9999px;
+  background: rgba(var(--fg-accent-rgb), 0.12);
+  padding: 0.2rem 0.7rem;
+  font-size: 0.78rem;
+}
+
+.gym-preview-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 0.6rem;
+  border-top: 1px solid var(--fg-card-border);
+  padding: 0.9rem 1.4rem;
+}
+
+.gym-preview-back,
+.gym-preview-join {
+  border-radius: 0.7rem;
+  padding: 0.75rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.gym-preview-back {
+  border: 1px solid var(--fg-card-border);
+  background: transparent;
+  color: var(--fg-card-ink);
+}
+
+.gym-preview-join {
+  flex: 1;
+  border: 1px solid var(--fg-accent-light);
+  background: linear-gradient(135deg, var(--fg-accent-light) 0%, var(--fg-accent) 55%, var(--fg-accent-dark) 100%);
+  color: var(--fg-accent-ink);
+}
+
+.gym-preview-join:hover {
+  filter: brightness(1.06);
+}
+
+/* Pop-up animation: the backdrop fades, the card springs up, then each section slides in */
+.gym-pop-enter-active,
+.gym-pop-leave-active {
+  transition: opacity 0.25s ease;
+}
+
+.gym-pop-enter-active .gym-preview {
+  transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease;
+}
+
+.gym-pop-leave-active .gym-preview {
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.gym-pop-enter-from,
+.gym-pop-leave-to {
+  opacity: 0;
+}
+
+.gym-pop-enter-from .gym-preview {
+  opacity: 0;
+  transform: translateY(28px) scale(0.92);
+}
+
+.gym-pop-leave-to .gym-preview {
+  opacity: 0;
+  transform: translateY(12px) scale(0.97);
+}
+
+.gym-preview-step {
+  animation: gym-step-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(140ms + var(--step, 0) * 60ms);
+}
+
+@keyframes gym-step-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
+@media (max-width: 479.98px) {
+  .gym-preview-stats {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+
+  .gym-preview-hours {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gym-option,
+  .gym-preview-step {
+    animation: none;
+  }
+
+  .gym-pop-enter-active .gym-preview,
+  .gym-pop-leave-active .gym-preview {
+    transition: none;
   }
 }
 </style>

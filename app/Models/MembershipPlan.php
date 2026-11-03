@@ -41,6 +41,7 @@ class MembershipPlan extends Model
 
     public function planFeatures(): HasMany
     {
-        return $this->hasMany(PlanFeature::class);
+        // In the order they were added, so lists like "Everything in Basic" stay on top
+        return $this->hasMany(PlanFeature::class)->orderBy('id');
     }
 }

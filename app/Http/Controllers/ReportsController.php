@@ -7,6 +7,7 @@ use App\Models\Attendance;
 use App\Models\Gym;
 use App\Models\Member;
 use App\Models\MembershipPlan;
+use App\Models\Payment;
 use App\Support\GymReportWorkbook;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -16,24 +17,49 @@ class ReportsController extends Controller
     /**
      * Get revenue report data
      */
+    /** Money actually received: Paid payments whose payment date falls in the range. */
+    private function paidRevenue(?Carbon $from = null, ?Carbon $to = null): float
+    {
+        $query = Payment::where('is_archived', 0)->where('status', 'Paid');
+        if ($from && $to) {
+            $query->whereBetween('payment_date', [$from->toDateString(), $to->toDateString()]);
+        }
+
+        return (float) $query->sum('amount');
+    }
+
+    /** Share of active members who checked in at least once in the range, as a percentage. */
+    private function attendanceRate(Carbon $from, Carbon $to, int $activeMembers): float
+    {
+        if ($activeMembers <= 0) {
+            return 0;
+        }
+        $attended = Attendance::where('is_archived', 0)
+            ->whereBetween('check_in_time', [$from, $to])
+            ->distinct()
+            ->count('member_id');
+
+        return round(min(100, $attended / $activeMembers * 100), 1);
+    }
+
     public function revenue()
     {
         try {
-            // Calculate total revenue from all members
-            $totalRevenue = Member::where('members.is_archived', 0)
-                ->where('members.payment_status', 'Paid')
-                ->join('membership_plans', 'members.membership_plan_id', '=', 'membership_plans.id')
-                ->where('membership_plans.is_archived', 0)
-                ->sum(DB::raw('membership_plans.price'));
-            
-            // Calculate monthly revenue (current month)
-            $monthlyRevenue = Member::where('members.is_archived', 0)
-                ->where('members.payment_status', 'Paid')
-                ->whereMonth('members.created_at', Carbon::now()->month)
-                ->whereYear('members.created_at', Carbon::now()->year)
-                ->join('membership_plans', 'members.membership_plan_id', '=', 'membership_plans.id')
-                ->where('membership_plans.is_archived', 0)
-                ->sum(DB::raw('membership_plans.price'));
+            // Revenue is the money actually received (Paid payments), not plan prices
+            // multiplied by members, so it matches the Payments page and the Excel export.
+            $now = Carbon::now('Asia/Manila');
+            $totalRevenue = $this->paidRevenue();
+            $monthlyRevenue = $this->paidRevenue($now->copy()->startOfMonth(), $now->copy()->endOfMonth());
+
+            // Received per day for the last 7 days (Weekly Performance chart)
+            $dailyRevenue = [];
+            for ($i = 6; $i >= 0; $i--) {
+                $day = $now->copy()->subDays($i);
+                $dailyRevenue[] = [
+                    'date' => $day->format('M d, Y'),
+                    'amount' => $this->paidRevenue($day->copy()->startOfDay(), $day->copy()->endOfDay()),
+                ];
+            }
             
             // Get active and total members
             $activeMembers = Member::where('is_archived', 0)
@@ -45,17 +71,23 @@ class ReportsController extends Controller
             // Get revenue by plan
             $plans = MembershipPlan::where('is_archived', 0)
                 ->get()
-                ->map(function($plan) {
+                ->map(function($plan) use ($now) {
                     $memberCount = Member::where('is_archived', 0)
                         ->where('membership_plan_id', $plan->id)
                         ->count();
-                    
+
                     return [
                         'id' => $plan->id,
                         'name' => $plan->name,
                         'type' => $plan->type,
                         'price' => (float) $plan->price,
                         'member_count' => $memberCount,
+                        // received for this plan this month (shown on the plan cards)
+                        'monthly_revenue' => (float) Payment::where('is_archived', 0)
+                            ->where('status', 'Paid')
+                            ->where('membership_plan_id', $plan->id)
+                            ->whereBetween('payment_date', [$now->copy()->startOfMonth()->toDateString(), $now->copy()->endOfMonth()->toDateString()])
+                            ->sum('amount'),
                     ];
                 });
             
@@ -63,6 +95,7 @@ class ReportsController extends Controller
                 'success' => true,
                 'total_revenue' => (float) $totalRevenue,
                 'monthly_revenue' => (float) $monthlyRevenue,
+                'daily_revenue' => $dailyRevenue,
                 'active_members' => $activeMembers,
                 'total_members' => $totalMembers,
                 'plans' => $plans,
@@ -310,13 +343,8 @@ class ReportsController extends Controller
             $startDate = Carbon::create($year, $startMonth, 1)->startOfMonth();
             $endDate = Carbon::create($year, $endMonth, 1)->endOfMonth();
             
-            // Get total revenue for the quarter
-            $totalRevenue = Member::where('members.is_archived', 0)
-                ->where('members.payment_status', 'Paid')
-                ->whereBetween('members.created_at', [$startDate, $endDate])
-                ->join('membership_plans', 'members.membership_plan_id', '=', 'membership_plans.id')
-                ->where('membership_plans.is_archived', 0)
-                ->sum(DB::raw('membership_plans.price'));
+            // Money received in the quarter
+            $totalRevenue = $this->paidRevenue($startDate, $endDate);
             
             // Get total members in the quarter
             $totalMembers = Member::where('is_archived', 0)
@@ -345,8 +373,8 @@ class ReportsController extends Controller
                 ->where('status', 'Active')
                 ->count();
             
-            // Calculate attendance rate (estimated based on active members)
-            $attendanceRate = $activeMembers > 0 ? 85 + (rand(0, 10) / 10) : 0;
+            // Share of active members who came in at least once this quarter
+            $attendanceRate = $this->attendanceRate($startDate, $endDate, $activeMembers);
             
             // Monthly breakdown
             $monthlyBreakdown = [];
@@ -354,12 +382,7 @@ class ReportsController extends Controller
                 $monthStart = Carbon::create($year, $month, 1)->startOfMonth();
                 $monthEnd = Carbon::create($year, $month, 1)->endOfMonth();
                 
-                $monthRevenue = Member::where('members.is_archived', 0)
-                    ->where('members.payment_status', 'Paid')
-                    ->whereBetween('members.created_at', [$monthStart, $monthEnd])
-                    ->join('membership_plans', 'members.membership_plan_id', '=', 'membership_plans.id')
-                    ->where('membership_plans.is_archived', 0)
-                    ->sum(DB::raw('membership_plans.price'));
+                $monthRevenue = $this->paidRevenue($monthStart, $monthEnd);
                 
                 $monthNewMembers = Member::where('is_archived', 0)
                     ->whereBetween('created_at', [$monthStart, $monthEnd])
@@ -370,7 +393,7 @@ class ReportsController extends Controller
                     ->where('created_at', '<=', $monthEnd)
                     ->count();
                 
-                $monthAttendanceRate = $monthActiveMembers > 0 ? 85 + (rand(0, 10) / 10) : 0;
+                $monthAttendanceRate = $this->attendanceRate($monthStart, $monthEnd, $monthActiveMembers);
                 
                 $monthlyBreakdown[] = [
                     'month' => $monthStart->format('F Y'),
@@ -389,7 +412,11 @@ class ReportsController extends Controller
                         ->whereBetween('created_at', [$startDate, $endDate])
                         ->count();
                     
-                    $totalRevenue = (float) $plan->price * $memberCount;
+                    $totalRevenue = (float) Payment::where('is_archived', 0)
+                        ->where('status', 'Paid')
+                        ->where('membership_plan_id', $plan->id)
+                        ->whereBetween('payment_date', [$startDate->toDateString(), $endDate->toDateString()])
+                        ->sum('amount');
                     
                     return [
                         'name' => $plan->name,
@@ -407,8 +434,9 @@ class ReportsController extends Controller
             // Calculate average revenue per member
             $avgRevenuePerMember = $totalMembers > 0 ? (float) $totalRevenue / $totalMembers : 0;
             
-            // Calculate retention rate (estimated)
-            $retentionRate = $totalMembers > 0 ? 85 + (rand(0, 10) / 10) : 0;
+            // Share of everyone on the books who is still an active member
+            $allMembers = Member::where('is_archived', 0)->where('created_at', '<=', $endDate)->count();
+            $retentionRate = $allMembers > 0 ? round($activeMembers / $allMembers * 100, 1) : 0;
             
             // Calculate growth rate (compared to previous quarter)
             $prevQuarter = $quarter > 1 ? $quarter - 1 : 4;
@@ -419,12 +447,7 @@ class ReportsController extends Controller
             $prevStartDate = Carbon::create($prevYear, $prevStartMonth, 1)->startOfMonth();
             $prevEndDate = Carbon::create($prevYear, $prevEndMonth, 1)->endOfMonth();
             
-            $prevRevenue = Member::where('members.is_archived', 0)
-                ->where('members.payment_status', 'Paid')
-                ->whereBetween('members.created_at', [$prevStartDate, $prevEndDate])
-                ->join('membership_plans', 'members.membership_plan_id', '=', 'membership_plans.id')
-                ->where('membership_plans.is_archived', 0)
-                ->sum(DB::raw('membership_plans.price'));
+            $prevRevenue = $this->paidRevenue($prevStartDate, $prevEndDate);
             
             $growthRate = $prevRevenue > 0 
                 ? ((float) $totalRevenue - (float) $prevRevenue) / (float) $prevRevenue * 100 
@@ -471,7 +494,10 @@ class ReportsController extends Controller
                         ->get();
                     
                     $memberCount = $members->count();
-                    $totalRevenue = (float) $plan->price * $memberCount;
+                    $totalRevenue = (float) Payment::where('is_archived', 0)
+                        ->where('status', 'Paid')
+                        ->where('membership_plan_id', $plan->id)
+                        ->sum('amount');
                     
                     return [
                         'id' => $plan->id,
@@ -483,7 +509,7 @@ class ReportsController extends Controller
                     ];
                 })
                 ->filter(function($plan) {
-                    return $plan['member_count'] > 0;
+                    return $plan['member_count'] > 0 || $plan['total_revenue'] > 0;
                 })
                 ->sortByDesc('total_revenue')
                 ->values();

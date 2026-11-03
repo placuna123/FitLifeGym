@@ -45,6 +45,24 @@ class MemberPendingApprovalTest extends TestCase
             ->assertJsonPath('success', true);
     }
 
+    public function test_approved_member_who_has_not_paid_cannot_get_an_attendance_qr(): void
+    {
+        $user = $this->createMember('Active', 'Pending');
+
+        $this->actingAs($user)->postJson(route('member.attendance.qr'))
+            ->assertForbidden()
+            ->assertJsonPath('success', false);
+    }
+
+    public function test_member_whose_paid_time_ran_out_cannot_get_an_attendance_qr(): void
+    {
+        $user = $this->createMember('Active', 'Paid', now()->subDays(2)->format('Y-m-d'));
+
+        $this->actingAs($user)->postJson(route('member.attendance.qr'))
+            ->assertForbidden()
+            ->assertJsonPath('success', false);
+    }
+
     public function test_expired_member_is_still_blocked_from_signing_in(): void
     {
         $this->createMember('Expired');
@@ -54,8 +72,12 @@ class MemberPendingApprovalTest extends TestCase
             ->assertJsonPath('success', false);
     }
 
-    private function createMember(string $status): User
+    private function createMember(string $status, ?string $paymentStatus = null, ?string $expiryDate = null): User
     {
+        // An approved member has paid unless a test says otherwise; a pending one hasn't.
+        $paymentStatus ??= $status === 'Active' ? 'Paid' : 'Pending';
+        $expiryDate ??= now()->addMonth()->format('Y-m-d');
+
         $gym = Gym::create(['name' => 'Test Gym', 'slug' => 'test-gym']);
 
         $plan = MembershipPlan::create([
@@ -84,8 +106,8 @@ class MemberPendingApprovalTest extends TestCase
             'phone' => '09170000000',
             'membership_plan_id' => $plan->id,
             'status' => $status,
-            'expiry_date' => now()->addMonth()->format('Y-m-d'),
-            'payment_status' => 'Pending',
+            'expiry_date' => $expiryDate,
+            'payment_status' => $paymentStatus,
             'is_archived' => 0,
         ]);
 

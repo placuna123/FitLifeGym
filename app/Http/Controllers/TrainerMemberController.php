@@ -49,34 +49,6 @@ class TrainerMemberController extends Controller
             // Generate member ID
             $memberId = $this->generateMemberId();
 
-            // Calculate expiry date based on plan period
-            $expiryDate = Carbon::now();
-            if ($plan->period) {
-                // Parse period (e.g., "1 month", "3 months", "12 months", "1 year")
-                $period = strtolower($plan->period);
-                if (strpos($period, 'month') !== false) {
-                    $months = (int) preg_replace('/[^0-9]/', '', $period);
-                    if ($months > 0) {
-                        $expiryDate = $expiryDate->addMonths($months);
-                    } else {
-                        $expiryDate = $expiryDate->addMonth();
-                    }
-                } elseif (strpos($period, 'year') !== false) {
-                    $years = (int) preg_replace('/[^0-9]/', '', $period);
-                    if ($years > 0) {
-                        $expiryDate = $expiryDate->addYears($years);
-                    } else {
-                        $expiryDate = $expiryDate->addYear();
-                    }
-                } else {
-                    // Default to 1 month if period format is unclear
-                    $expiryDate = $expiryDate->addMonth();
-                }
-            } else {
-                // Default to 1 month if no period specified
-                $expiryDate = $expiryDate->addMonth();
-            }
-
             // Create member
             $member = Member::create([
                 'member_id' => $memberId,
@@ -86,7 +58,8 @@ class TrainerMemberController extends Controller
                 'address' => $request->address ?? '',
                 'membership_plan_id' => $request->membership_plan_id,
                 'status' => 'Pending',
-                'expiry_date' => $expiryDate,
+                // Unpaid: the membership starts when their payment is approved.
+                'expiry_date' => null,
                 'payment_status' => 'Pending',
                 'is_archived' => 0,
             ]);
@@ -121,7 +94,7 @@ class TrainerMemberController extends Controller
                     'email' => $member->email,
                     'phone' => $member->phone,
                     'membership_plan' => $plan->name,
-                    'expiry_date' => $member->expiry_date->format('Y-m-d'),
+                    'expiry_date' => $member->expiry_date?->format('Y-m-d'),
                 ]
             ]);
         } catch (\Exception $e) {

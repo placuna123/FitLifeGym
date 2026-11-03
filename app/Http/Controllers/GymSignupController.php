@@ -29,8 +29,48 @@ class GymSignupController extends Controller
             ->orderBy('name')
             ->get()
             ->filter(fn (Gym $gym) => $gym->allowsAccess())
-            ->map(fn (Gym $gym) => ['id' => $gym->id, 'name' => $gym->name, 'slug' => $gym->slug])
             ->values();
+
+        // What a would-be member sees before picking a branch. Plain queries, not the
+        // gym-scoped models: nobody is signed in here, so there is no current gym.
+        $ids = $gyms->pluck('id');
+        $plans = DB::table('membership_plans')
+            ->whereIn('gym_id', $ids)
+            ->where('is_deactivated', 0)
+            ->where('is_archived', 0)
+            ->orderBy('price')
+            ->get(['gym_id', 'name', 'price', 'period'])
+            ->groupBy('gym_id');
+        $staffCounts = DB::table('trainers')
+            ->whereIn('gym_id', $ids)
+            ->where('is_archived', 0)
+            ->selectRaw('gym_id, count(*) as total')
+            ->groupBy('gym_id')
+            ->pluck('total', 'gym_id');
+        $classes = DB::table('gym_classes')
+            ->whereIn('gym_id', $ids)
+            ->where('is_archived', 0)
+            ->get(['gym_id', 'name'])
+            ->groupBy('gym_id');
+
+        $gyms = $gyms->map(fn (Gym $gym) => [
+            'id' => $gym->id,
+            'name' => $gym->name,
+            'slug' => $gym->slug,
+            'description' => $gym->description ?? '',
+            'cover_photo_url' => $gym->publicFileUrl($gym->cover_photo_path),
+            'address' => $gym->address ?? '',
+            'phone' => $gym->phone ?? '',
+            'email' => $gym->email ?? '',
+            'operating_hours' => $gym->operating_hours ?: [],
+            'plans' => ($plans[$gym->id] ?? collect())->map(fn ($p) => [
+                'name' => $p->name,
+                'price' => (float) $p->price,
+                'period' => $p->period,
+            ])->values(),
+            'staff_count' => (int) ($staffCounts[$gym->id] ?? 0),
+            'classes' => ($classes[$gym->id] ?? collect())->pluck('name')->unique()->values(),
+        ]);
 
         return response()->json([
             'success' => true,

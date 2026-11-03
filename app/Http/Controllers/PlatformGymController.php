@@ -5,12 +5,15 @@ namespace App\Http\Controllers;
 use App\Models\AuditLog;
 use App\Models\Gym;
 use App\Models\Member;
+use App\Models\Notification;
 use App\Models\Payment;
 use App\Models\Trainer;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 
@@ -22,10 +25,11 @@ use Illuminate\Support\Str;
  */
 class PlatformGymController extends Controller
 {
-    public function index()
+    /** Active branches, or the archived ones with ?archived=1 (so they can be restored). */
+    public function index(Request $request)
     {
         try {
-            $gyms = Gym::where('is_archived', 0)
+            $gyms = Gym::where('is_archived', $request->boolean('archived') ? 1 : 0)
                 ->orderBy('name')
                 ->get()
                 ->map(fn (Gym $gym) => $this->withCounts($gym));
@@ -140,15 +144,21 @@ class PlatformGymController extends Controller
             'subscription_status' => 'nullable|string|in:trial,pending,active,suspended,expired,cancelled',
             'subscription_expires_at' => 'nullable|date',
             'admin_user_id' => 'nullable|integer|exists:users,id',
+            'admin_name' => 'nullable|string|max:255',
         ]);
 
         if ($validator->fails()) {
-            return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
+            return response()->json(['success' => false, 'message' => $validator->errors()->first(), 'errors' => $validator->errors()], 422);
         }
 
         try {
             $gym = Gym::findOrFail($id);
             $previousStatus = $gym->subscription_status;
+
+            // The branch Admin's display name (e.g. it was left as their email address).
+            if ($request->filled('admin_name') && $gym->owner_user_id) {
+                User::where('id', $gym->owner_user_id)->update(['name' => trim((string) $request->admin_name)]);
+            }
 
             $gym->update(array_filter([
                 'name' => $request->name,
@@ -212,36 +222,126 @@ class PlatformGymController extends Controller
         }
     }
 
+    /** Bring an archived branch back; its Admin can sign in again. */
+    public function restore($id)
+    {
+        $gym = Gym::where('id', $id)->where('is_archived', 1)->first();
+        if (! $gym) {
+            return response()->json(['success' => false, 'message' => 'Archived branch not found'], 404);
+        }
+
+        $gym->update(['is_archived' => 0]);
+        AuditLog::record('gym.restored', "Restored gym {$gym->name}", ['type' => 'Gym', 'id' => $gym->id]);
+
+        return response()->json(['success' => true, 'message' => "{$gym->name} was restored.", 'gym' => $this->withCounts($gym->fresh())]);
+    }
+
+    /** Email the branch Admin the same "set a new password" link as Forgot Password. */
+    public function sendAdminReset($id)
+    {
+        $gym = Gym::findOrFail($id);
+        $admin = $gym->owner_user_id ? User::find($gym->owner_user_id) : null;
+        if (! $admin || ! $admin->email) {
+            return response()->json(['success' => false, 'message' => 'This branch has no Admin account to send a link to.'], 422);
+        }
+
+        $status = Password::broker()->sendResetLink(['email' => $admin->email]);
+        if ($status !== Password::RESET_LINK_SENT) {
+            return response()->json(['success' => false, 'message' => __($status)], 422);
+        }
+
+        AuditLog::record('gym.admin_reset_sent', "Sent a password reset link to {$admin->email} ({$gym->name})", ['type' => 'Gym', 'id' => $gym->id]);
+
+        return response()->json(['success' => true, 'message' => "A password reset link was emailed to {$admin->email}."]);
+    }
+
+    /**
+     * Send a message to the Admin of every branch (or one branch); it shows in their
+     * Notifications panel.
+     */
+    public function announce(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'title' => 'required|string|max:120',
+            'message' => 'required|string|max:1000',
+            'gym_id' => 'nullable|integer|exists:gyms,id',
+        ], [
+            'title.required' => 'Give the announcement a title.',
+            'message.required' => 'Write the announcement message.',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'message' => $validator->errors()->first(), 'errors' => $validator->errors()], 422);
+        }
+
+        $gyms = Gym::where('is_archived', 0)
+            ->when($request->filled('gym_id'), fn ($q) => $q->where('id', $request->gym_id))
+            ->get();
+
+        foreach ($gyms as $gym) {
+            Notification::withoutGlobalScopes()->create([
+                'gym_id' => $gym->id,
+                'member_id' => null, // the branch Admin's notification center
+                'title' => 'From FitGym: ' . $request->title,
+                'message' => $request->message,
+                'type' => 'blue',
+                'is_read' => 0,
+                'read_at' => null,
+                'is_archived' => 0,
+            ]);
+        }
+
+        $where = $request->filled('gym_id') ? $gyms->first()?->name : 'all branches';
+        AuditLog::record('platform.announcement', "Announcement \"{$request->title}\" sent to {$where}", ['type' => 'Announcement', 'id' => null]);
+
+        return response()->json(['success' => true, 'message' => "Sent to {$where}.", 'sent_to' => $gyms->count()]);
+    }
+
     /**
      * Cross-branch analytics: platform totals + a per-gym comparison table.
+     * "Revenue" is what members paid the branches (Paid payments), not platform income.
      */
     public function analytics()
     {
         $gyms = Gym::where('is_archived', 0)->get();
+        $now = Carbon::now('Asia/Manila');
+        $monthStart = $now->copy()->startOfMonth();
+        $monthEnd = $now->copy()->endOfMonth();
+        $today = $now->toDateString();
 
-        $perGym = $gyms->map(function (Gym $gym) {
-            $memberCount = Member::withoutGlobalScopes()->where('gym_id', $gym->id)->where('is_archived', 0)->count();
-            $trainerCount = Trainer::withoutGlobalScopes()->where('gym_id', $gym->id)->where('is_archived', 0)->count();
-            $revenue = Payment::withoutGlobalScopes()->where('gym_id', $gym->id)->where('is_archived', 0)->where('status', 'Paid')->sum('amount');
+        $perGym = $gyms->map(function (Gym $gym) use ($monthStart, $monthEnd, $today) {
+            $members = Member::withoutGlobalScopes()->where('gym_id', $gym->id)->where('is_archived', 0);
+            $paid = Payment::withoutGlobalScopes()->where('gym_id', $gym->id)->where('is_archived', 0)->where('status', 'Paid');
 
             return [
                 'id' => $gym->id,
                 'name' => $gym->name,
                 'subscription_plan' => $gym->subscription_plan,
                 'subscription_status' => $gym->effectiveStatus(),
-                'members' => $memberCount,
-                'trainers' => $trainerCount,
-                'revenue' => (float) $revenue,
+                'members' => (clone $members)->count(),
+                'active_members' => (clone $members)->where('status', 'Active')->where('payment_status', 'Paid')->whereDate('expiry_date', '>=', $today)->count(),
+                'expired_members' => (clone $members)->where('status', 'Active')->whereNotNull('expiry_date')->whereDate('expiry_date', '<', $today)->count(),
+                'awaiting_approval' => (clone $members)->where('status', 'Pending')->count(),
+                'trainers' => Trainer::withoutGlobalScopes()->where('gym_id', $gym->id)->where('is_archived', 0)->count(),
+                'revenue' => (float) (clone $paid)->sum('amount'),
+                'revenue_month' => (float) (clone $paid)->whereBetween('payment_date', [$monthStart->toDateString(), $monthEnd->toDateString()])->sum('amount'),
+                'pending_payments' => Payment::withoutGlobalScopes()->where('gym_id', $gym->id)->where('is_archived', 0)->where('status', 'Pending')->count(),
+                'checkins_month' => DB::table('attendance')->where('gym_id', $gym->id)->where('is_archived', 0)
+                    ->whereBetween('check_in_time', [$monthStart->copy()->utc(), $monthEnd->copy()->utc()])->count(),
             ];
-        })->sortByDesc('revenue')->values();
+        })->sortByDesc('revenue_month')->values();
 
         return response()->json([
             'success' => true,
+            'month' => $now->format('F Y'),
             'totals' => [
                 'gyms' => $gyms->count(),
                 'members' => (int) $perGym->sum('members'),
+                'active_members' => (int) $perGym->sum('active_members'),
                 'trainers' => (int) $perGym->sum('trainers'),
                 'revenue' => (float) $perGym->sum('revenue'),
+                'revenue_month' => (float) $perGym->sum('revenue_month'),
+                'pending_payments' => (int) $perGym->sum('pending_payments'),
+                'checkins_month' => (int) $perGym->sum('checkins_month'),
             ],
             'branches' => $perGym,
         ]);
@@ -249,6 +349,8 @@ class PlatformGymController extends Controller
 
     private function withCounts(Gym $gym): array
     {
+        $owner = $gym->owner_user_id ? User::find($gym->owner_user_id) : null;
+
         return [
             'id' => $gym->id,
             'name' => $gym->name,
@@ -257,6 +359,9 @@ class PlatformGymController extends Controller
             'phone' => $gym->phone,
             'address' => $gym->address,
             'owner_user_id' => $gym->owner_user_id,
+            // who runs this branch, so the Super Admin knows whom to contact
+            'admin' => $owner ? ['id' => $owner->id, 'name' => $owner->name, 'email' => $owner->email] : null,
+            'created_on' => $gym->created_at?->copy()->setTimezone('Asia/Manila')->format('M j, Y'),
             'subscription_plan' => $gym->subscription_plan,
             'subscription_status' => $gym->subscription_status,
             'effective_status' => $gym->effectiveStatus(),

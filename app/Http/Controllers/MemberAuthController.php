@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\MembershipPlan;
 use App\Models\MemberWeightLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -15,71 +14,18 @@ use App\Models\Member;
 class MemberAuthController extends Controller
 {
     /**
-     * If User exists (Member role) but no Member record, create one so login can succeed.
-     * Only ever called AFTER Auth::attempt() succeeds, so Tenancy::gymId() (used by
-     * Member's BelongsToGym trait to fill gym_id on create) resolves correctly.
+     * A Member login whose member record is gone (deleted by the gym) is refused.
+     * This used to create or revive the record as Active and Paid, which handed a
+     * deleted member a free month just for signing in again.
      */
-    private function ensureMemberRecordExists(\App\Models\User $user): Member
+    private function removedMemberResponse(): \Illuminate\Http\JsonResponse
     {
-        // `members.email` is unique per gym (regardless of `is_archived`).
-        // If the member exists but is archived, we must update/unarchive it
-        // instead of inserting a new row (prevents duplicate key error).
-        $member = Member::where('email', $user->email)->where('is_archived', 0)->first();
-        if ($member) {
-            return $member;
-        }
+        Auth::logout();
 
-        $archivedMember = Member::where('email', $user->email)->first();
-        $plan = MembershipPlan::where('is_archived', 0)->orderBy('id')->first();
-        if (! $plan) {
-            $plan = MembershipPlan::create([
-                'name' => 'Trial Plan',
-                'type' => 'Monthly',
-                'price' => 0,
-                'period' => '1 month',
-                'description' => 'Trial membership',
-                'is_popular' => 0,
-                'is_deactivated' => 0,
-                'is_archived' => 0,
-            ]);
-        }
-
-        $expiry = now()->addMonth();
-        if (strtolower($plan->type ?? '') === 'annual') {
-            $expiry = now()->addYear();
-        } elseif (strtolower($plan->type ?? '') === 'quarterly') {
-            $expiry = now()->addMonths(3);
-        }
-
-        if ($archivedMember) {
-            $archivedMember->update([
-                'full_name' => $user->name ?? $archivedMember->full_name ?? 'Member User',
-                'membership_plan_id' => $plan->id,
-                'status' => 'Active',
-                'expiry_date' => $expiry,
-                'payment_status' => 'Paid',
-                'is_archived' => 0,
-            ]);
-
-            return $archivedMember->fresh();
-        }
-
-        do {
-            $memberId = str_pad((string) random_int(1, 9999), 4, '0', STR_PAD_LEFT);
-        } while (Member::where('member_id', $memberId)->exists());
-
-        return Member::create([
-            'member_id' => $memberId,
-            'full_name' => $user->name ?? 'Member User',
-            'email' => $user->email,
-            'phone' => '',
-            'address' => null,
-            'membership_plan_id' => $plan->id,
-            'status' => 'Active',
-            'expiry_date' => $expiry,
-            'payment_status' => 'Paid',
-            'is_archived' => 0,
-        ]);
+        return response()->json([
+            'success' => false,
+            'message' => 'This member account was removed by the gym. Please contact the front desk if you think this is a mistake.',
+        ], 403);
     }
 
     public function login(Request $request)
@@ -132,7 +78,7 @@ class MemberAuthController extends Controller
 
         $member = Member::where('email', $user->email)->where('is_archived', 0)->first();
         if (! $member) {
-            $member = $this->ensureMemberRecordExists($user);
+            return $this->removedMemberResponse();
         }
 
         // Pending members (phone-verified, awaiting staff approval) may sign in to pay
@@ -146,6 +92,7 @@ class MemberAuthController extends Controller
         }
 
         $request->session()->regenerate();
+        \App\Models\AuditLog::record('auth.login', "Member {$member->full_name} logged in");
 
         return response()->json([
             'success' => true,
@@ -284,7 +231,7 @@ class MemberAuthController extends Controller
         }
         $member = Member::where('email', $user->email)->where('is_archived', 0)->with('membershipPlan')->first();
         if (!$member) {
-            $member = $this->ensureMemberRecordExists($user);
+            return $this->removedMemberResponse();
         }
         return response()->json([
             'success' => true,

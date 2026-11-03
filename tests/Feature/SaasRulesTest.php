@@ -146,7 +146,7 @@ class SaasRulesTest extends TestCase
         ])->assertOk()->assertJsonPath('success', true);
 
         $active = collect($this->actingAs($admin)->getJson(route('admin.notifications.index'))->json('active'));
-        $ticket = $active->firstWhere('title', 'Support Ticket: Equipment Issue');
+        $ticket = $active->firstWhere('title', 'Member Feedback: Equipment Issue');
         $this->assertNotNull($ticket);
         $this->assertStringContainsString('The treadmill is broken.', $ticket['message']);
         $this->assertSame('high', $ticket['priority']);

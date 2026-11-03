@@ -100,14 +100,17 @@ class AdminNotificationController extends Controller
         $icon = 'fas fa-bell';
         $priority = 'info';
 
-        if (str_starts_with((string) $n->title, 'Support Ticket')) {
-            $icon = 'fas fa-life-ring';
+        // Member feedback (older rows were titled "Support Ticket: …")
+        if (str_starts_with((string) $n->title, 'Member Feedback') || str_starts_with((string) $n->title, 'Support Ticket')) {
+            $icon = 'fas fa-comment-dots';
             $priority = 'high';
         }
 
         // Match the icon/colors used by `resources/js/pages/fitgym/Admin.vue`
         switch ($n->title) {
             case 'Membership Expiring Soon':
+            case 'Membership Ends Today':
+            case 'Membership Expired':
                 $icon = 'fas fa-calendar-times';
                 $priority = 'high';
                 break;
@@ -135,7 +138,8 @@ class AdminNotificationController extends Controller
 
         $recordedAt = $n->read_at ?: $n->created_at;
         $historyStatus = $n->is_archived ? 'dismissed' : ((bool) $n->is_read ? 'read' : 'active');
-        $time = $recordedAt ? Carbon::parse($recordedAt)->diffForHumans() : '';
+        // Always when it actually happened (not when it was read), in Philippine time.
+        $time = self::happenedAt($n->created_at);
 
         return [
             'id' => $n->id,
@@ -149,7 +153,21 @@ class AdminNotificationController extends Controller
             'is_archived' => (bool) $n->is_archived,
             'history_status' => $historyStatus,
             'action_label' => $historyStatus === 'dismissed' ? 'Dismissed' : ($historyStatus === 'read' ? 'Marked as Read' : 'Unread'),
-            'recorded_at' => $recordedAt ? Carbon::parse($recordedAt)->format('M d, Y h:i A') : null,
+            'recorded_at' => $recordedAt ? Carbon::parse($recordedAt)->setTimezone('Asia/Manila')->format('M d, Y h:i A') : null,
         ];
+    }
+
+    /**
+     * "Oct 2, 2026 · 6:15 PM (3 weeks ago)": the real date and time, in Philippine
+     * time (stored in UTC), so nobody has to guess what day "3 weeks ago" was.
+     */
+    public static function happenedAt($at): string
+    {
+        if (! $at) {
+            return '';
+        }
+        $local = Carbon::parse($at)->setTimezone('Asia/Manila');
+
+        return $local->format('M j, Y · g:i A') . ' (' . $local->diffForHumans() . ')';
     }
 }

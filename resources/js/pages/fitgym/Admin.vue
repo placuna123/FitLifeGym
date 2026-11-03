@@ -14,8 +14,10 @@ import {
   trainerAttendance,
   adminTrainerAttendance,
   adminNotifications,
+  adminSubscription,
   gymClasses,
 } from '@/api/fitgym';
+import FgThemeToggle from '@/components/FgThemeToggle.vue';
 import PasswordToggle from '@/components/PasswordToggle.vue';
 import ProfilePhotoPicker from '@/components/ProfilePhotoPicker.vue';
 import { useMobileNav } from '@/composables/useMobileNav';
@@ -103,7 +105,7 @@ const MAX_PLAN_FEATURES = 20;
 
 function planFeatureList(plan: Record<string, unknown>): string[] {
   const features = Array.isArray(plan.features) ? (plan.features as unknown[]).map(String).filter(Boolean) : [];
-  return features.length ? features : ['Gym Access'];
+  return features;
 }
 
 function addPlanFeature() {
@@ -119,13 +121,15 @@ const passwordForm = ref({ current_password: '', new_password: '', confirm_passw
 const adminProfileForm = ref({ name: '', address: '', phone: '' });
 const adminProfileNotice = ref('');
 const gymForm = ref({
-  name: 'FitLife Gym',
+  name: '',
   email: '',
   phone: '',
   gcash_number: '',
   gcash_account_name: '',
   gcash_qr_url: '',
   address: '',
+  description: '',
+  cover_photo_url: '',
   textbee_device_id: '',
   textbee_sim_subscription_id: '',
   operating_hours: {
@@ -134,6 +138,7 @@ const gymForm = ref({
   },
 });
 const gcashQrFile = ref<File | null>(null);
+const gymCoverPhotoFile = ref<File | null>(null);
 const selectedMember = ref<Record<string, unknown> | null>(null);
 const selectedPlanForEdit = ref<Record<string, unknown> | null>(null);
 const editingTrainerId = ref<number | null>(null);
@@ -201,7 +206,100 @@ function syncNotificationLists(notifData?: { active?: unknown[]; history?: unkno
   notificationHistoryList.value = Array.isArray(notifData?.history) ? notifData.history as Record<string, unknown>[] : [];
 }
 
+// This branch's FitGym subscription: plan, end date, usage, prices, where to pay.
+type SubscriptionInfo = {
+  subscription: {
+    plan: string;
+    plan_label: string;
+    status: string;
+    ends_on: string | null;
+    days_left: number | null;
+    members: { used: number; limit: number | null };
+    staff: { used: number; limit: number | null };
+  };
+  plans: { key: string; label: string; price: number; members: number | null; staff: number | null }[];
+  payment_details: { gcash_number: string; gcash_name: string; bank_details: string; instructions: string };
+  payments: { id: number; paid_on: string; plan: string; months: number; amount: number; payment_method: string; period: string }[];
+  methods: string[];
+  proofs: { id: number; sent_on: string; plan: string; months: number; amount: number; payment_method: string; reference: string | null; status: string; review_note: string | null }[];
+};
+const subscriptionInfo = ref<SubscriptionInfo | null>(null);
+
+// "I paid FitGym": receipt the Super Admin checks and approves in Billing.
+const proofForm = ref({ plan: 'basic', months: 1, payment_method: 'GCash', reference: '', notes: '' });
+const proofFile = ref<File | null>(null);
+const proofFileInput = ref<HTMLInputElement | null>(null);
+const proofSending = ref(false);
+const proofError = ref('');
+const proofSuccess = ref('');
+const proofPending = computed(() => subscriptionInfo.value?.proofs.some((p) => p.status === 'Pending') ?? false);
+const proofTotal = computed(() => {
+  const plan = subscriptionInfo.value?.plans.find((p) => p.key === proofForm.value.plan);
+  return plan ? plan.price * Math.max(1, Number(proofForm.value.months) || 1) : 0;
+});
+
+function onProofFileSelected(event: Event) {
+  proofFile.value = (event.target as HTMLInputElement | null)?.files?.[0] ?? null;
+}
+
+async function sendProof() {
+  proofError.value = '';
+  proofSuccess.value = '';
+  if (!proofForm.value.reference.trim()) {
+    proofError.value = 'Enter the reference number from your GCash or bank receipt.';
+    return;
+  }
+  if (!proofFile.value) {
+    proofError.value = 'Attach a photo or PDF of your receipt.';
+    return;
+  }
+  proofSending.value = true;
+  try {
+    const payload = new FormData();
+    payload.append('plan', proofForm.value.plan);
+    payload.append('months', String(proofForm.value.months));
+    payload.append('payment_method', proofForm.value.payment_method);
+    payload.append('reference', proofForm.value.reference.trim());
+    payload.append('notes', proofForm.value.notes.trim());
+    payload.append('receipt', proofFile.value);
+    const { data } = await adminSubscription.sendProof(payload);
+    proofSuccess.value = data.message;
+    proofForm.value = { ...proofForm.value, reference: '', notes: '' };
+    proofFile.value = null;
+    if (proofFileInput.value) proofFileInput.value.value = '';
+    await loadSubscription();
+  } catch (err: unknown) {
+    const ax = err as { response?: { data?: { message?: string } } };
+    proofError.value = ax.response?.data?.message || 'Could not send your payment. Please try again.';
+  } finally {
+    proofSending.value = false;
+  }
+}
+
+async function loadSubscription() {
+  try {
+    const { data } = await adminSubscription.get();
+    if (data.success) subscriptionInfo.value = data as SubscriptionInfo;
+  } catch {
+    // the rest of the portal works without it
+  }
+}
+
+// Shown on the dashboard when the trial or subscription ends within 7 days.
+const subscriptionNotice = computed(() => {
+  const s = subscriptionInfo.value?.subscription;
+  if (!s || s.days_left === null || s.days_left > 7) return null;
+  const what = s.status === 'trial' ? 'free trial' : `${s.plan_label} subscription`;
+  const when = s.days_left <= 0 ? 'ends today' : `ends in ${s.days_left} day${s.days_left === 1 ? '' : 's'} (${s.ends_on})`;
+  return `Your FitGym ${what} ${when}. Renew to keep this branch open for your staff and members.`;
+});
+
+function limitText(item: { used: number; limit: number | null }): string {
+  return item.limit === null ? `${item.used} (no limit)` : `${item.used} of ${item.limit}`;
+}
+
 async function loadData() {
+  void loadSubscription();
   try {
     const [memRes, planRes, payRes, trainerRes, revRes, memReportRes, attRes, logsRes, recentRes, currentInGymRes, notifRes] = await Promise.all([
       members.list(),
@@ -404,13 +502,15 @@ async function loadGymInfo() {
     gymInfoData.value = res?.gym || (data as Record<string, unknown>) || null;
     const gym = gymInfoData.value as Record<string, unknown> | null;
     if (gym) {
-      gymForm.value.name = String(gym.name || 'FitLife Gym');
+      gymForm.value.name = String(gym.name || '');
       gymForm.value.email = String(gym.email || '');
       gymForm.value.phone = String(gym.phone || '');
       gymForm.value.gcash_number = String(gym.gcash_number || '');
       gymForm.value.gcash_account_name = String(gym.gcash_account_name || '');
       gymForm.value.gcash_qr_url = String(gym.gcash_qr_url || '');
       gymForm.value.address = String(gym.address || '');
+      gymForm.value.description = String(gym.description || '');
+      gymForm.value.cover_photo_url = String(gym.cover_photo_url || '');
       gymForm.value.textbee_device_id = String(gym.textbee_device_id || '');
       gymForm.value.textbee_sim_subscription_id = String(gym.textbee_sim_subscription_id || '');
       gymForm.value.operating_hours = (gym.operating_hours as typeof gymForm.value.operating_hours) || gymForm.value.operating_hours;
@@ -1033,8 +1133,10 @@ async function submitClass() {
     await loadClassesData();
     closeModals();
   } catch (err: unknown) {
-    const ax = err as { response?: { data?: { message?: string } } };
-    formError.value = ax.response?.data?.message || 'Failed to save class.';
+    // Say which field is wrong instead of a bare "Validation failed"
+    const ax = err as { response?: { data?: { message?: string; errors?: Record<string, string[]> } } };
+    const fieldErrors = Object.values(ax.response?.data?.errors ?? {}).flat();
+    formError.value = fieldErrors.length ? fieldErrors.join(' ') : ax.response?.data?.message || 'Failed to save class.';
   } finally {
     formLoading.value = false;
   }
@@ -1109,6 +1211,7 @@ async function updateGymInfo() {
     payload.append('gcash_number', gymForm.value.gcash_number || '');
     payload.append('gcash_account_name', gymForm.value.gcash_account_name || '');
     payload.append('address', gymForm.value.address || '');
+    payload.append('description', gymForm.value.description || '');
     payload.append('textbee_device_id', gymForm.value.textbee_device_id || '');
     payload.append('textbee_sim_subscription_id', gymForm.value.textbee_sim_subscription_id || '');
     Object.entries(gymForm.value.operating_hours || {}).forEach(([day, value]) => {
@@ -1117,10 +1220,14 @@ async function updateGymInfo() {
     if (gcashQrFile.value) {
       payload.append('gcash_qr', gcashQrFile.value);
     }
+    if (gymCoverPhotoFile.value) {
+      payload.append('cover_photo', gymCoverPhotoFile.value);
+    }
 
     await gymInfo.update(payload);
     formError.value = '';
     gcashQrFile.value = null;
+    gymCoverPhotoFile.value = null;
     await loadGymInfo();
   } catch (err: unknown) {
     const ax = err as { response?: { data?: { message?: string } } };
@@ -1128,6 +1235,11 @@ async function updateGymInfo() {
   } finally {
     formLoading.value = false;
   }
+}
+
+function onGymCoverPhotoSelected(event: Event) {
+  const input = event.target as HTMLInputElement | null;
+  gymCoverPhotoFile.value = input?.files?.[0] ?? null;
 }
 
 function onGcashQrSelected(event: Event) {
@@ -1266,8 +1378,8 @@ function plansWithStats(): Record<string, unknown>[] {
   return plans.map((p) => {
     const rev = revPlans.find((r) => Number(r.id) === Number((p as Record<string, unknown>).id));
     const count = rev?.member_count ?? 0;
-    const price = Number((p as Record<string, unknown>).price) || 0;
-    return { ...p, member_count: count, monthly_revenue: price * count };
+    // what was actually received for the plan this month, not price x members
+    return { ...p, member_count: count, monthly_revenue: Number((rev as { monthly_revenue?: number } | undefined)?.monthly_revenue ?? 0) };
   });
 }
 
@@ -1293,6 +1405,64 @@ function expiringSoon(): number {
   return r.expiring_soon as number;
 }
 
+// Dashboard card subtitles: something the owner can act on, not a repeat of the title.
+const activeMemberCount = computed(() => membersList.value.filter((m) => String(m.status) === 'active').length);
+const pendingMemberCount = computed(() => membersList.value.filter((m) => String(m.status) === 'pending').length);
+const pendingPaymentCount = computed(() => paymentsList.value.filter((p) => String(p.status || '').toLowerCase() === 'pending').length);
+
+function localDateKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function to12Hour(time: unknown): string {
+  const [h, m] = String(time ?? '').split(':').map(Number);
+  if (Number.isNaN(h)) return String(time ?? '');
+  return `${h % 12 || 12}:${String(m || 0).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+}
+
+// Check-ins per day for the last 7 days (today last), from the attendance log.
+const weeklyCheckins = computed(() => {
+  const counts = new Map<string, number>();
+  attendanceLogs.value.forEach((log) => {
+    const key = String(log.date || '');
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  });
+  const today = new Date();
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - (6 - i));
+    return {
+      label: i === 6 ? 'Today' : d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' }),
+      count: counts.get(localDateKey(d)) ?? 0,
+    };
+  });
+});
+const weeklyCheckinTotal = computed(() => weeklyCheckins.value.reduce((n, d) => n + d.count, 0));
+
+// The latest visits with when they happened, newest first.
+const dashboardActivity = computed(() => {
+  const today = localDateKey(new Date());
+  const yesterdayDate = new Date();
+  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+  const yesterday = localDateKey(yesterdayDate);
+  return attendanceLogs.value.slice(0, 5).map((log) => {
+    const date = String(log.date || '');
+    const day = date === today
+      ? 'Today'
+      : date === yesterday
+        ? 'Yesterday'
+        : new Date(`${date}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    const inside = String(log.status) === 'Inside';
+    return {
+      id: String(log.id),
+      name: String(log.member_name || 'Member'),
+      initials: String(log.initials || String(log.member_name || '').slice(0, 2)).toUpperCase().slice(0, 2),
+      when: `${day}, ${to12Hour(log.check_in)}`,
+      detail: inside ? 'In the gym now' : log.check_out && log.check_out !== '-' ? `Left at ${to12Hour(log.check_out)}` : 'Checked out',
+      inside,
+    };
+  });
+});
+
 function destroyAdminDashboardChart() {
   if (adminDashboardChart) {
     adminDashboardChart.destroy();
@@ -1303,37 +1473,35 @@ function destroyAdminDashboardChart() {
 function buildAdminDashboardChart() {
   if (currentView.value !== 'dashboard' || !dashboardChartCanvas.value) return;
   destroyAdminDashboardChart();
-  const labels = ['Members', 'Plans', 'Active Members', 'Expiring Soon'];
-  const values = [
-    Number(membersList.value.length || 0),
-    Number(plansList.value.length || 0),
-    Number(reportAttendance.value?.active_members ?? reportRevenue.value?.active_members ?? 0),
-    Number(reportMembership.value?.expiring_soon ?? 0),
-  ];
+  const days = weeklyCheckins.value;
   adminDashboardChart = new Chart(dashboardChartCanvas.value, {
     type: 'bar',
     data: {
-      labels,
+      labels: days.map((d) => d.label),
       datasets: [
         {
-          label: 'Dashboard Metrics',
-          data: values,
-          backgroundColor: ['#8DFF00', '#00BFFF', '#8A2BE2', '#FF6B6B'],
-          borderColor: ['#8DFF00', '#00BFFF', '#8A2BE2', '#FF6B6B'],
-          borderWidth: 1,
-          borderRadius: 8,
+          label: 'Check-ins',
+          data: days.map((d) => d.count),
+          // today stands out in bright gold, the other days a softer gold
+          backgroundColor: days.map((_, i) => (i === days.length - 1 ? '#F0D48A' : '#B8923A')),
+          borderWidth: 0,
+          borderRadius: 6,
+          maxBarThickness: 46,
         },
       ],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: '#A8A196' } } },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.y} check-in${ctx.parsed.y === 1 ? '' : 's'}` } },
+      },
       scales: {
         y: {
           beginAtZero: true,
           grid: { color: 'rgba(168,161,150,0.15)' },
-          ticks: { color: '#A8A196' },
+          ticks: { color: '#A8A196', precision: 0 },
         },
         x: {
           grid: { display: false },
@@ -1343,6 +1511,13 @@ function buildAdminDashboardChart() {
     } as ChartConfiguration<'bar'>['options'],
   });
 }
+
+// The dashboard canvas only exists once the loading screen is gone, which is after
+// the first data load already tried (and skipped) drawing. Draw when it appears,
+// and redraw when new check-ins come in.
+watch([dashboardChartCanvas, weeklyCheckins], ([canvas]) => {
+  if (canvas) buildAdminDashboardChart();
+});
 
 const overviewChartData = computed(() => {
   const daily = (reportAttendance.value?.daily_stats as Array<{ date?: string; count?: number }>) || [];
@@ -1356,12 +1531,9 @@ const overviewChartData = computed(() => {
       })
     : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const checkins = last7.length ? last7.map((d) => Number(d.count ?? 0)) : [0, 0, 0, 0, 0, 0, 0];
-  const monthlyRevenue = Number(reportRevenue.value?.monthly_revenue ?? 0);
-  const totalCheckins = checkins.reduce((s, n) => s + n, 0);
-  const revenue = checkins.map((c) => {
-    if (monthlyRevenue <= 0 || totalCheckins <= 0) return 0;
-    return Math.round((monthlyRevenue / totalCheckins) * c);
-  });
+  // Money actually received on each of those days (Paid payments), from the revenue report
+  const dailyRevenue = (reportRevenue.value?.daily_revenue as Array<{ amount?: number }>) || [];
+  const revenue = checkins.map((_, i) => Number(dailyRevenue.slice(-7)[i]?.amount ?? 0));
   return { labels, checkins, revenue };
 });
 
@@ -1447,16 +1619,16 @@ function buildAdminReportCharts() {
             {
               label: 'Check-ins',
               data: overview.checkins,
-              backgroundColor: 'rgba(0,191,255,0.45)',
-              borderColor: '#00BFFF',
+              backgroundColor: 'rgba(217,180,90,0.55)',
+              borderColor: '#D9B45A',
               borderWidth: 1,
               borderRadius: 6,
             },
             {
               label: 'Revenue (PHP)',
               data: overview.revenue,
-              backgroundColor: 'rgba(141,255,0,0.35)',
-              borderColor: '#8DFF00',
+              backgroundColor: 'rgba(140,122,85,0.55)',
+              borderColor: '#8C7A55',
               borderWidth: 1,
               borderRadius: 6,
             },
@@ -1476,9 +1648,9 @@ function buildAdminReportCharts() {
             {
               label: 'Daily Check-ins',
               data: trend.values,
-              borderColor: '#8A2BE2',
-              backgroundColor: 'rgba(138,43,226,0.2)',
-              pointBackgroundColor: '#8A2BE2',
+              borderColor: '#D9B45A',
+              backgroundColor: 'rgba(217,180,90,0.18)',
+              pointBackgroundColor: '#D9B45A',
               pointBorderColor: '#fff',
               tension: 0.3,
               fill: true,
@@ -1499,7 +1671,7 @@ function buildAdminReportCharts() {
             {
               label: 'Members',
               data: data.values,
-              backgroundColor: ['#8DFF00', '#00BFFF', '#8A2BE2', '#FF6B6B', '#FFD700'],
+              backgroundColor: ['#D9B45A', '#B8923A', '#8C7A55', '#F0D48A', '#6B5D45'],
               borderColor: '#151515',
               borderWidth: 2,
               hoverOffset: 6,
@@ -1574,6 +1746,39 @@ const adminInitials = computed(() =>
 );
 const adminRoleLabel = computed(() => user.value?.role || 'Admin');
 const activeNotificationCount = computed(() => notificationList.value.length);
+
+// Notification drawer (slides in from the right): unread first, read ones under "Earlier".
+const notificationPanelTab = ref<'new' | 'earlier'>('new');
+
+/** The page that deals with a notification, if any (member feedback is read in the drawer itself). */
+function notificationTarget(n: Record<string, unknown>): { view: string; label: string } | null {
+  const title = String(n.title || '').toLowerCase();
+  if (title.includes('payment')) return { view: 'payments', label: 'Go to Payments' };
+  if (title.includes('member') || title.includes('expir')) return { view: 'members', label: 'Go to Members' };
+  return null;
+}
+
+function openNotificationTarget(n: Record<string, unknown>) {
+  const target = notificationTarget(n);
+  if (!target) return;
+  currentView.value = target.view;
+  closeNotificationsPanel();
+}
+
+function onNotificationPanelKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') closeNotificationsPanel();
+}
+
+watch(showNotificationsPanel, (open) => {
+  if (open) {
+    notificationPanelTab.value = notificationList.value.length ? 'new' : 'earlier';
+    window.addEventListener('keydown', onNotificationPanelKeydown);
+  } else {
+    window.removeEventListener('keydown', onNotificationPanelKeydown);
+  }
+});
+
+onUnmounted(() => window.removeEventListener('keydown', onNotificationPanelKeydown));
 
 function closeNotificationsPanel() {
   showNotificationsPanel.value = false;
@@ -1661,7 +1866,7 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div v-else class="sm:p-4 lg:p-6">
+    <div v-else>
       <div class="admin-shell fg-shell fg-marble-bg mx-auto flex min-h-[calc(100vh-2rem)] max-w-[1500px] overflow-hidden rounded-[1.75rem] border shadow-2xl">
         <div v-if="mobileNavOpen" class="fg-nav-backdrop" aria-hidden="true" @click="closeMobileNav" />
         <aside id="admin-sidebar" class="admin-sidebar fg-sidebar flex w-[18rem] shrink-0 flex-col px-5 py-8" :class="{ 'is-open': mobileNavOpen }">
@@ -1731,12 +1936,12 @@ onUnmounted(() => {
 
           <header class="admin-header flex flex-col gap-4 border-b px-4 py-5 sm:px-6 sm:py-6 lg:flex-row lg:items-center lg:justify-between lg:px-10">
             <div class="min-w-0">
-              <p class="text-sm font-semibold uppercase tracking-[0.24em] text-[var(--fg-gold)]">Admin Workspace</p>
-              <h2 class="mt-2 text-2xl font-bold text-[var(--fg-ink)] sm:text-3xl">{{ currentViewInfo.label }}</h2>
-              <p class="mt-2 max-w-2xl text-sm text-[var(--fg-ink-soft)]">{{ currentViewInfo.description }}</p>
+              <h2 class="text-2xl font-bold text-[var(--fg-ink)]">{{ currentViewInfo.label }}</h2>
+              <p class="mt-1 max-w-2xl text-sm text-[var(--fg-ink-soft)]">{{ currentViewInfo.description }}</p>
             </div>
 
             <div class="relative flex flex-wrap items-center gap-3">
+              <FgThemeToggle class="admin-header-button rounded-xl px-4 py-3 text-sm" />
               <div class="admin-header-card rounded-xl border px-4 py-3">
                 <p class="text-xs uppercase tracking-[0.2em] text-[var(--text-secondary)]">Admin</p>
                 <p class="mt-1 text-sm font-semibold break-all text-[var(--text-primary)]">{{ user?.email || 'No email' }}</p>
@@ -1753,60 +1958,89 @@ onUnmounted(() => {
               </button>
               <div class="admin-header-card rounded-xl border px-4 py-3">
                 <p class="text-xs uppercase tracking-[0.2em] text-[var(--text-secondary)]">Role</p>
-                <p class="mt-1 text-sm font-semibold text-[var(--accent-green)]">{{ adminRoleLabel }}</p>
-              </div>
-
-              <div
-                v-if="showNotificationsPanel"
-                class="admin-notification-panel absolute right-0 top-full z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border shadow-2xl"
-                @click.stop
-              >
-                <div class="border-b px-4 py-3">
-                  <h3 class="font-semibold text-[var(--text-primary)]">Notifications</h3>
-                </div>
-                <div class="max-h-72 overflow-y-auto p-3">
-                  <template v-if="notificationList.length === 0">
-                    <p class="py-4 text-center text-sm text-[var(--text-secondary)]">No active notifications</p>
-                  </template>
-                  <template v-else>
-                    <button
-                      v-for="n in notificationList.slice(0, 4)"
-                      :key="String((n as Record<string, unknown>).id ?? (n as Record<string, unknown>).created_at ?? (n as Record<string, unknown>).message ?? '')"
-                      type="button"
-                      class="admin-notification-item mb-2 w-full rounded-xl p-3 text-left transition-opacity hover:opacity-90"
-                      @click="currentView = 'notifications'; closeNotificationsPanel()"
-                    >
-                      <p class="text-sm font-medium text-[var(--text-primary)]">
-                        {{ String((n as Record<string, unknown>).title || (n as Record<string, unknown>).notification_type || 'Active Notification') }}
-                      </p>
-                      <p class="mt-1 text-xs leading-5 text-[var(--text-secondary)]">
-                        {{ String((n as Record<string, unknown>).message || (n as Record<string, unknown>).description || 'Open the notification center for more details.') }}
-                      </p>
-                    </button>
-                  </template>
-                  <button
-                    v-if="notificationList.length > 0"
-                    type="button"
-                    class="admin-notification-open mt-2 w-full rounded-xl px-4 py-3 text-sm font-semibold transition-opacity hover:opacity-90"
-                    @click="currentView = 'notifications'; closeNotificationsPanel()"
-                  >
-                    Open Notification Center
-                  </button>
-                </div>
+                <p class="mt-1 text-sm font-semibold text-[var(--fg-card-gold)]">{{ adminRoleLabel }}</p>
               </div>
             </div>
 
-            <div
-              v-if="showNotificationsPanel"
-              class="fixed inset-0 z-40"
-              aria-hidden="true"
-              @click="closeNotificationsPanel"
-            />
+            <!-- Notifications drawer: slides in from the right edge -->
+            <Teleport to="body">
+              <Transition name="notif-drawer">
+                <div v-if="showNotificationsPanel" class="notif-drawer-backdrop" @click.self="closeNotificationsPanel">
+                  <aside class="notif-drawer fg-light-surface" role="dialog" aria-modal="true" aria-label="Notifications">
+                    <div class="notif-drawer-head">
+                      <div>
+                        <h3>Notifications</h3>
+                        <p>{{ notificationList.length ? `${notificationList.length} new` : 'You are all caught up' }}</p>
+                      </div>
+                      <button type="button" class="notif-drawer-close" aria-label="Close" @click="closeNotificationsPanel">&times;</button>
+                    </div>
+
+                    <div class="notif-drawer-tabs" role="tablist">
+                      <button type="button" role="tab" :aria-selected="notificationPanelTab === 'new'" :class="{ active: notificationPanelTab === 'new' }" @click="notificationPanelTab = 'new'">
+                        New <span v-if="notificationList.length" class="notif-drawer-count">{{ notificationList.length }}</span>
+                      </button>
+                      <button type="button" role="tab" :aria-selected="notificationPanelTab === 'earlier'" :class="{ active: notificationPanelTab === 'earlier' }" @click="notificationPanelTab = 'earlier'">
+                        Earlier
+                      </button>
+                      <button
+                        v-if="notificationPanelTab === 'new' && notificationList.length > 1"
+                        type="button"
+                        class="notif-drawer-markall"
+                        :disabled="notificationActionLoading !== null"
+                        @click="markAllNotificationsAsRead()"
+                      >
+                        Mark all as read
+                      </button>
+                    </div>
+
+                    <p v-if="notificationError" class="notif-drawer-error">{{ notificationError }}</p>
+
+                    <div class="notif-drawer-body">
+                      <template v-if="notificationPanelTab === 'new'">
+                        <p v-if="notificationList.length === 0" class="notif-drawer-empty">No new notifications. New members, payments and member feedback show up here.</p>
+                        <article v-for="n in notificationList" :key="String(n.id)" :class="['notif-item', { 'notif-item--high': n.priority === 'high' }]">
+                          <div class="notif-item-top">
+                            <h4>{{ n.title }}</h4>
+                            <span class="notif-item-time">{{ n.time }}</span>
+                          </div>
+                          <p class="notif-item-message">{{ n.message }}</p>
+                          <div class="notif-item-actions">
+                            <button v-if="notificationTarget(n)" type="button" class="notif-btn notif-btn--primary" @click="markNotificationAsRead(n); openNotificationTarget(n)">
+                              {{ notificationTarget(n)?.label }}
+                            </button>
+                            <button type="button" class="notif-btn" :disabled="notificationActionLoading === notificationId(n)" @click="markNotificationAsRead(n)">Mark as read</button>
+                            <button type="button" class="notif-btn notif-btn--ghost" :disabled="notificationActionLoading === notificationId(n)" @click="dismissNotification(n)">Dismiss</button>
+                          </div>
+                        </article>
+                      </template>
+                      <template v-else>
+                        <p v-if="notificationHistoryList.length === 0" class="notif-drawer-empty">Nothing here yet. Notifications you have read move here.</p>
+                        <article v-for="n in notificationHistoryList" :key="String(n.id)" class="notif-item notif-item--read">
+                          <div class="notif-item-top">
+                            <h4>{{ n.title }}</h4>
+                            <span class="notif-item-time">{{ n.time }}</span>
+                          </div>
+                          <p class="notif-item-message">{{ n.message }}</p>
+                        </article>
+                      </template>
+                    </div>
+
+                    <div class="notif-drawer-foot">
+                      <button type="button" class="notif-btn notif-btn--ghost" @click="currentView = 'notifications'; closeNotificationsPanel()">Open notification center</button>
+                    </div>
+                  </aside>
+                </div>
+              </Transition>
+            </Teleport>
           </header>
 
           <main class="admin-main flex-1 overflow-x-hidden overflow-y-auto px-4 py-5 sm:px-6 sm:py-6 lg:px-10">
 
         <div v-if="currentView === 'dashboard'" class="view active">
+          <div v-if="subscriptionNotice" class="subscription-banner" role="status">
+            <span>{{ subscriptionNotice }}</span>
+            <button type="button" @click="currentView = 'settings'; settingsTab = 'subscription'">How to renew</button>
+          </div>
           <div class="metrics-grid">
             <div class="metric-card">
               <div class="metric-icon green">
@@ -1815,7 +2049,7 @@ onUnmounted(() => {
               <div class="metric-content">
                 <h3>{{ membersList.length }}</h3>
                 <p>Total Members</p>
-                <span>Registered members</span>
+                <span>{{ activeMemberCount }} active<template v-if="pendingMemberCount"> · {{ pendingMemberCount }} awaiting approval</template></span>
               </div>
             </div>
             <div class="metric-card">
@@ -1825,7 +2059,7 @@ onUnmounted(() => {
               <div class="metric-content">
                 <h3>{{ plansList.length }}</h3>
                 <p>Membership Plans</p>
-                <span>Active plans</span>
+                <span>{{ mostSubscribedPlanName() === '-' ? 'No subscribers yet' : `Most popular: ${mostSubscribedPlanName()}` }}</span>
               </div>
             </div>
             <div class="metric-card">
@@ -1835,7 +2069,7 @@ onUnmounted(() => {
               <div class="metric-content">
                 <h3>{{ revenueMonthly() }}</h3>
                 <p>Monthly Revenue</p>
-                <span>From reports</span>
+                <span>{{ pendingPaymentCount ? `${pendingPaymentCount} payment${pendingPaymentCount === 1 ? '' : 's'} to approve` : 'No payments waiting' }}</span>
               </div>
             </div>
             <div class="metric-card">
@@ -1845,14 +2079,18 @@ onUnmounted(() => {
               <div class="metric-content">
                 <h3>{{ expiringSoon() }}</h3>
                 <p>Expiring Soon</p>
-                <span>Memberships</span>
+                <span>Memberships ending in 30 days</span>
               </div>
             </div>
           </div>
           <div class="dashboard-card dashboard-chart-card">
-            <h3>Dashboard Analytics</h3>
+            <div class="dashboard-chart-head">
+              <h3>Check-ins, Last 7 Days</h3>
+              <span>{{ weeklyCheckinTotal }} visit{{ weeklyCheckinTotal === 1 ? '' : 's' }} this week</span>
+            </div>
             <div class="reports-chart-wrap">
               <canvas ref="dashboardChartCanvas"></canvas>
+              <p v-if="weeklyCheckinTotal === 0" class="dashboard-chart-empty">No check-ins in the last 7 days. Visits show here as members scan in at the front desk.</p>
             </div>
           </div>
           <div class="dashboard-grid">
@@ -1867,48 +2105,30 @@ onUnmounted(() => {
                   <i class="fas fa-money-bill-wave"></i>
                   <span>Record Payment</span>
                 </button>
-                <button type="button" class="quick-action-btn pink" @click="currentView = 'reports'">
+                <button type="button" class="quick-action-btn blue" @click="currentView = 'reports'">
                   <i class="fas fa-file-alt"></i>
                   <span>Generate Report</span>
                 </button>
               </div>
             </div>
-          </div>
           <div class="recent-activity">
             <h3>Recent Activity</h3>
             <div class="activity-list">
-              <template v-if="recentCheckins.length > 0">
-                <div
-                  v-for="c in recentCheckins.slice(0, 5)"
-                  :key="String((c as Record<string, unknown>).id)"
-                  class="activity-item"
-                >
-                  <div class="activity-avatar">{{ String((c as Record<string, unknown>).initials || '-').slice(0, 2) }}</div>
+              <template v-if="dashboardActivity.length > 0">
+                <div v-for="a in dashboardActivity" :key="a.id" class="activity-item">
+                  <div class="activity-avatar">{{ a.initials }}</div>
                   <div class="activity-content">
-                    <p>{{ (c as Record<string, unknown>).member_name }}</p>
+                    <p class="activity-name">{{ a.name }}</p>
+                    <p class="activity-when">{{ a.when }} · {{ a.detail }}</p>
                   </div>
-                  <span :class="['activity-tag', (c as Record<string, unknown>).status === 'Inside' ? 'yellow' : 'blue']">
-                    {{ (c as Record<string, unknown>).status }}
-                  </span>
-                </div>
-              </template>
-              <template v-else-if="attendanceLogs.length > 0">
-                <div
-                  v-for="l in attendanceLogs.slice(0, 5)"
-                  :key="String((l as Record<string, unknown>).id)"
-                  class="activity-item"
-                >
-                  <div class="activity-avatar">{{ String((l as Record<string, unknown>).member_name || '').slice(0, 2).toUpperCase() }}</div>
-                  <div class="activity-content">
-                    <p>{{ (l as Record<string, unknown>).member_name }}</p>
-                  </div>
-                  <span class="activity-tag blue">{{ (l as Record<string, unknown>).status }}</span>
+                  <span :class="['activity-tag', a.inside ? 'yellow' : 'blue']">{{ a.inside ? 'In gym' : 'Done' }}</span>
                 </div>
               </template>
               <template v-else>
-                <p class="placeholder-text">No recent activity.</p>
+                <p class="placeholder-text">No check-ins yet. They show up here as members scan in at the front desk.</p>
               </template>
             </div>
+          </div>
           </div>
         </div>
 
@@ -2051,17 +2271,18 @@ onUnmounted(() => {
               :class="['plan-card', (p as Record<string, unknown>).is_popular ? 'popular' : '', (p as Record<string, unknown>).is_deactivated ? 'deactivated' : '']"
             >
               <span v-if="(p as Record<string, unknown>).is_popular" class="popular-badge">POPULAR</span>
-              <span v-if="(p as Record<string, unknown>).is_deactivated" class="popular-badge" style="right: auto; left: 1rem; background: #ef4444; color: #fff;">DEACTIVATED</span>
+              <span v-if="(p as Record<string, unknown>).is_deactivated" class="popular-badge" style="right: auto; left: 1rem; background: #C4544C; color: #fff;">DEACTIVATED</span>
               <h3>{{ (p as Record<string, unknown>).name }}</h3>
               <div class="plan-price">
                 <span class="price">{{ formatCurrency((p as Record<string, unknown>).price) }}</span>
                 <span class="period">{{ (p as Record<string, unknown>).period || 'per month' }}</span>
               </div>
-              <p class="plan-description">{{ (p as Record<string, unknown>).description || 'A great membership plan for our valued members.' }}</p>
+              <p class="plan-description" :class="{ 'plan-empty-note': !(p as Record<string, unknown>).description }">{{ (p as Record<string, unknown>).description || 'No description added yet.' }}</p>
               <div class="plan-features">
                 <p>Features Included</p>
                 <ul>
                   <li v-for="(feature, fi) in planFeatureList(p as Record<string, unknown>)" :key="fi"><i class="fas fa-check"></i> {{ feature }}</li>
+                  <li v-if="planFeatureList(p as Record<string, unknown>).length === 0" class="plan-empty-note">No features added yet. Use Edit Plan to list them.</li>
                 </ul>
               </div>
               <div class="plan-stats">
@@ -2186,8 +2407,8 @@ onUnmounted(() => {
             <div class="mt-4 flex flex-wrap gap-3">
               <button
                 type="button"
-                class="rounded px-4 py-2 font-medium text-black"
-                :class="adminQrScannerActive ? 'bg-red-400' : 'bg-[var(--accent-green)]'"
+                class="rounded px-4 py-2 font-medium"
+                :class="adminQrScannerActive ? 'bg-[var(--accent-pink)] text-white' : 'bg-[var(--accent-green)] text-[var(--fg-accent-ink)]'"
                 :disabled="adminQrScannerBusy"
                 @click="adminQrScannerActive ? stopAdminQrScanner() : startAdminQrScanner()"
               >
@@ -2197,7 +2418,7 @@ onUnmounted(() => {
                 Close
               </button>
             </div>
-            <p v-if="adminQrScannerStatus" class="mt-3 text-sm text-cyan-300">{{ adminQrScannerStatus }}</p>
+            <p v-if="adminQrScannerStatus" class="mt-3 text-sm text-[var(--fg-card-gold)]">{{ adminQrScannerStatus }}</p>
             <p v-if="adminQrScannerError" class="mt-2 text-sm text-red-400">{{ adminQrScannerError }}</p>
             <textarea
               v-model="adminQrManualQrPayload"
@@ -2207,7 +2428,7 @@ onUnmounted(() => {
             />
             <button
               type="button"
-              class="mt-3 w-full rounded-lg bg-blue-500 py-2 font-medium text-white hover:opacity-90"
+              class="mt-3 w-full rounded-lg bg-[var(--accent-blue)] py-2 font-medium text-[#f5f1e8] hover:opacity-90"
               :disabled="adminQrScannerBusy"
               @click="submitAdminQrPayload()"
             >
@@ -2455,7 +2676,7 @@ onUnmounted(() => {
               <thead>
                 <tr>
                   <th>Class</th>
-                  <th>Trainer</th>
+                  <th>Staff</th>
                   <th>Day</th>
                   <th>Time</th>
                   <th>Capacity</th>
@@ -2599,6 +2820,10 @@ onUnmounted(() => {
                 <i class="fas fa-bell"></i>
                 <span>Notifications</span>
               </button>
+              <button type="button" :class="['settings-nav-item', { active: settingsTab === 'subscription' }]" @click="settingsTab = 'subscription'; loadSubscription()">
+                <i class="fas fa-receipt"></i>
+                <span>Subscription</span>
+              </button>
             </div>
             <div class="settings-content">
               <div v-show="settingsTab === 'profile'" class="settings-tab-content">
@@ -2672,6 +2897,20 @@ onUnmounted(() => {
                     <textarea v-model="gymForm.address" class="form-input" rows="3" placeholder="Enter address"></textarea>
                   </div>
                   <div class="form-group">
+                    <label>About This Gym</label>
+                    <textarea v-model="gymForm.description" class="form-input" rows="4" maxlength="1000" placeholder="What makes this branch great: equipment, space, coaches, atmosphere..."></textarea>
+                    <p class="text-xs mt-2 text-gray-400">People see this when they choose a gym while creating a Member account.</p>
+                  </div>
+                  <div class="form-group">
+                    <label>Gym Photo (Optional)</label>
+                    <input type="file" accept="image/png,image/jpeg,image/webp" class="form-input" @change="onGymCoverPhotoSelected" />
+                    <p class="text-xs mt-2 text-gray-400">Shown on the gym's card at sign-up. PNG, JPG, WEBP (max 5MB)</p>
+                    <div v-if="gymForm.cover_photo_url" class="mt-3">
+                      <p class="text-xs text-gray-400 mb-2">Current photo</p>
+                      <img :src="gymForm.cover_photo_url" alt="Gym photo" class="max-h-48 rounded border border-gray-600 object-cover" />
+                    </div>
+                  </div>
+                  <div class="form-group">
                     <label>Operating Hours</label>
                     <div class="operating-hours">
                       <div v-for="(val, day) in gymForm.operating_hours" :key="day" class="hours-row">
@@ -2706,7 +2945,7 @@ onUnmounted(() => {
                     <ul class="notification-info-list">
                       <li><i class="fas fa-user-plus"></i> New member registrations awaiting approval</li>
                       <li><i class="fas fa-coins"></i> GCash payments waiting for receipt verification</li>
-                      <li><i class="fas fa-life-ring"></i> Support tickets sent by members</li>
+                      <li><i class="fas fa-comment-dots"></i> Feedback sent by members</li>
                     </ul>
                   </div>
                   <div class="settings-section">
@@ -2725,6 +2964,127 @@ onUnmounted(() => {
                     <button type="button" class="btn-cancel-settings" @click="currentView = 'notifications'">View Notifications</button>
                   </div>
                 </div>
+              </div>
+              <div v-show="settingsTab === 'subscription'" class="settings-tab-content">
+                <h3>FitGym Subscription</h3>
+                <p v-if="!subscriptionInfo" class="notification-info-text">Loading your subscription…</p>
+                <template v-else>
+                  <div class="settings-section subscription-summary">
+                    <div>
+                      <p class="subscription-label">Plan</p>
+                      <p class="subscription-value">{{ subscriptionInfo.subscription.plan_label }}</p>
+                    </div>
+                    <div>
+                      <p class="subscription-label">Status</p>
+                      <p class="subscription-value" :class="{ 'is-warn': ['expired', 'suspended', 'cancelled'].includes(subscriptionInfo.subscription.status) }">
+                        {{ subscriptionInfo.subscription.status === 'trial' ? 'Free trial' : subscriptionInfo.subscription.status.charAt(0).toUpperCase() + subscriptionInfo.subscription.status.slice(1) }}
+                      </p>
+                    </div>
+                    <div>
+                      <p class="subscription-label">Ends on</p>
+                      <p class="subscription-value">{{ subscriptionInfo.subscription.ends_on || 'No end date' }}</p>
+                      <p v-if="subscriptionInfo.subscription.days_left !== null" class="subscription-sub" :class="{ 'is-warn': subscriptionInfo.subscription.days_left <= 7 }">
+                        {{ subscriptionInfo.subscription.days_left < 0 ? 'Already ended' : subscriptionInfo.subscription.days_left === 0 ? 'Ends today' : `${subscriptionInfo.subscription.days_left} days left` }}
+                      </p>
+                    </div>
+                    <div>
+                      <p class="subscription-label">Members</p>
+                      <p class="subscription-value">{{ limitText(subscriptionInfo.subscription.members) }}</p>
+                    </div>
+                    <div>
+                      <p class="subscription-label">Staff</p>
+                      <p class="subscription-value">{{ limitText(subscriptionInfo.subscription.staff) }}</p>
+                    </div>
+                  </div>
+
+                  <div class="settings-section">
+                    <h4>Plans</h4>
+                    <ul class="subscription-plans">
+                      <li v-for="plan in subscriptionInfo.plans" :key="plan.key" :class="{ 'is-current': plan.key === subscriptionInfo.subscription.plan }">
+                        <strong>{{ plan.label }}</strong> · {{ formatCurrency(plan.price) }} a month
+                        <span>{{ plan.members === null ? 'Unlimited members' : `Up to ${plan.members} members` }} · {{ plan.staff === null ? 'unlimited staff' : `${plan.staff} staff` }}</span>
+                      </li>
+                    </ul>
+                  </div>
+
+                  <div class="settings-section">
+                    <h4>How to pay</h4>
+                    <template v-if="subscriptionInfo.payment_details.gcash_number || subscriptionInfo.payment_details.bank_details">
+                      <p v-if="subscriptionInfo.payment_details.gcash_number" class="notification-info-text">
+                        <strong>GCash:</strong> {{ subscriptionInfo.payment_details.gcash_number }}<template v-if="subscriptionInfo.payment_details.gcash_name"> ({{ subscriptionInfo.payment_details.gcash_name }})</template>
+                      </p>
+                      <p v-if="subscriptionInfo.payment_details.bank_details" class="notification-info-text subscription-pre"><strong>Bank transfer:</strong> {{ subscriptionInfo.payment_details.bank_details }}</p>
+                      <p v-if="subscriptionInfo.payment_details.instructions" class="notification-info-text subscription-pre">{{ subscriptionInfo.payment_details.instructions }}</p>
+                    </template>
+                    <p v-else class="notification-info-text">FitGym hasn't added its payment details yet. Contact the FitGym platform admin to renew.</p>
+                    <p class="notification-info-text">After paying, send your receipt below. Once FitGym approves it, your plan and end date update here and you get a notification.</p>
+                  </div>
+
+                  <div class="settings-section">
+                    <h4>Send your payment</h4>
+                    <p v-if="proofPending" class="notification-info-text">FitGym is checking the payment you sent. You can send another one once it is reviewed.</p>
+                    <div v-else class="settings-form">
+                      <div class="form-group-row">
+                        <div class="form-group">
+                          <label>Plan</label>
+                          <select v-model="proofForm.plan" class="form-input">
+                            <option v-for="plan in subscriptionInfo.plans" :key="plan.key" :value="plan.key">{{ plan.label }} · {{ formatCurrency(plan.price) }} a month</option>
+                          </select>
+                        </div>
+                        <div class="form-group">
+                          <label>Months</label>
+                          <input v-model.number="proofForm.months" type="number" min="1" max="24" class="form-input" />
+                        </div>
+                      </div>
+                      <div class="form-group-row">
+                        <div class="form-group">
+                          <label>Paid through</label>
+                          <select v-model="proofForm.payment_method" class="form-input">
+                            <option v-for="m in subscriptionInfo.methods" :key="m" :value="m">{{ m }}</option>
+                          </select>
+                        </div>
+                        <div class="form-group">
+                          <label>Reference number</label>
+                          <input v-model="proofForm.reference" type="text" maxlength="100" class="form-input" placeholder="From your receipt" />
+                        </div>
+                      </div>
+                      <div class="form-group">
+                        <label>Receipt</label>
+                        <input ref="proofFileInput" type="file" accept="image/png,image/jpeg,application/pdf" class="form-input" @change="onProofFileSelected" />
+                        <p class="text-xs mt-2 text-gray-400">Screenshot or photo of the receipt. JPG, PNG or PDF (max 5MB)</p>
+                      </div>
+                      <div class="form-group">
+                        <label>Note (optional)</label>
+                        <input v-model="proofForm.notes" type="text" maxlength="500" class="form-input" placeholder="Anything FitGym should know" />
+                      </div>
+                      <p class="subscription-total">Amount to pay: <strong>{{ formatCurrency(proofTotal) }}</strong></p>
+                      <p v-if="proofError" class="error-message">{{ proofError }}</p>
+                      <div class="settings-actions">
+                        <button type="button" class="btn-update-gym" :disabled="proofSending" @click="sendProof">{{ proofSending ? 'Sending...' : 'Send Payment' }}</button>
+                      </div>
+                    </div>
+                    <p v-if="proofSuccess" class="notification-info-text subscription-ok">{{ proofSuccess }}</p>
+                    <ul v-if="subscriptionInfo.proofs.length" class="subscription-history">
+                      <li v-for="r in subscriptionInfo.proofs" :key="r.id">
+                        <span>{{ r.sent_on }} · {{ r.plan }}, {{ r.months }} month{{ r.months === 1 ? '' : 's' }} · {{ r.payment_method }} {{ r.reference }}</span>
+                        <strong :class="['proof-status', `is-${r.status.toLowerCase()}`]">{{ r.status === 'Pending' ? 'Being checked' : r.status }}</strong>
+                        <small v-if="r.review_note">Reason: {{ r.review_note }}</small>
+                      </li>
+                    </ul>
+                  </div>
+
+                  <div class="settings-section">
+                    <h4>Payment history</h4>
+                    <p v-if="subscriptionInfo.payments.length === 0" class="notification-info-text">No subscription payments yet.</p>
+                    <ul v-else class="subscription-history">
+                      <li v-for="p in subscriptionInfo.payments" :key="p.id">
+                        <span>{{ p.paid_on }} · {{ p.plan }}, {{ p.months }} month{{ p.months === 1 ? '' : 's' }} · {{ p.payment_method }}</span>
+                        <strong>{{ formatCurrency(p.amount) }}</strong>
+                        <small>Covers {{ p.period }}</small>
+                      </li>
+                    </ul>
+                  </div>
+                </template>
               </div>
             </div>
           </div>
@@ -3015,7 +3375,7 @@ onUnmounted(() => {
             <input v-model="classForm.name" type="text" class="form-input" placeholder="e.g. Morning Yoga" />
           </div>
           <div class="form-group">
-            <label>Trainer</label>
+            <label>Staff</label>
             <select v-model="classForm.trainer_id" class="form-input">
               <option value="">TBA / Unassigned</option>
               <option v-for="s in trainerList" :key="String(s.id)" :value="String(s.id)">{{ s.full_name }}</option>
@@ -3237,26 +3597,26 @@ onUnmounted(() => {
   --bg-input: var(--fg-card-2);
   --text-primary: var(--fg-card-ink);
   --text-secondary: var(--fg-card-ink-soft);
-  --accent-green: #5FA82E;
-  --accent-blue: #1E88C8;
-  --accent-purple: #8A2BE2;
-  --accent-purple-light: #6A4BC4;
-  --accent-pink: #E0565B;
-  --accent-yellow: #E2B54A;
+  --accent-green: var(--fg-accent);
+  --accent-blue: var(--fg-secondary);
+  --accent-purple: var(--fg-accent);
+  --accent-purple-light: var(--fg-accent);
+  --accent-pink: #C4544C;
+  --accent-yellow: var(--fg-accent);
   --border-color: var(--fg-card-border);
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .admin-portal {
   background:
-    radial-gradient(circle at top left, rgba(138, 43, 226, 0.18), transparent 26%),
+    radial-gradient(circle at top left, rgba(var(--fg-accent-rgb), 0.18), transparent 26%),
     radial-gradient(circle at bottom right, rgba(255, 107, 107, 0.12), transparent 30%),
     var(--bg-primary);
 }
 
 .admin-auth-shell {
   background:
-    radial-gradient(circle at top, rgba(106, 90, 205, 0.18), transparent 28%),
+    radial-gradient(circle at top, rgba(var(--fg-accent-rgb), 0.18), transparent 28%),
     radial-gradient(circle at bottom right, rgba(255, 107, 107, 0.1), transparent 26%),
     transparent;
 }
@@ -3268,7 +3628,7 @@ onUnmounted(() => {
 }
 
 .admin-auth-eyebrow {
-  color: var(--accent-purple-light);
+  color: var(--fg-card-gold);
   font-size: 0.85rem;
   font-weight: 700;
   letter-spacing: 0.24em;
@@ -3288,10 +3648,10 @@ onUnmounted(() => {
 }
 
 .admin-auth-role-badge {
-  background: rgba(138, 43, 226, 0.16);
-  border: 1px solid rgba(106, 90, 205, 0.28);
+  background: rgba(var(--fg-accent-rgb), 0.16);
+  border: 1px solid rgba(var(--fg-accent-rgb), 0.28);
   border-radius: 999px;
-  color: var(--accent-purple-light);
+  color: var(--fg-card-gold);
   font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -3310,7 +3670,7 @@ onUnmounted(() => {
 }
 
 .admin-auth-link {
-  color: var(--accent-purple-light);
+  color: var(--fg-card-gold);
 }
 
 .admin-auth-options {
@@ -3327,10 +3687,10 @@ onUnmounted(() => {
 }
 
 .admin-auth-primary {
-  background: linear-gradient(135deg, var(--accent-purple) 0%, #9b36f3 100%);
+  background: var(--accent-purple);
   border: 0;
   border-radius: 0.75rem;
-  color: #fff;
+  color: var(--fg-accent-ink);
   font-size: 1rem;
   font-weight: 700;
   width: 100%;
@@ -3342,7 +3702,7 @@ onUnmounted(() => {
 
 .admin-shell {
   background: var(--bg-primary);
-  border-color: rgba(160, 122, 31, 0.35);
+  border-color: rgba(var(--fg-accent-deep-rgb), 0.35);
 }
 
 /* backdrop-filter would trap the fixed-position mobile drawer inside the shell */
@@ -3354,17 +3714,14 @@ onUnmounted(() => {
 
 .admin-sidebar {
   background:
-    linear-gradient(180deg, rgba(217, 180, 90, 0.07) 0%, rgba(217, 180, 90, 0) 45%),
+    linear-gradient(180deg, rgba(var(--fg-accent-rgb), 0.07) 0%, rgba(var(--fg-accent-rgb), 0) 45%),
     var(--bg-secondary);
   border-right: 1px solid var(--border-color);
 }
 
 .admin-profile-card,
 .admin-header-card,
-.admin-header-button,
-.admin-notification-panel,
-.admin-notification-item,
-.admin-notification-open {
+.admin-header-button {
   background: var(--bg-card);
   border-color: var(--border-color);
   box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
@@ -3372,7 +3729,7 @@ onUnmounted(() => {
 
 .admin-avatar {
   background: var(--accent-purple);
-  color: #fff;
+  color: var(--fg-accent-ink);
 }
 
 .admin-nav-item {
@@ -3382,13 +3739,13 @@ onUnmounted(() => {
 }
 
 .admin-nav-item:hover {
-  background: rgba(217, 180, 90, 0.1);
-  border-color: rgba(106, 90, 205, 0.3);
+  background: rgba(var(--fg-accent-rgb), 0.1);
+  border-color: rgba(var(--fg-accent-rgb), 0.3);
 }
 
 .admin-nav-item.active {
-  background: linear-gradient(135deg, rgba(138, 43, 226, 0.92) 0%, rgba(155, 54, 243, 0.92) 100%);
-  box-shadow: 0 14px 28px rgba(138, 43, 226, 0.28);
+  background: rgba(var(--fg-accent-rgb), 0.92);
+  box-shadow: 0 14px 28px rgba(var(--fg-accent-rgb), 0.28);
   color: #fff;
 }
 
@@ -3399,7 +3756,7 @@ onUnmounted(() => {
 
 .admin-header {
   background: transparent;
-  border-color: rgba(160, 122, 31, 0.3);
+  border-color: rgba(var(--fg-accent-deep-rgb), 0.3);
 }
 
 .admin-header-button {
@@ -3409,24 +3766,239 @@ onUnmounted(() => {
 
 .admin-header-badge {
   background: var(--accent-purple);
-  color: #fff;
+  color: var(--fg-accent-ink);
 }
 
-.admin-notification-panel .border-b {
-  border-color: var(--border-color);
+/* ---- Notifications drawer (teleported to <body>, so it uses the global fg tokens) ---- */
+.notif-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(15, 12, 6, 0.45);
 }
 
-.admin-notification-item {
-  border: 1px solid transparent;
+.notif-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  width: min(26rem, 100vw);
+  border-left: 1px solid var(--fg-card-border);
+  color: var(--fg-card-ink);
+  box-shadow: -18px 0 40px rgba(0, 0, 0, 0.25) !important;
 }
 
-.admin-notification-item:hover {
-  border-color: rgba(106, 90, 205, 0.3);
+.notif-drawer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 1.25rem 0.75rem;
 }
 
-.admin-notification-open {
-  background: var(--accent-purple);
-  color: #fff;
+.notif-drawer-head h3 {
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.notif-drawer-head p {
+  margin-top: 0.15rem;
+  color: var(--fg-card-ink-soft);
+  font-size: 0.85rem;
+}
+
+.notif-drawer-close {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--fg-card-border);
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--fg-card-ink);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.notif-drawer-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--fg-card-border);
+  padding: 0 1.25rem;
+}
+
+.notif-drawer-tabs > button[role='tab'] {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: -1px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  padding: 0.6rem 0.5rem;
+  color: var(--fg-card-ink-soft);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.notif-drawer-tabs > button[role='tab'].active {
+  border-bottom-color: var(--fg-card-gold);
+  color: var(--fg-card-ink);
+}
+
+.notif-drawer-count {
+  border-radius: 9999px;
+  background: var(--fg-accent);
+  padding: 0 0.45rem;
+  color: var(--fg-accent-ink);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.notif-drawer-markall {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--fg-card-gold);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.notif-drawer-error {
+  margin: 0.75rem 1.25rem 0;
+  color: #c4544c;
+  font-size: 0.85rem;
+}
+
+.notif-drawer-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.75rem;
+  overflow-y: auto;
+  padding: 1rem 1.25rem;
+}
+
+.notif-drawer-empty {
+  padding: 2rem 0.5rem;
+  color: var(--fg-card-ink-soft);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.notif-item {
+  border: 1px solid var(--fg-card-border);
+  border-left: 3px solid var(--fg-accent);
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.85rem 0.95rem;
+}
+
+.notif-item--high {
+  border-left-color: #c4544c;
+}
+
+.notif-item--read {
+  border-left-color: var(--fg-card-border);
+  opacity: 0.85;
+}
+
+/* title, then the real date and time under it */
+.notif-item-top {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.notif-item-top h4 {
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.notif-item-time {
+  flex-shrink: 0;
+  color: var(--fg-card-ink-soft);
+  font-size: 0.75rem;
+}
+
+.notif-item-message {
+  margin-top: 0.35rem;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.notif-item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.7rem;
+}
+
+.notif-btn {
+  border: 1px solid var(--fg-card-border);
+  border-radius: 0.5rem;
+  background: transparent;
+  padding: 0.3rem 0.65rem;
+  color: var(--fg-card-ink);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.notif-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.notif-btn--primary {
+  border-color: var(--fg-accent);
+  background: var(--fg-accent);
+  color: var(--fg-accent-ink);
+}
+
+.notif-btn--ghost {
+  color: var(--fg-card-ink-soft);
+}
+
+.notif-drawer-foot {
+  border-top: 1px solid var(--fg-card-border);
+  padding: 0.85rem 1.25rem;
+  text-align: center;
+}
+
+.notif-drawer-enter-active,
+.notif-drawer-leave-active {
+  transition: opacity 0.25s ease;
+}
+
+.notif-drawer-enter-active .notif-drawer,
+.notif-drawer-leave-active .notif-drawer {
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.notif-drawer-enter-from,
+.notif-drawer-leave-to {
+  opacity: 0;
+}
+
+.notif-drawer-enter-from .notif-drawer,
+.notif-drawer-leave-to .notif-drawer {
+  transform: translateX(100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notif-drawer-enter-active .notif-drawer,
+  .notif-drawer-leave-active .notif-drawer {
+    transition: none;
+  }
 }
 
 .admin-main {
@@ -3494,7 +4066,7 @@ onUnmounted(() => {
 .fitgym-admin .form-input:focus {
   outline: none;
   border-color: var(--accent-purple);
-  box-shadow: 0 0 0 1px rgba(138, 43, 226, 0.35);
+  box-shadow: 0 0 0 1px rgba(var(--fg-accent-rgb), 0.35);
 }
 
 .fitgym-admin .form-input::placeholder {
@@ -3552,13 +4124,13 @@ onUnmounted(() => {
 }
 
 .profile-notice {
-  color: var(--accent-green);
+  color: var(--fg-card-gold);
   margin-bottom: 0.625rem;
   font-size: 0.875rem;
 }
 
 .fitgym-admin .error-message {
-  color: #ff6b6b;
+  color: #C4544C;
   margin-bottom: 0.625rem;
   font-size: 0.875rem;
 }
@@ -3567,7 +4139,7 @@ onUnmounted(() => {
   width: 100%;
   padding: 0.875rem;
   background: var(--accent-green);
-  color: #000;
+  color: var(--fg-accent-ink);
   border: none;
   border-radius: 0.375rem;
   font-size: clamp(0.875rem, 1.5vw, 1rem);
@@ -3645,7 +4217,7 @@ onUnmounted(() => {
 
 .nav-item.active {
   background: var(--accent-green);
-  color: #000;
+  color: var(--fg-accent-ink);
   font-weight: 600;
 }
 
@@ -3779,22 +4351,22 @@ onUnmounted(() => {
 
 .metric-icon.green {
   background: var(--accent-green);
-  color: #000;
+  color: var(--fg-accent-ink);
 }
 
 .metric-icon.blue {
-  background: var(--accent-blue);
-  color: #fff;
+  background: var(--accent-green);
+  color: var(--fg-accent-ink);
 }
 
 .metric-icon.yellow {
   background: var(--accent-yellow);
-  color: #000;
+  color: var(--fg-accent-ink);
 }
 
 .metric-icon.purple {
   background: var(--accent-purple-light);
-  color: #fff;
+  color: var(--fg-accent-ink);
 }
 
 .metric-currency {
@@ -3816,14 +4388,14 @@ onUnmounted(() => {
 }
 
 .metric-content p {
-  font-size: clamp(0.65rem, 0.9vw, 0.75rem);
+  font-size: 0.82rem;
   color: var(--text-secondary);
   margin-bottom: 0.25rem;
   line-height: 1.3;
 }
 
 .metric-content span {
-  font-size: clamp(0.55rem, 0.7vw, 0.65rem);
+  font-size: 0.75rem;
   color: var(--text-secondary);
   line-height: 1.3;
 }
@@ -3855,7 +4427,7 @@ onUnmounted(() => {
 .data-table th {
   padding: clamp(0.5rem, 1vw, 0.625rem) clamp(0.625rem, 1.2vw, 0.75rem);
   text-align: left;
-  font-size: clamp(0.65rem, 1.1vw, 0.8rem);
+  font-size: 0.88rem;
   font-weight: 600;
   color: var(--text-primary);
   border-bottom: 1px solid var(--border-color);
@@ -3865,7 +4437,7 @@ onUnmounted(() => {
 .data-table td {
   padding: clamp(0.4rem, 0.8vw, 0.5625rem) clamp(0.625rem, 1.2vw, 0.75rem);
   border-bottom: 1px solid var(--border-color);
-  font-size: clamp(0.65rem, 1.1vw, 0.8rem);
+  font-size: 0.88rem;
   color: var(--text-primary);
 }
 
@@ -3885,20 +4457,20 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   font-weight: bold;
-  font-size: clamp(0.55rem, 0.9vw, 0.7rem);
-  color: #fff;
+  font-size: 0.75rem;
+  color: var(--fg-accent-ink);
   flex-shrink: 0;
 }
 
 .member-cell p {
-  font-size: clamp(0.65rem, 1.1vw, 0.8rem);
+  font-size: 0.88rem;
   color: var(--text-primary);
   margin-bottom: 0.0625rem;
   line-height: 1.25;
 }
 
 .member-cell span {
-  font-size: clamp(0.55rem, 0.9vw, 0.7rem);
+  font-size: 0.75rem;
   color: var(--text-secondary);
   line-height: 1.25;
 }
@@ -3906,14 +4478,14 @@ onUnmounted(() => {
 .status-badge {
   padding: clamp(0.2rem, 0.5vw, 0.25rem) clamp(0.5rem, 1vw, 0.75rem);
   border-radius: 0.75rem;
-  font-size: clamp(0.6rem, 1vw, 0.75rem);
+  font-size: 0.75rem;
   font-weight: 600;
   display: inline-block;
 }
 
 .status-badge.active {
   background: var(--accent-green);
-  color: #000;
+  color: var(--fg-accent-ink);
 }
 
 .status-badge.inactive {
@@ -3952,7 +4524,7 @@ onUnmounted(() => {
 
 .summary-card i {
   font-size: clamp(1.5rem, 3vw, 2rem);
-  color: var(--accent-green);
+  color: var(--fg-card-gold);
 }
 
 .summary-card h3 {
@@ -3970,7 +4542,7 @@ onUnmounted(() => {
 .btn-add-plan {
   padding: 0.75rem 1.25rem;
   background: var(--accent-green);
-  color: #000;
+  color: var(--fg-accent-ink);
   border: none;
   border-radius: 0.5rem;
   font-size: clamp(0.75rem, 1vw, 0.875rem);
@@ -3998,7 +4570,7 @@ onUnmounted(() => {
 
 .plan-card.deactivated {
   opacity: 0.85;
-  border: 1px dashed #ef4444;
+  border: 1px dashed #C4544C;
 }
 
 .plan-card.popular .popular-badge {
@@ -4006,7 +4578,7 @@ onUnmounted(() => {
   top: 0.9375rem;
   right: 0.9375rem;
   background: var(--accent-yellow);
-  color: #000;
+  color: var(--fg-accent-ink);
   padding: 0.25rem 0.75rem;
   border-radius: 0.75rem;
   font-size: clamp(0.625rem, 0.8vw, 0.75rem);
@@ -4059,6 +4631,11 @@ onUnmounted(() => {
   margin: 0;
 }
 
+.plan-empty-note {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
 .plan-features li {
   display: flex;
   align-items: center;
@@ -4069,7 +4646,7 @@ onUnmounted(() => {
 }
 
 .plan-features li i {
-  color: var(--accent-green);
+  color: var(--fg-card-gold);
   font-size: clamp(0.625rem, 0.8vw, 0.75rem);
 }
 
@@ -4089,7 +4666,7 @@ onUnmounted(() => {
 
 .plan-stats .revenue-badge {
   background: var(--accent-yellow);
-  color: #000;
+  color: var(--fg-accent-ink);
   padding: 0.25rem 0.625rem;
   border-radius: 0.5rem;
   font-size: clamp(0.625rem, 0.8vw, 0.75rem);
@@ -4102,37 +4679,21 @@ onUnmounted(() => {
   gap: 0.625rem;
 }
 
-.plan-actions .btn-edit {
+/* Edit Plan, Deactivate and Delete share one gold, same as the Settings save buttons */
+.plan-actions :is(.btn-edit, .btn-deactivate, .btn-delete) {
   flex: 1;
   padding: 0.625rem;
-  background: var(--accent-blue);
-  color: #fff;
-  border: none;
+  background: linear-gradient(135deg, var(--fg-accent-light) 0%, var(--fg-accent) 55%, var(--fg-accent-dark) 100%);
+  color: var(--fg-accent-ink);
+  border: 1px solid var(--fg-accent-light);
   border-radius: 0.375rem;
   font-size: clamp(0.75rem, 1vw, 0.875rem);
+  font-weight: 700;
   cursor: pointer;
 }
 
-.plan-actions .btn-deactivate {
-  flex: 1;
-  padding: 0.625rem;
-  background: var(--accent-pink);
-  color: #fff;
-  border: none;
-  border-radius: 0.375rem;
-  font-size: clamp(0.75rem, 1vw, 0.875rem);
-  cursor: pointer;
-}
-
-.plan-actions .btn-delete {
-  flex: 1;
-  padding: 0.625rem;
-  background: var(--accent-purple);
-  color: #fff;
-  border: none;
-  border-radius: 0.375rem;
-  font-size: clamp(0.75rem, 1vw, 0.875rem);
-  cursor: pointer;
+.plan-actions :is(.btn-edit, .btn-deactivate, .btn-delete):hover {
+  filter: brightness(1.06);
 }
 
 .plan-feature-list {
@@ -4169,7 +4730,7 @@ onUnmounted(() => {
   border: 1px dashed var(--accent-green);
   border-radius: 0.375rem;
   background: transparent;
-  color: var(--accent-green);
+  color: var(--fg-card-gold);
   font-size: 0.875rem;
   cursor: pointer;
 }
@@ -4184,7 +4745,7 @@ onUnmounted(() => {
 .btn-add-member {
   padding: 0.75rem 1.25rem;
   background: var(--accent-green);
-  color: #fff;
+  color: var(--fg-accent-ink);
   border: none;
   border-radius: 0.75rem;
   font-size: clamp(0.8125rem, 1vw, 0.9375rem);
@@ -4193,7 +4754,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  box-shadow: 0 0 12px rgba(141, 255, 0, 0.3);
+  box-shadow: 0 0 12px rgba(var(--fg-accent-rgb), 0.3);
 }
 
 .btn-add-member:hover {
@@ -4224,7 +4785,7 @@ onUnmounted(() => {
 .attendance-card h3 {
   font-size: clamp(1.75rem, 3.5vw, 2.25rem);
   font-weight: bold;
-  color: var(--accent-green);
+  color: var(--fg-card-gold);
   margin-bottom: 0.5rem;
 }
 
@@ -4237,7 +4798,7 @@ onUnmounted(() => {
   display: flex;
   gap: 0;
   margin-bottom: 1.5625rem;
-  border-bottom: 2px solid rgba(160, 122, 31, 0.3);
+  border-bottom: 2px solid rgba(var(--fg-accent-deep-rgb), 0.3);
 }
 
 .attendance-tab {
@@ -4305,7 +4866,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  color: var(--accent-green);
+  color: var(--fg-card-gold);
   font-size: clamp(0.75rem, 1vw, 0.875rem);
 }
 
@@ -4315,6 +4876,7 @@ onUnmounted(() => {
   background: var(--accent-green);
   border-radius: 50%;
   animation: pulse 2s infinite;
+  color: var(--fg-accent-ink);
 }
 
 @keyframes pulse {
@@ -4353,6 +4915,7 @@ onUnmounted(() => {
 
 .current-member-avatar.purple {
   background: var(--accent-purple);
+  color: var(--fg-accent-ink);
 }
 
 .current-member-info {
@@ -4387,7 +4950,7 @@ onUnmounted(() => {
 
 .payment-card.green {
   background: var(--accent-green);
-  color: #000;
+  color: var(--fg-accent-ink);
 }
 
 .payment-card.blue {
@@ -4408,7 +4971,7 @@ onUnmounted(() => {
 .btn-add-payment {
   padding: 0.75rem 1.25rem;
   background: var(--accent-green);
-  color: #000;
+  color: var(--fg-accent-ink);
   border: none;
   border-radius: 0.5rem;
   font-size: clamp(0.75rem, 1vw, 0.875rem);
@@ -4449,7 +5012,7 @@ onUnmounted(() => {
   display: flex;
   gap: 0;
   margin-bottom: 1.5625rem;
-  border-bottom: 2px solid rgba(160, 122, 31, 0.3);
+  border-bottom: 2px solid rgba(var(--fg-accent-deep-rgb), 0.3);
 }
 
 .report-tab {
@@ -4464,7 +5027,7 @@ onUnmounted(() => {
 }
 
 .report-tab.active {
-  color: #fff;
+  color: var(--fg-accent-ink);
   border-bottom-color: var(--accent-purple-light);
   background: var(--accent-purple-light);
 }
@@ -4520,7 +5083,7 @@ onUnmounted(() => {
 .btn-add-trainer {
   padding: 0.75rem 1.25rem;
   background: var(--accent-purple);
-  color: #fff;
+  color: var(--fg-accent-ink);
   border: none;
   border-radius: 0.5rem;
   font-size: clamp(0.75rem, 1vw, 0.875rem);
@@ -4560,7 +5123,7 @@ onUnmounted(() => {
 
 .action-btn.purple {
   background: var(--accent-purple);
-  color: #fff;
+  color: var(--fg-accent-ink);
 }
 
 .action-btn.red {
@@ -4570,7 +5133,7 @@ onUnmounted(() => {
 
 .action-btn.green {
   background: var(--accent-green);
-  color: #000;
+  color: var(--fg-accent-ink);
 }
 
 .action-btn:disabled {
@@ -4580,12 +5143,12 @@ onUnmounted(() => {
 
 .status-badge.paid {
   background: var(--accent-green);
-  color: #000;
+  color: var(--fg-accent-ink);
 }
 
 .status-badge.pending {
-  background: var(--accent-yellow);
-  color: #000;
+  background: var(--accent-blue);
+  color: #f5f1e8;
 }
 
 .status-badge.cancelled {
@@ -4594,7 +5157,7 @@ onUnmounted(() => {
 }
 
 .status-badge.overdue {
-  background: var(--accent-blue);
+  background: var(--accent-pink);
   color: #fff;
 }
 
@@ -4643,7 +5206,7 @@ onUnmounted(() => {
   display: flex;
   gap: 0;
   margin-bottom: 1.25rem;
-  border-bottom: 2px solid rgba(160, 122, 31, 0.3);
+  border-bottom: 2px solid rgba(var(--fg-accent-deep-rgb), 0.3);
 }
 
 .notification-tab {
@@ -4669,7 +5232,7 @@ onUnmounted(() => {
 
 .notification-badge {
   background: var(--accent-green);
-  color: #000;
+  color: var(--fg-accent-ink);
   font-size: 0.75rem;
   font-weight: 600;
   padding: 0.15rem 0.5rem;
@@ -4746,7 +5309,7 @@ onUnmounted(() => {
 .notification-recorded-at {
   margin-top: 0.4rem;
   font-size: 0.75rem;
-  color: var(--accent-purple-light);
+  color: var(--fg-card-gold);
 }
 
 .notification-priority {
@@ -4762,8 +5325,8 @@ onUnmounted(() => {
 }
 
 .notification-priority.info {
-  background: rgba(0, 191, 255, 0.2);
-  color: var(--accent-blue);
+  background: rgba(var(--fg-accent-rgb), 0.2);
+  color: var(--fg-card-gold);
 }
 
 .notification-actions {
@@ -4796,9 +5359,9 @@ onUnmounted(() => {
 }
 
 .notification-history-badge.read {
-  background: rgba(141, 255, 0, 0.12);
-  border-color: rgba(141, 255, 0, 0.28);
-  color: var(--accent-green);
+  background: rgba(var(--fg-accent-rgb), 0.12);
+  border-color: rgba(var(--fg-accent-rgb), 0.28);
+  color: var(--fg-card-gold);
 }
 
 .notification-history-badge.dismissed {
@@ -4859,6 +5422,11 @@ onUnmounted(() => {
   margin-top: 1.25rem;
 }
 
+/* Quick Actions and Recent Activity sit side by side, so the grid gap spaces them */
+.dashboard-grid > .recent-activity {
+  margin-top: 0;
+}
+
 .dashboard-card {
   background: var(--bg-card);
   padding: 1.5625rem;
@@ -4894,6 +5462,7 @@ onUnmounted(() => {
 
 .quick-action-btn.green {
   background: var(--accent-green);
+  color: var(--fg-accent-ink);
 }
 
 .quick-action-btn.blue {
@@ -4910,7 +5479,6 @@ onUnmounted(() => {
   background: var(--bg-card);
   padding: 1.5625rem;
   border-radius: 0.75rem;
-  margin-top: 1.25rem;
   margin-top: 1.25rem;
   box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
 }
@@ -4946,7 +5514,7 @@ onUnmounted(() => {
   justify-content: center;
   font-weight: bold;
   font-size: clamp(0.75rem, 1vw, 0.875rem);
-  color: #fff;
+  color: var(--fg-accent-ink);
   flex-shrink: 0;
 }
 
@@ -4955,9 +5523,58 @@ onUnmounted(() => {
   color: var(--text-primary);
 }
 
+.activity-name {
+  font-weight: 600;
+}
+
+.activity-content p.activity-when {
+  margin-top: 0.15rem;
+  color: var(--text-secondary);
+  font-size: clamp(0.7rem, 0.9vw, 0.8rem);
+}
+
+.activity-tag {
+  margin-left: auto;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  padding: 0.2rem 0.7rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.dashboard-chart-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.dashboard-card .dashboard-chart-head h3 {
+  margin-bottom: 0;
+}
+
+.dashboard-chart-empty {
+  position: absolute;
+  inset: 0 0 1.75rem 2rem;
+  display: grid;
+  place-items: center;
+  padding: 0 1rem;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  text-align: center;
+  pointer-events: none;
+}
+
+.dashboard-chart-head span {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
 .activity-tag.yellow {
   background: var(--accent-yellow);
-  color: #000;
+  color: var(--fg-accent-ink);
 }
 
 .activity-tag.blue {
@@ -5001,7 +5618,7 @@ onUnmounted(() => {
 
 .settings-nav-item.active {
   background: var(--accent-purple-light);
-  color: #fff;
+  color: var(--fg-accent-ink);
 }
 
 .settings-nav-item i {
@@ -5067,18 +5684,18 @@ onUnmounted(() => {
 
 .btn-update-profile {
   background: var(--accent-green);
-  color: #000;
+  color: var(--fg-accent-ink);
 }
 
 .btn-change-password {
   background: var(--accent-purple-light);
-  color: #fff;
+  color: var(--fg-accent-ink);
 }
 
 .btn-update-gym {
   padding: 0.75rem 1.25rem;
   background: var(--accent-green);
-  color: #000;
+  color: var(--fg-accent-ink);
   border: none;
   border-radius: 0.5rem;
   font-size: clamp(0.75rem, 1vw, 0.875rem);
@@ -5089,7 +5706,7 @@ onUnmounted(() => {
 .btn-save-settings {
   padding: 0.75rem 1.25rem;
   background: var(--accent-green);
-  color: #000;
+  color: var(--fg-accent-ink);
   border: none;
   border-radius: 0.5rem;
   font-weight: 600;
@@ -5122,7 +5739,7 @@ onUnmounted(() => {
 
 .notification-info-list i {
   width: 1.25rem;
-  color: var(--accent-green);
+  color: var(--fg-card-gold);
 }
 
 .notification-info-text {
@@ -5133,17 +5750,135 @@ onUnmounted(() => {
 }
 
 .notification-info-text.is-ok {
-  color: var(--accent-green);
+  color: var(--fg-card-gold);
 }
 
 .notification-info-text.is-warn {
-  color: var(--accent-yellow);
+  color: var(--fg-card-gold);
 }
 
 .settings-section h4 {
   font-size: clamp(0.9375rem, 1.5vw, 1.125rem);
   margin-bottom: 0.75rem;
   color: var(--text-primary);
+}
+
+/* Settings → Subscription */
+.subscription-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: 1rem;
+}
+
+.subscription-label {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.subscription-value {
+  margin-top: 0.2rem;
+  color: var(--text-primary);
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.subscription-sub {
+  margin-top: 0.15rem;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.subscription-value.is-warn,
+.subscription-sub.is-warn {
+  color: #e08c86;
+}
+
+.subscription-plans,
+.subscription-history {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.subscription-plans li,
+.subscription-history li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.6rem;
+  padding: 0.65rem 0.85rem;
+  color: var(--text-primary);
+  font-size: 0.88rem;
+}
+
+.subscription-plans li.is-current {
+  border-color: var(--fg-accent);
+  box-shadow: 0 0 0 1px var(--fg-accent);
+}
+
+.subscription-plans li span,
+.subscription-history li small {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.subscription-history li small {
+  flex-basis: 100%;
+}
+
+.subscription-pre {
+  white-space: pre-line;
+}
+
+.subscription-total {
+  color: var(--text-primary);
+  font-size: 0.92rem;
+}
+
+.subscription-ok {
+  color: var(--fg-accent-light);
+}
+
+.proof-status {
+  font-size: 0.82rem;
+}
+
+.proof-status.is-pending {
+  color: var(--fg-accent-light);
+}
+
+.proof-status.is-rejected {
+  color: #e08c86;
+}
+
+.subscription-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+  border: 1px solid rgba(var(--fg-accent-rgb), 0.6);
+  border-radius: 0.75rem;
+  background: rgba(var(--fg-accent-rgb), 0.14);
+  padding: 0.85rem 1.1rem;
+  color: var(--fg-ink);
+  font-size: 0.9rem;
+}
+
+.subscription-banner button {
+  border: 0;
+  border-radius: 0.5rem;
+  background: var(--fg-accent);
+  padding: 0.45rem 0.9rem;
+  color: var(--fg-accent-ink);
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .toggle-item {
@@ -5160,7 +5895,7 @@ onUnmounted(() => {
 }
 
 .toggle-item i {
-  color: var(--accent-green);
+  color: var(--fg-card-gold);
 }
 
 .toggle-switch {
@@ -5203,6 +5938,7 @@ onUnmounted(() => {
 
 .toggle-switch input:checked + .slider {
   background: var(--accent-green);
+  color: var(--fg-accent-ink);
 }
 
 .toggle-switch input:checked + .slider:before {
@@ -5309,7 +6045,7 @@ onUnmounted(() => {
   flex: 1;
   padding: 0.75rem;
   background: var(--accent-green);
-  color: #000;
+  color: var(--fg-accent-ink);
   border: none;
   border-radius: 0.5rem;
   font-weight: 600;
@@ -5341,7 +6077,7 @@ onUnmounted(() => {
   justify-content: center;
   font-size: 1.25rem;
   font-weight: bold;
-  color: #fff;
+  color: var(--fg-accent-ink);
 }
 
 .member-header-info h2 {
@@ -5387,7 +6123,7 @@ onUnmounted(() => {
 .btn-edit-member {
   padding: 0.75rem;
   background: var(--accent-purple);
-  color: #fff;
+  color: var(--fg-accent-ink);
   border: none;
   border-radius: 0.5rem;
   font-weight: 600;

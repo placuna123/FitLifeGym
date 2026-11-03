@@ -12,6 +12,8 @@ class Gym extends Model
         'email',
         'phone',
         'address',
+        'description',
+        'cover_photo_path',
         'operating_hours',
         'gcash_number',
         'gcash_account_name',
@@ -49,6 +51,15 @@ class Gym extends Model
         }
 
         return $status;
+    }
+
+    /**
+     * URL of a file on the public disk, or null. Host-relative like profile photos,
+     * so it loads whether the app is opened at localhost or 127.0.0.1:8000.
+     */
+    public function publicFileUrl(?string $path): ?string
+    {
+        return $path ? '/storage/'.ltrim($path, '/') : null;
     }
 
     public function allowsAccess(): bool

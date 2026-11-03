@@ -1,0 +1,297 @@
+@startuml
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam classAttributeIconSize 0
+skinparam linetype ortho
+skinparam class {
+  BackgroundColor #EEF7EE
+  BorderColor #2E7D32
+  HeaderBackgroundColor #C8E6C9
+}
+
+title FitGym Membership Management System - Class Diagram
+
+enum Role {
+  SuperAdmin
+  Admin
+  Staff
+  Member
+}
+
+class User {
+  - id : int
+  - gym_id : int
+  - name : string
+  - email : string
+  - password : string
+  - role : Role
+  - phone : string
+  - address : string
+  + login() : bool
+  + logout() : void
+  + changePassword() : bool
+  + updateProfile() : void
+}
+
+class Gym {
+  - id : int
+  - owner_user_id : int
+  - name : string
+  - slug : string
+  - email : string
+  - phone : string
+  - address : string
+  - description : text
+  - cover_photo_path : string
+  - operating_hours : string
+  - gcash_number : string
+  - gcash_account_name : string
+  - subscription_plan : string
+  - subscription_status : string
+  - subscription_expires_at : date
+  + effectiveStatus() : string
+  + allowsAccess() : bool
+  + planLimit() : int
+  + hasRoomFor() : bool
+}
+
+class Member {
+  - id : int
+  - gym_id : int
+  - member_id : string
+  - membership_plan_id : int
+  - full_name : string
+  - email : string
+  - phone : string
+  - address : string
+  - status : string
+  - payment_status : string
+  - expiry_date : date
+  - height_cm : decimal
+  - goal_weight_kg : decimal
+  - fitness_goal : string
+  + register() : void
+  + checkInBlockReason() : string
+  + generateAttendanceQr() : string
+}
+
+class Staff {
+  - id : int
+  - gym_id : int
+  - staff_id : string
+  - full_name : string
+  - email : string
+  - phone : string
+  - position : string
+  - department : string
+  - hire_date : date
+  - status : string
+  + scanMemberQr() : void
+  + approveMember() : void
+  + renewMembership() : void
+}
+
+class MembershipPlan {
+  - id : int
+  - gym_id : int
+  - name : string
+  - type : string
+  - price : decimal
+  - period : string
+  - description : text
+  - is_popular : bool
+  - is_deactivated : bool
+  + members() : List<Member>
+  + planFeatures() : List<PlanFeature>
+}
+
+class PlanFeature {
+  - id : int
+  - membership_plan_id : int
+  - feature_name : string
+}
+
+class Payment {
+  - id : int
+  - gym_id : int
+  - invoice_number : string
+  - member_id : int
+  - membership_plan_id : int
+  - amount : decimal
+  - payment_method : string
+  - payment_date : date
+  - status : string
+  - receipt_proof_path : string
+  - notes : text
+  + approve() : void
+}
+
+class Attendance {
+  - id : int
+  - gym_id : int
+  - member_id : int
+  - check_in_time : datetime
+  - check_out_time : datetime
+  - duration_minutes : int
+  + checkIn() : void
+  + checkOut() : void
+}
+
+class GymClass {
+  - id : int
+  - gym_id : int
+  - trainer_id : int
+  - name : string
+  - day_of_week : string
+  - start_time : time
+  - end_time : time
+  - capacity : int
+  + bookings() : List<ClassBooking>
+}
+
+class ClassBooking {
+  - id : int
+  - gym_class_id : int
+  - member_id : int
+  - class_date : date
+  - status : string
+  + book() : void
+  + cancel() : void
+}
+
+class MemberWeightLog {
+  - id : int
+  - member_id : int
+  - weight_kg : decimal
+  - logged_at : date
+}
+
+class StaffAttendance {
+  - id : int
+  - gym_id : int
+  - staff_id : int
+  - attendance_date : date
+  - check_in_time : datetime
+  - check_out_time : datetime
+  - status : string
+}
+
+class StaffSchedule {
+  - id : int
+  - gym_id : int
+  - staff_id : int
+  - day_of_week : string
+  - start_time : time
+  - end_time : time
+}
+
+class Notification {
+  - id : int
+  - gym_id : int
+  - member_id : int
+  - title : string
+  - message : text
+  - type : string
+  - is_read : bool
+  - read_at : datetime
+  + markRead() : void
+}
+
+class Report {
+  - id : int
+  - gym_id : int
+  - generated_by : int
+  - report_type : string
+  - report_name : string
+  - date_from : date
+  - date_to : date
+  - file_path : string
+  + export() : file
+}
+
+class SubscriptionPaymentRequest {
+  - id : int
+  - gym_id : int
+  - plan : string
+  - months : int
+  - amount : decimal
+  - payment_method : string
+  - reference : string
+  - receipt_path : string
+  - status : string
+  - review_note : text
+  - submitted_by : int
+  - reviewed_by : int
+  - reviewed_at : datetime
+  + approve() : void
+  + reject() : void
+}
+
+class SubscriptionPayment {
+  - id : int
+  - gym_id : int
+  - plan : string
+  - months : int
+  - amount : decimal
+  - payment_method : string
+  - reference : string
+  - paid_on : date
+  - period_start : date
+  - period_end : date
+  - recorded_by : int
+}
+
+class AuditLog {
+  - id : int
+  - gym_id : int
+  - user_id : int
+  - user_name : string
+  - role : string
+  - action : string
+  - description : text
+  - ip_address : string
+  + record() : void
+}
+
+class PlatformSetting {
+  - key : string
+  - value : text
+  + paymentDetails() : array
+}
+
+' ---------- Relationships ----------
+User --> Role
+Gym "1" -- "1" User : owned by >
+Gym "1" *-- "many" User : has accounts >
+Gym "1" *-- "many" Member
+Gym "1" *-- "many" Staff
+Gym "1" *-- "many" MembershipPlan
+Gym "1" *-- "many" GymClass
+Gym "1" o-- "many" Notification
+Gym "1" o-- "many" Report
+Gym "1" o-- "many" SubscriptionPaymentRequest
+Gym "1" o-- "many" SubscriptionPayment
+
+User "1" -- "0..1" Member : login account >
+User "1" -- "0..1" Staff : login account >
+User "1" -- "many" AuditLog : performs >
+User "1" -- "many" Report : generates >
+
+MembershipPlan "1" *-- "many" PlanFeature
+MembershipPlan "1" -- "many" Member : subscribed by >
+MembershipPlan "1" -- "many" Payment
+
+Member "1" -- "many" Payment : pays >
+Member "1" -- "many" Attendance : records >
+Member "1" -- "many" ClassBooking : books >
+Member "1" -- "many" MemberWeightLog : logs >
+Member "1" -- "many" Notification : receives >
+
+Staff "1" -- "many" GymClass : teaches >
+Staff "1" -- "many" StaffAttendance
+Staff "1" -- "many" StaffSchedule
+
+GymClass "1" -- "many" ClassBooking
+
+SubscriptionPaymentRequest "1" -- "0..1" SubscriptionPayment : creates when approved >
+@enduml

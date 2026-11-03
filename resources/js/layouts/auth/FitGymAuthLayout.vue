@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
+import FgThemeToggle from '@/components/FgThemeToggle.vue';
 import { home } from '@/routes';
 
 defineProps<{
@@ -10,6 +11,7 @@ defineProps<{
 
 <template>
     <div class="fg-auth fg-marble-bg">
+        <FgThemeToggle floating />
 
         <div class="fg-auth-shell">
             <Link :href="home()" class="fg-auth-brand">
@@ -133,7 +135,7 @@ defineProps<{
 }
 
 .fg-auth-footer a {
-    color: #6b3fc4;
+    color: var(--fg-accent-soft);
     font-weight: 600;
     text-decoration: none;
 }
@@ -216,9 +218,9 @@ defineProps<{
     width: 100%;
     border: none;
     border-radius: 0.7rem;
-    background: #8a2be2;
+    background: linear-gradient(135deg, var(--fg-accent-light) 0%, var(--fg-accent) 55%, var(--fg-accent-dark) 100%);
     padding: 0.85rem 1rem;
-    color: #ffffff;
+    color: var(--fg-accent-ink);
     font-size: 1rem;
     font-weight: 600;
     cursor: pointer;
@@ -242,7 +244,7 @@ defineProps<{
 }
 
 .fg-auth .fg-inline-link {
-    color: #b794f6;
+    color: var(--fg-accent-soft);
     font-weight: 600;
     text-decoration: underline;
 }

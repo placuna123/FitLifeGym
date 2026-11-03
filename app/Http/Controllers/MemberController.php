@@ -163,7 +163,9 @@ class MemberController extends Controller
                 return response()->json(['success' => false, 'message' => 'Membership plan not found.'], 404);
             }
             $expiryDate = $member->expiry_date;
-            if ((int) $member->membership_plan_id !== (int) $plan->id) {
+            // Only a member with paid time gets it recalculated; an unpaid member
+            // stays without an expiry until a payment is approved.
+            if ($member->expiry_date && (int) $member->membership_plan_id !== (int) $plan->id) {
                 $expiryDate = $this->calculateExpiryDate($plan->type);
             }
             $member->update([
@@ -206,6 +208,13 @@ class MemberController extends Controller
         }
         try {
             $member->update(['is_archived' => 1]);
+
+            // Close their login too; otherwise a deleted member could still sign in.
+            \App\Models\User::where('gym_id', $member->gym_id)
+                ->where('role', 'Member')
+                ->whereRaw('LOWER(email) = ?', [strtolower((string) $member->email)])
+                ->update(['is_archived' => 1]);
+
             \App\Models\AuditLog::record('member.deleted', "Deleted member {$member->full_name}", ['type' => 'Member', 'id' => $member->id]);
             return response()->json(['success' => true, 'message' => 'Member deleted successfully']);
         } catch (\Exception $e) {
@@ -413,7 +422,9 @@ class MemberController extends Controller
                 ]);
             }
             $memberId = $this->generateMemberId($gymId);
-            $expiryDate = $this->calculateExpiryDate($defaultPlan->type);
+            // No paid time yet: the membership starts on the day a payment is approved
+            // (PaymentController::applyPaidConsequences), not on the sign-up day.
+            $expiryDate = null;
             $fullName = trim($request->first_name . ' ' . $request->last_name);
             $addressData = [];
             if ($request->address) {
@@ -439,13 +450,26 @@ class MemberController extends Controller
                 'payment_status' => 'Pending',
                 'is_archived' => 0,
             ]);
-            User::create([
+            $memberUser = User::create([
                 'name' => $fullName,
                 'email' => $request->email,
                 'password' => Hash::make($request->password),
                 'role' => 'Member',
                 'gym_id' => $gymId,
                 'is_archived' => 0,
+            ]);
+            // Nobody is signed in yet at sign-up, so the log entry is written out in full
+            // rather than through AuditLog::record()'s auth()->user().
+            \App\Models\AuditLog::create([
+                'gym_id' => $gymId,
+                'user_id' => $memberUser->id,
+                'user_name' => $fullName,
+                'role' => 'Member',
+                'action' => 'member.signed_up',
+                'subject_type' => 'Member',
+                'subject_id' => $member->id,
+                'description' => "{$fullName} created a Member account (phone verified by SMS)",
+                'ip_address' => $request->ip(),
             ]);
             $this->createNewMemberNotification($fullName, $gymId);
             $this->createMemberNotification($member->id, 'Welcome!', "Welcome to the gym, {$fullName}! Complete your GCash payment (or pay at the front desk) to activate your membership.", 'green', $gymId);

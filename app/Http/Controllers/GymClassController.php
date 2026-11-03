@@ -14,6 +14,20 @@ use Illuminate\Support\Facades\Validator;
  */
 class GymClassController extends Controller
 {
+    /** Plain wording for the Add / Edit Class form, so Admin and Staff see what to fix. */
+    private const MESSAGES = [
+        'name.required' => 'Enter a class name.',
+        'trainer_id.exists' => 'That staff member no longer exists. Pick another one or leave it TBA.',
+        'start_time.required' => 'Pick a start time.',
+        'start_time.date_format' => 'Pick a start time.',
+        'end_time.required' => 'Pick an end time.',
+        'end_time.date_format' => 'Pick an end time.',
+        'end_time.after' => 'End time must be later than the start time.',
+        'capacity.required' => 'Enter how many people can join.',
+        'capacity.min' => 'Capacity must be at least 1.',
+        'capacity.max' => 'Capacity can be at most 200.',
+    ];
+
     private const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
     /**
@@ -61,7 +75,7 @@ class GymClassController extends Controller
             'start_time' => 'required|date_format:H:i',
             'end_time' => 'required|date_format:H:i|after:start_time',
             'capacity' => 'required|integer|min:1|max:200',
-        ]);
+        ], self::MESSAGES);
         if ($validator->fails()) {
             return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
         }
@@ -93,7 +107,7 @@ class GymClassController extends Controller
             'start_time' => 'required|date_format:H:i',
             'end_time' => 'required|date_format:H:i|after:start_time',
             'capacity' => 'required|integer|min:1|max:200',
-        ]);
+        ], self::MESSAGES);
         if ($validator->fails()) {
             return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
         }

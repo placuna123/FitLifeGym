@@ -108,7 +108,7 @@ async function remove() {
     height: 8rem;
     place-items: center;
     overflow: visible;
-    border: 2px solid var(--fg-card-gold, #d9b45a);
+    border: 2px solid var(--fg-card-gold, var(--fg-accent));
     border-radius: 9999px;
     background: #8a2be2;
     color: #fff;
@@ -142,8 +142,8 @@ async function remove() {
     place-items: center;
     border: 2px solid var(--fg-card, #151515);
     border-radius: 9999px;
-    background: var(--fg-card-gold, #d9b45a);
-    color: #151515;
+    background: var(--fg-card-gold, var(--fg-accent));
+    color: var(--fg-accent-ink);
 }
 
 .fg-photo-picker__badge :deep(svg) {
@@ -162,11 +162,11 @@ async function remove() {
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
-    border: 1px solid var(--fg-card-gold, #d9b45a);
+    border: 1px solid var(--fg-card-gold, var(--fg-accent));
     border-radius: 0.5rem;
-    background: var(--fg-card-gold, #d9b45a);
+    background: var(--fg-card-gold, var(--fg-accent));
     padding: 0.4rem 0.85rem;
-    color: #151515;
+    color: var(--fg-accent-ink);
     font-size: 0.82rem;
     font-weight: 600;
     cursor: pointer;

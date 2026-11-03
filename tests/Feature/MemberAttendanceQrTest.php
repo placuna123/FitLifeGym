@@ -40,17 +40,17 @@ class MemberAttendanceQrTest extends TestCase
         $this->assertNotEmpty($response->json('expires_at'));
     }
 
-    public function test_member_user_without_existing_member_record_can_still_request_attendance_qr(): void
+    public function test_member_login_whose_member_record_was_removed_gets_no_attendance_qr(): void
     {
+        // A login left behind by a deleted member must not get a new (free) membership.
         ['user' => $memberUser, 'member' => $member] = $this->createMemberAccount();
         $member->delete();
 
-        $response = $this->actingAs($memberUser)->postJson(route('member.attendance.qr'));
+        $this->actingAs($memberUser)->postJson(route('member.attendance.qr'))
+            ->assertForbidden()
+            ->assertJsonPath('success', false);
 
-        $response
-            ->assertOk()
-            ->assertJsonPath('success', true)
-            ->assertJsonPath('qr_payload.type', 'fitgym_member_attendance');
+        $this->assertDatabaseMissing('members', ['email' => $memberUser->email]);
     }
 
     public function test_staff_scan_can_check_member_in_then_check_member_out_with_the_same_qr(): void

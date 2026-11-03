@@ -8,7 +8,6 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use App\Models\Member;
-use App\Models\MembershipPlan;
 use App\Models\Trainer;
 use App\Support\Tenancy;
 use Carbon\Carbon;
@@ -44,6 +43,13 @@ class TrainerAttendanceController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Member account is archived'
+                ], 422);
+            }
+
+            if ($reason = $member->checkInBlockReason()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "{$member->full_name} can't check in: {$reason}",
                 ], 422);
             }
 
@@ -141,10 +147,20 @@ class TrainerAttendanceController extends Controller
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
         }
 
-        if ($member->status === 'Pending') {
+        // A member who is already inside still gets a QR, so they can check out.
+        $isInside = DB::table('attendance')
+            ->where('gym_id', Tenancy::gymId())
+            ->where('member_id', $member->id)
+            ->whereNull('check_out_time')
+            ->where('is_archived', 0)
+            ->exists();
+
+        if (! $isInside && ($reason = $member->checkInBlockReason())) {
             return response()->json([
                 'success' => false,
-                'message' => 'Your account is still awaiting approval from the gym staff. You can check in once it is approved.',
+                'message' => $member->status === 'Pending'
+                    ? 'Your account is still awaiting approval from the gym staff. You can check in once it is approved.'
+                    : str_replace(['This account', 'the membership'], ['Your account', 'your membership'], $reason),
             ], 403);
         }
 
@@ -238,6 +254,13 @@ class TrainerAttendanceController extends Controller
                     'duration_minutes' => $durationMinutes,
                 ],
             ]);
+        }
+
+        if ($reason = $member->checkInBlockReason()) {
+            return response()->json([
+                'success' => false,
+                'message' => "{$member->full_name} can't check in: {$reason}",
+            ], 422);
         }
 
         if (! empty($parsedPayload['checkin_used_at'])) {
@@ -656,77 +679,16 @@ class TrainerAttendanceController extends Controller
         }
     }
 
+    // Only the member's own, non-deleted record. Never creates or revives one: that
+    // used to hand a deleted member a free Active + Paid month.
     private function resolveAuthenticatedMember(): ?Member
     {
         $user = Auth::user();
-        if (! $user) {
+        if (! $user || ($user->role ?? null) !== 'Member') {
             return null;
         }
 
-        if (isset($user->role) && $user->role !== 'Member') {
-            return null;
-        }
-
-        $member = Member::where('email', $user->email)
-            ->where('is_archived', 0)
-            ->first();
-
-        if ($member) {
-            return $member;
-        }
-
-        $archivedMember = Member::where('email', $user->email)->first();
-        $plan = MembershipPlan::where('is_archived', 0)->orderBy('id')->first();
-
-        if (! $plan) {
-            $plan = MembershipPlan::create([
-                'name' => 'Trial Plan',
-                'type' => 'Monthly',
-                'price' => 0,
-                'period' => '1 month',
-                'description' => 'Trial membership',
-                'is_popular' => 0,
-                'is_deactivated' => 0,
-                'is_archived' => 0,
-            ]);
-        }
-
-        $expiry = now()->addMonth();
-        if (strtolower((string) ($plan->type ?? '')) === 'annual') {
-            $expiry = now()->addYear();
-        } elseif (strtolower((string) ($plan->type ?? '')) === 'quarterly') {
-            $expiry = now()->addMonths(3);
-        }
-
-        if ($archivedMember) {
-            $archivedMember->update([
-                'full_name' => $user->name ?? $archivedMember->full_name ?? 'Member User',
-                'membership_plan_id' => $plan->id,
-                'status' => 'Active',
-                'expiry_date' => $expiry,
-                'payment_status' => 'Paid',
-                'is_archived' => 0,
-            ]);
-
-            return $archivedMember->fresh();
-        }
-
-        do {
-            $memberId = str_pad((string) random_int(1, 9999), 4, '0', STR_PAD_LEFT);
-        } while (Member::where('member_id', $memberId)->exists());
-
-        return Member::create([
-            'member_id' => $memberId,
-            'full_name' => $user->name ?? 'Member User',
-            'email' => $user->email,
-            'phone' => '',
-            'address' => null,
-            'membership_plan_id' => $plan->id,
-            'status' => 'Active',
-            'expiry_date' => $expiry,
-            'payment_status' => 'Paid',
-            'is_archived' => 0,
-        ]);
+        return Member::where('email', $user->email)->where('is_archived', 0)->first();
     }
 
     private function issueOrReuseMemberAttendanceQrPayload(Member $member): array
@@ -1149,7 +1111,7 @@ class TrainerAttendanceController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => "Trainer status marked as {$request->status}",
+                'message' => "Staff status marked as {$request->status}",
                 'attendance' => [
                     'id' => $attendanceId,
                     'staff_id' => $trainer->id,

@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\Member;
 use App\Models\Notification;
-use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -62,7 +61,7 @@ class MemberNotificationController extends Controller
     public const SUPPORT_SUBJECTS = ['Equipment Issue', 'Billing Inquiry', 'Membership Question', 'General Feedback'];
 
     /**
-     * A member's support ticket lands in their branch's Admin notification center.
+     * A member's feedback lands in their branch's Admin notification center.
      */
     public function submitSupportTicket(Request $request): JsonResponse
     {
@@ -84,7 +83,7 @@ class MemberNotificationController extends Controller
         Notification::create([
             'gym_id' => $member->gym_id,
             'member_id' => null,
-            'title' => 'Support Ticket: ' . $request->subject,
+            'title' => 'Member Feedback: ' . $request->subject,
             'message' => "From {$member->full_name} ({$contact}):\n" . trim($request->message),
             'type' => 'pink',
             'is_read' => 0,
@@ -92,7 +91,7 @@ class MemberNotificationController extends Controller
             'is_archived' => 0,
         ]);
 
-        return response()->json(['success' => true, 'message' => 'Ticket submitted. The gym staff will get back to you.']);
+        return response()->json(['success' => true, 'message' => 'Thank you! Your feedback was sent to the gym.']);
     }
 
     private function toPayload(Notification $n): array
@@ -103,7 +102,7 @@ class MemberNotificationController extends Controller
             'message' => $n->message,
             'type' => $n->type,
             'is_read' => (bool) $n->is_read,
-            'time' => $n->created_at ? Carbon::parse($n->created_at)->diffForHumans() : '',
+            'time' => AdminNotificationController::happenedAt($n->created_at),
         ];
     }
 

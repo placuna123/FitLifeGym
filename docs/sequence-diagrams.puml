@@ -1,0 +1,330 @@
+' ============================================================
+' 1. MEMBER
+' ============================================================
+@startuml Member Sequence Diagram
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam sequenceMessageAlign center
+skinparam ParticipantBackgroundColor #EEF7EE
+skinparam ParticipantBorderColor #2E7D32
+skinparam ActorBackgroundColor #EEEEEE
+
+title Member
+
+actor Member
+participant "Member Portal" as UI
+participant "Server" as Server
+database "Database" as DB
+participant "SMS Service" as SMS
+
+== Register Account ==
+Member -> UI : Fill in registration form
+UI -> Server : Send OTP request (phone)
+Server -> SMS : Send verification code
+SMS --> Member : SMS with OTP
+Member -> UI : Enter OTP and submit
+UI -> Server : Register (details + OTP)
+Server -> Server : Verify OTP
+alt OTP is valid
+  Server -> DB : Save member (status = Pending)
+  Server -> DB : Create welcome and admin notifications
+  Server --> UI : Registration successful
+  UI --> Member : Show "Waiting for approval"
+else OTP is wrong or expired
+  Server --> UI : Error message
+  UI --> Member : Show "Invalid code"
+end
+
+== Log In ==
+Member -> UI : Enter email and password
+UI -> Server : Login request
+Server -> DB : Check credentials
+alt Valid
+  Server --> UI : Session started
+  UI --> Member : Show member dashboard
+else Invalid
+  Server --> UI : Error message
+  UI --> Member : Show "Invalid credentials"
+end
+
+== Pay or Renew Membership ==
+Member -> UI : Choose plan and payment method
+opt GCash
+  Member -> UI : Upload receipt proof
+end
+UI -> Server : Submit payment
+Server -> DB : Save payment (status = Pending)
+Server -> DB : Notify admin to verify
+Server --> UI : Payment submitted
+UI --> Member : Show "Waiting for verification"
+
+== Check In via QR Code ==
+Member -> UI : Open attendance QR
+UI -> Server : Request QR code
+Server -> DB : Check member status and expiry
+alt Active membership
+  Server --> UI : QR code
+  UI --> Member : Display QR code
+else Pending or expired
+  Server --> UI : Reason (pending / expired)
+  UI --> Member : Show reason
+end
+
+== Book Class ==
+Member -> UI : Select class
+UI -> Server : Book class
+Server -> DB : Check available slots
+alt Slot available
+  Server -> DB : Save booking
+  Server --> UI : Booking confirmed
+  UI --> Member : Show booking
+else Class is full
+  Server --> UI : Error message
+  UI --> Member : Show "Class is full"
+end
+@enduml
+
+
+' ============================================================
+' 2. STAFF
+' ============================================================
+@startuml Staff Sequence Diagram
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam sequenceMessageAlign center
+skinparam ParticipantBackgroundColor #EEF7EE
+skinparam ParticipantBorderColor #2E7D32
+skinparam ActorBackgroundColor #EEEEEE
+
+title Staff
+
+actor Staff
+participant "Staff Portal" as UI
+participant "Server" as Server
+database "Database" as DB
+participant "SMS / Email Service" as Msg
+actor Member
+
+== Log In ==
+Staff -> UI : Enter email and password
+UI -> Server : Login request
+Server -> DB : Check credentials and role
+alt Valid staff account
+  Server --> UI : Session started
+  UI --> Staff : Show staff dashboard
+else Invalid
+  Server --> UI : Error message
+  UI --> Staff : Show "Invalid credentials"
+end
+
+== Scan Member QR (Check In / Out) ==
+Member -> Staff : Show QR code
+Staff -> UI : Scan QR code
+UI -> Server : Process QR
+Server -> Server : Validate QR code
+alt QR invalid or expired
+  Server --> UI : Error message
+  UI --> Staff : Show "Ask member for a new QR"
+else Member is already inside
+  Server -> DB : Save check-out time and duration
+  Server --> UI : Check-out recorded
+  UI --> Staff : Show check-out
+else Member is outside
+  Server -> DB : Check membership status
+  alt Active
+    Server -> DB : Save check-in time
+    Server --> UI : Check-in recorded
+    UI --> Staff : Show check-in
+  else Pending or expired
+    Server --> UI : Reason
+    UI --> Staff : Show reason
+  end
+end
+
+== Approve Pending Member ==
+Staff -> UI : Open pending members
+UI -> Server : Approve member
+Server -> DB : Set status = Active
+Server -> DB : Create "Account Approved" notification
+Server -> Msg : Send SMS and email
+Msg --> Member : Approval message
+Server --> UI : Member approved
+UI --> Staff : Show updated list
+
+== Renew Membership and Record Payment ==
+Staff -> UI : Select member and plan
+UI -> Server : Renew membership
+Server -> DB : Set plan and payment status = Paid
+Server -> DB : Extend expiry date (status = Active)
+Server --> UI : Renewal successful
+UI --> Staff : Show new expiry date
+@enduml
+
+
+' ============================================================
+' 3. ADMIN
+' ============================================================
+@startuml Admin Sequence Diagram
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam sequenceMessageAlign center
+skinparam ParticipantBackgroundColor #EEF7EE
+skinparam ParticipantBorderColor #2E7D32
+skinparam ActorBackgroundColor #EEEEEE
+
+title Admin
+
+actor Admin
+participant "Admin Portal" as UI
+participant "Server" as Server
+database "Database" as DB
+actor "Super Admin" as Super
+
+== Log In ==
+Admin -> UI : Enter email and password
+UI -> Server : Login request
+Server -> DB : Check credentials and role
+alt Valid
+  Server --> UI : Session started
+  UI --> Admin : Show admin dashboard
+else Invalid
+  Server --> UI : Error message
+  UI --> Admin : Show error
+end
+
+== Verify Member Payment ==
+Admin -> UI : Open Payments page
+UI -> Server : Get pending payments
+Server -> DB : Load payments with receipts
+Server --> UI : Payment list
+Admin -> UI : Check receipt and approve
+UI -> Server : Update payment (status = Paid)
+Server -> DB : Save payment, activate member and extend expiry
+Server --> UI : Payment approved
+UI --> Admin : Show updated list
+
+== Manage Staff Accounts ==
+Admin -> UI : Fill in staff form
+UI -> Server : Create staff
+Server -> Server : Validate input and plan staff limit
+alt Valid
+  Server -> DB : Save staff and login account
+  Server --> UI : Staff created
+  UI --> Admin : Show staff in list
+else Invalid
+  Server --> UI : Reason
+  UI --> Admin : Show reason
+end
+
+== Generate Reports ==
+Admin -> UI : Choose report and date range
+UI -> Server : Get report
+Server -> DB : Query revenue, attendance and members
+Server --> UI : Report data
+UI --> Admin : Show charts and tables
+opt Export
+  Admin -> UI : Export (PDF / Excel / CSV)
+  UI -> Server : Export request
+  Server --> UI : File
+  UI --> Admin : Download file
+end
+
+== Pay Gym Subscription ==
+Admin -> UI : Upload subscription payment proof
+UI -> Server : Submit proof
+Server -> DB : Check for a pending proof
+alt No pending proof
+  Server -> DB : Save proof (status = Pending)
+  Server --> UI : Proof sent
+  UI --> Admin : Show "Waiting for approval"
+  note over Server, Super : Proof waits on the Super Admin's Billing page
+else Already pending
+  Server --> UI : Error message
+  UI --> Admin : Show "Still being checked"
+end
+@enduml
+
+
+' ============================================================
+' 4. SUPER ADMIN
+' ============================================================
+@startuml Super Admin Sequence Diagram
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam sequenceMessageAlign center
+skinparam ParticipantBackgroundColor #EEF7EE
+skinparam ParticipantBorderColor #2E7D32
+skinparam ActorBackgroundColor #EEEEEE
+
+title Super Admin
+
+actor "Super Admin" as Super
+participant "Platform Console" as UI
+participant "Server" as Server
+database "Database" as DB
+participant "Email Service" as Mail
+actor Admin
+
+== Log In ==
+Super -> UI : Enter email and password
+UI -> Server : Login request
+Server -> DB : Check credentials and role
+alt Valid
+  Server --> UI : Session started
+  UI --> Super : Show platform dashboard
+else Invalid
+  Server --> UI : Error message
+  UI --> Super : Show "Invalid credentials"
+end
+
+== Review Subscription Payment ==
+Super -> UI : Open Billing page
+UI -> Server : Get pending proofs
+Server -> DB : Load pending proofs
+Server --> UI : Proof list
+Super -> UI : Check receipt
+alt Approve
+  UI -> Server : Approve proof
+  Server -> DB : Save subscription payment
+  Server -> DB : Extend gym plan end date
+  Server -> DB : Set proof status = Approved
+  Server --> UI : Gym active until new date
+else Reject
+  Super -> UI : Enter reason
+  UI -> Server : Reject proof
+  Server -> DB : Set proof status = Rejected
+  Server -> DB : Notify gym admin with reason
+  Server --> UI : Proof rejected
+end
+UI --> Super : Show updated list
+
+== Manage Gyms ==
+Super -> UI : Create, edit, suspend or restore gym
+UI -> Server : Gym request
+Server -> DB : Save gym changes
+Server -> DB : Record audit log
+Server --> UI : Gym updated
+UI --> Super : Show gym list
+
+== Reset Gym Admin Password ==
+Super -> UI : Click "Send reset link"
+UI -> Server : Send admin reset
+Server -> Mail : Send password reset email
+Mail --> Admin : Reset link
+Server --> UI : Reset link sent
+UI --> Super : Show confirmation
+
+== Post Announcement ==
+Super -> UI : Write announcement
+UI -> Server : Post announcement
+Server -> DB : Create notification for every gym
+Server --> UI : Announcement posted
+UI --> Super : Show confirmation
+
+== View Audit Logs ==
+Super -> UI : Open Audit Logs
+UI -> Server : Get audit logs (filters)
+Server -> DB : Query logs
+Server --> UI : Log list
+UI --> Super : Show audit logs
+@enduml

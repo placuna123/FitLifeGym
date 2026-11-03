@@ -57,15 +57,17 @@ class PaymentController extends Controller
         if (! $member) {
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
         }
-        // Members can only self-submit GCash (verifiable via receipt proof + admin
-        // review). Cash/Card/etc. can't be verified remotely, so those must be
-        // recorded by staff in person via the Admin/Trainer "Add Payment" flow —
-        // otherwise a member could submit any other method here and it would land
-        // as "Paid" immediately with nobody having actually received the money.
+        // Members self-submit either GCash (with a receipt) or Cash (manual: they
+        // pay at the front desk). Both always land as "Pending": a payment only
+        // becomes "Paid" when Admin or Staff approves it after checking the receipt
+        // or receiving the cash, so nobody can mark their own membership as paid.
         $validator = Validator::make($request->all(), [
             'membership_plan_id' => 'required|exists:membership_plans,id',
-            'payment_method' => 'required|in:GCash',
-            'receipt_proof' => 'required|file|mimes:jpg,jpeg,png,pdf|max:5120',
+            'payment_method' => 'required|in:GCash,Cash',
+            'receipt_proof' => 'required_if:payment_method,GCash|nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
+        ], [
+            'payment_method.in' => 'Choose GCash or Cash.',
+            'receipt_proof.required_if' => 'Please upload your GCash receipt proof.',
         ]);
         if ($validator->fails()) {
             return response()->json(['success' => false, 'message' => 'Validation failed', 'errors' => $validator->errors()], 422);
@@ -77,7 +79,8 @@ class PaymentController extends Controller
         try {
             DB::beginTransaction();
             $invoiceNumber = $this->generateInvoiceNumber();
-            $receiptPath = $request->file('receipt_proof')->store('payment-proofs', 'public');
+            $isCash = $request->payment_method === 'Cash';
+            $receiptPath = $isCash ? null : $request->file('receipt_proof')->store('payment-proofs', 'public');
             $payment = Payment::create([
                 'invoice_number' => $invoiceNumber,
                 'member_id' => $member->id,
@@ -85,10 +88,12 @@ class PaymentController extends Controller
                 // Derived from the plan's own price, never trusted from the client —
                 // otherwise a member could POST amount=1 for an expensive plan.
                 'amount' => $plan->price,
-                'payment_method' => 'GCash',
+                'payment_method' => $isCash ? 'Cash' : 'GCash',
                 'payment_date' => now()->format('Y-m-d'),
                 'status' => 'Pending',
-                'notes' => 'Member portal GCash payment - awaiting admin verification',
+                'notes' => $isCash
+                    ? 'Member portal cash payment - member pays at the front desk; approve once the cash is received'
+                    : 'Member portal GCash payment - awaiting admin verification',
                 'receipt_proof_path' => $receiptPath,
                 'is_archived' => 0,
             ]);
@@ -97,16 +102,27 @@ class PaymentController extends Controller
                 'gym_id' => $member->gym_id,
                 'member_id' => null,
                 'title' => 'Payment Received',
-                'message' => "{$member->full_name} submitted a GCash payment of PHP " . number_format((float) $plan->price, 2) . " for {$plan->name} ({$invoiceNumber}). Verify the receipt on the Payments page.",
+                'message' => $isCash
+                    ? "{$member->full_name} will pay PHP " . number_format((float) $plan->price, 2) . " in cash at the front desk for {$plan->name} ({$invoiceNumber}). Approve it on the Payments page once the cash is received."
+                    : "{$member->full_name} submitted a GCash payment of PHP " . number_format((float) $plan->price, 2) . " for {$plan->name} ({$invoiceNumber}). Verify the receipt on the Payments page.",
                 'type' => 'green',
                 'is_read' => 0,
                 'read_at' => null,
                 'is_archived' => 0,
             ]);
             DB::commit();
+            \App\Models\AuditLog::record(
+                'payment.submitted',
+                $isCash
+                    ? "Member {$member->full_name} requested to pay PHP " . number_format((float) $plan->price, 2) . " in cash for {$plan->name} ({$invoiceNumber})"
+                    : "Member {$member->full_name} sent a GCash payment of PHP " . number_format((float) $plan->price, 2) . " for {$plan->name} ({$invoiceNumber})",
+                ['type' => 'Payment', 'id' => $payment->id]
+            );
             return response()->json([
                 'success' => true,
-                'message' => 'GCash payment submitted. Waiting for admin verification.',
+                'message' => $isCash
+                    ? 'Cash payment request sent. Pay at the front desk to activate it.'
+                    : 'GCash payment submitted. Waiting for admin verification.',
                 'payment' => [
                     'id' => $payment->id,
                     'invoice_number' => $payment->invoice_number,
@@ -417,76 +433,15 @@ class PaymentController extends Controller
         }
     }
 
+    // Only the member's own, non-deleted record. Never creates or revives one: that
+    // used to hand a deleted member a free Active + Paid month.
     private function resolveAuthenticatedMember(): ?Member
     {
         $user = Auth::user();
-        if (! $user) {
+        if (! $user || ($user->role ?? null) !== 'Member') {
             return null;
         }
 
-        if (isset($user->role) && $user->role !== 'Member') {
-            return null;
-        }
-
-        $member = Member::where('email', $user->email)
-            ->where('is_archived', 0)
-            ->first();
-
-        if ($member) {
-            return $member;
-        }
-
-        $archivedMember = Member::where('email', $user->email)->first();
-        $plan = MembershipPlan::where('is_archived', 0)->orderBy('id')->first();
-
-        if (! $plan) {
-            $plan = MembershipPlan::create([
-                'name' => 'Trial Plan',
-                'type' => 'Monthly',
-                'price' => 0,
-                'period' => '1 month',
-                'description' => 'Trial membership',
-                'is_popular' => 0,
-                'is_deactivated' => 0,
-                'is_archived' => 0,
-            ]);
-        }
-
-        $expiry = now()->addMonth();
-        if (strtolower((string) ($plan->type ?? '')) === 'annual') {
-            $expiry = now()->addYear();
-        } elseif (strtolower((string) ($plan->type ?? '')) === 'quarterly') {
-            $expiry = now()->addMonths(3);
-        }
-
-        if ($archivedMember) {
-            $archivedMember->update([
-                'full_name' => $user->name ?? $archivedMember->full_name ?? 'Member User',
-                'membership_plan_id' => $plan->id,
-                'status' => 'Active',
-                'expiry_date' => $expiry,
-                'payment_status' => 'Paid',
-                'is_archived' => 0,
-            ]);
-
-            return $archivedMember->fresh();
-        }
-
-        do {
-            $memberId = str_pad((string) random_int(1, 9999), 4, '0', STR_PAD_LEFT);
-        } while (Member::where('member_id', $memberId)->exists());
-
-        return Member::create([
-            'member_id' => $memberId,
-            'full_name' => $user->name ?? 'Member User',
-            'email' => $user->email,
-            'phone' => '',
-            'address' => null,
-            'membership_plan_id' => $plan->id,
-            'status' => 'Active',
-            'expiry_date' => $expiry,
-            'payment_status' => 'Paid',
-            'is_archived' => 0,
-        ]);
+        return Member::where('email', $user->email)->where('is_archived', 0)->first();
     }
 }
