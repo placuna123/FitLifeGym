@@ -7,6 +7,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 
@@ -24,8 +25,12 @@ class GymSignupController extends Controller
      */
     public function publicList()
     {
+        // gyms whose owner has not confirmed their email yet are not open to members
+        $unconfirmedOwners = User::whereNull('email_verified_at')->where('role', 'Admin')->pluck('id');
+
         $gyms = Gym::where('is_archived', 0)
             ->whereNotIn('subscription_status', ['suspended', 'cancelled'])
+            ->where(fn ($q) => $q->whereNull('owner_user_id')->orWhereNotIn('owner_user_id', $unconfirmedOwners))
             ->orderBy('name')
             ->get()
             ->filter(fn (Gym $gym) => $gym->allowsAccess())
@@ -143,14 +148,18 @@ class GymSignupController extends Controller
                 return $gym;
             });
 
-            \App\Support\Email::send(
-                User::find($result->owner_user_id),
-                new \App\Notifications\GymWelcome($result->name, $result->subscription_expires_at?->format('M d, Y'))
-            );
+            // The owner proves the email is theirs before the gym opens; the welcome
+            // email, the trial and the Super Admin notice all wait for that.
+            $owner = User::find($result->owner_user_id);
+            $sent = $this->sendVerificationEmail($owner, $result);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Your gym is ready! Your free trial runs until ' . $result->subscription_expires_at?->format('M d, Y') . '. You can now sign in as its Admin.',
+                'needs_verification' => true,
+                'email_sent' => $sent,
+                'message' => $sent
+                    ? "Almost done! We sent a confirmation link to {$normalizedEmail}. Open it to confirm your email, then sign in as Admin."
+                    : "Your gym was created, but the confirmation email could not be sent to {$normalizedEmail}. Use \"Resend confirmation email\" below.",
                 'gym' => [
                     'id' => $result->id,
                     'name' => $result->name,
@@ -163,6 +172,118 @@ class GymSignupController extends Controller
                 'message' => 'Failed to create gym: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /** How long a confirmation link works. */
+    private const VERIFY_LINK_HOURS = 48;
+
+    /**
+     * The link in the confirmation email. Signed, so it cannot be guessed or
+     * changed, and it carries a hash of the email so it stops working if the
+     * address is changed.
+     */
+    private function sendVerificationEmail(?User $owner, Gym $gym): bool
+    {
+        if (! $owner) {
+            return false;
+        }
+
+        $url = URL::temporarySignedRoute(
+            'gyms.verify-email',
+            now()->addHours(self::VERIFY_LINK_HOURS),
+            ['id' => $owner->id, 'hash' => sha1(strtolower($owner->email))],
+        );
+
+        return \App\Support\Email::send($owner, new \App\Notifications\VerifyGymEmail($gym->name, $url, self::VERIFY_LINK_HOURS));
+    }
+
+    /**
+     * The owner opened the link: mark the email as confirmed, start the free
+     * trial from today, send the welcome email and tell the Super Admin.
+     * Then back to the sign-in page with a message.
+     */
+    public function verifyEmail(Request $request, int $id, string $hash)
+    {
+        // checked here, not by the "signed" middleware, so an old link gets a
+        // clear message on the sign-in page instead of a bare error page
+        if (! $request->hasValidSignature()) {
+            return redirect('/?role=admin&reason=verify-expired');
+        }
+
+        $user = User::find($id);
+
+        if (! $user || ! hash_equals(sha1(strtolower($user->email)), $hash)) {
+            return redirect('/?role=admin&reason=verify-invalid');
+        }
+
+        if ($user->email_verified_at) {
+            return redirect('/?role=admin&reason=verified');
+        }
+
+        $gym = $user->gym_id ? Gym::find($user->gym_id) : null;
+
+        DB::transaction(function () use ($user, $gym) {
+            $user->forceFill(['email_verified_at' => now()])->save();
+
+            // the trial counts from the day the gym actually opens
+            if ($gym && $gym->subscription_status === 'trial') {
+                $gym->update(['subscription_expires_at' => now()->addDays((int) config('fitgym.trial_days', 14))->toDateString()]);
+            }
+        });
+
+        if ($gym) {
+            $gym->refresh();
+
+            \App\Models\AuditLog::create([
+                'gym_id' => $gym->id,
+                'user_id' => $user->id,
+                'user_name' => $user->name,
+                'role' => 'Admin',
+                'action' => 'gym.email_verified',
+                'subject_type' => 'Gym',
+                'subject_id' => $gym->id,
+                'description' => "{$user->name} confirmed their email for {$gym->name}",
+                'ip_address' => $request->ip(),
+            ]);
+
+            \App\Support\Email::send($user, new \App\Notifications\GymWelcome($gym->name, $gym->subscription_expires_at?->format('M d, Y')));
+
+            \App\Models\PlatformNotification::notify(
+                'signup',
+                "New branch: {$gym->name}",
+                "{$user->name} ({$user->email}) signed up {$gym->name} and confirmed their email. Its free trial runs until " . $gym->subscription_expires_at?->format('M d, Y') . '.',
+                $gym->id,
+                'branches',
+                "signup:{$gym->id}",
+            );
+        }
+
+        return redirect('/?role=admin&reason=verified');
+    }
+
+    /**
+     * Send the confirmation email again. Always answers the same way, so it
+     * cannot be used to find out which emails have an account.
+     */
+    public function resendVerification(Request $request)
+    {
+        $email = strtolower(trim((string) $request->input('email', '')));
+        $answer = response()->json([
+            'success' => true,
+            'message' => "If {$email} belongs to a gym that is waiting for confirmation, a new link is on its way. Check your inbox and spam folder.",
+        ]);
+
+        if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return response()->json(['success' => false, 'message' => 'Enter the email you signed up with.'], 422);
+        }
+
+        $user = User::where('email', $email)->where('role', 'Admin')->whereNull('email_verified_at')->first();
+        $gym = $user?->gym_id ? Gym::find($user->gym_id) : null;
+        if ($user && $gym) {
+            $this->sendVerificationEmail($user, $gym);
+        }
+
+        return $answer;
     }
 
     private function generateUniqueSlug(string $gymName): string

@@ -26,6 +26,9 @@ import { useQrCheckinScanner } from '@/composables/useQrCheckinScanner';
 import { useSessionGuard } from '@/composables/useSessionGuard';
 import { mergeMemberStreetAddress, memberStreetAddress as editableStreetAddress, parseMemberAddressMeta } from '@/lib/memberAddress';
 import { goToEntry } from '@/lib/portal';
+import { isUserEditing } from '@/lib/editing';
+import { chartPalette } from '@/lib/chartPalette';
+import { useFgTheme } from '@/composables/useFgTheme';
 
 const currentView = ref('dashboard');
 const { mobileNavOpen, closeMobileNav } = useMobileNav();
@@ -471,12 +474,10 @@ async function refreshAdminViewData(view = currentView.value) {
 
   if (view === 'reports') {
     await loadReportsData();
-    return;
   }
 
-  if (view === 'settings') {
-    await Promise.all([loadGymInfo(), loadAdminProfile()]);
-  }
+  // Settings is not refreshed in the background: it is a form, and reloading it
+  // would replace what the admin typed. It loads fresh each time it is opened.
 }
 
 function stopAdminPortalAutoRefresh() {
@@ -491,6 +492,8 @@ function startAdminPortalAutoRefresh() {
   if (!isLoggedIn.value) return;
 
   adminPortalRefreshTimer = window.setInterval(() => {
+    // never refresh under someone who is typing or has a form open
+    if (isUserEditing()) return;
     void refreshAdminViewData();
   }, 15000);
 }
@@ -1463,61 +1466,182 @@ const dashboardActivity = computed(() => {
   });
 });
 
+// Dashboard header line, e.g. "Thursday, November 5"
+const dashboardToday = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+
+// Members per plan for the doughnut: plans that have members, biggest first.
+const dashboardPlanSlices = computed(() => {
+  const revPlans = (reportRevenue.value?.plans as Array<{ id: number; name?: string; member_count?: number }>) || [];
+  return revPlans
+    .map((p) => ({ id: String(p.id), name: String(p.name || 'Plan'), count: Number(p.member_count ?? 0) }))
+    .filter((p) => p.count > 0)
+    .sort((a, b) => b.count - a.count);
+});
+const dashboardPlanTotal = computed(() => dashboardPlanSlices.value.reduce((n, p) => n + p.count, 0));
+// colors for the slices, filled in when the doughnut is drawn so the legend matches it
+const dashboardPlanColors = ref<string[]>([]);
+
+// Money received per day for the last 7 days (today last), from the revenue report.
+const weeklyRevenue = computed(() => {
+  const daily = (reportRevenue.value?.daily_revenue as Array<{ date?: string; amount?: number }>) || [];
+  return daily.slice(-7).map((d, i, all) => ({
+    label: i === all.length - 1 ? 'Today' : new Date(String(d.date)).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' }),
+    amount: Number(d.amount ?? 0),
+  }));
+});
+const weeklyRevenueTotal = computed(() => weeklyRevenue.value.reduce((n, d) => n + d.amount, 0));
+
+const dashboardRevenueCanvas = ref<HTMLCanvasElement | null>(null);
+const dashboardPlanCanvas = ref<HTMLCanvasElement | null>(null);
+let adminRevenueChart: InstanceType<typeof Chart> | null = null;
+let adminPlanChart: InstanceType<typeof Chart> | null = null;
+
 function destroyAdminDashboardChart() {
-  if (adminDashboardChart) {
-    adminDashboardChart.destroy();
-    adminDashboardChart = null;
-  }
+  adminDashboardChart?.destroy();
+  adminDashboardChart = null;
+  adminRevenueChart?.destroy();
+  adminRevenueChart = null;
+  adminPlanChart?.destroy();
+  adminPlanChart = null;
+}
+
+// Gold fill that fades towards the bottom of the chart
+function goldAreaFill(rgb: string) {
+  return (ctx: { chart: Chart }) => {
+    const { ctx: g, chartArea } = ctx.chart;
+    if (!chartArea) return `rgba(${rgb}, 0.18)`;
+    const gradient = g.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+    gradient.addColorStop(0, `rgba(${rgb}, 0.35)`);
+    gradient.addColorStop(1, `rgba(${rgb}, 0)`);
+    return gradient;
+  };
 }
 
 function buildAdminDashboardChart() {
-  if (currentView.value !== 'dashboard' || !dashboardChartCanvas.value) return;
+  if (currentView.value !== 'dashboard') return;
   destroyAdminDashboardChart();
-  const days = weeklyCheckins.value;
-  adminDashboardChart = new Chart(dashboardChartCanvas.value, {
-    type: 'bar',
-    data: {
-      labels: days.map((d) => d.label),
-      datasets: [
-        {
-          label: 'Check-ins',
-          data: days.map((d) => d.count),
-          // today stands out in bright gold, the other days a softer gold
-          backgroundColor: days.map((_, i) => (i === days.length - 1 ? '#F0D48A' : '#B8923A')),
-          borderWidth: 0,
-          borderRadius: 6,
-          maxBarThickness: 46,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.y} check-in${ctx.parsed.y === 1 ? '' : 's'}` } },
+  const c = chartPalette();
+
+  if (dashboardChartCanvas.value) {
+    const days = weeklyCheckins.value;
+    adminDashboardChart = new Chart(dashboardChartCanvas.value, {
+      type: 'line',
+      data: {
+        labels: days.map((d) => d.label),
+        datasets: [
+          {
+            label: 'Check-ins',
+            data: days.map((d) => d.count),
+            borderColor: c.accent,
+            backgroundColor: goldAreaFill(c.accentRgb),
+            fill: true,
+            tension: 0.35,
+            borderWidth: 2,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            pointBackgroundColor: c.accent,
+            pointBorderColor: c.surface,
+            pointBorderWidth: 2,
+          },
+        ],
       },
-      scales: {
-        y: {
-          beginAtZero: true,
-          grid: { color: 'rgba(168,161,150,0.15)' },
-          ticks: { color: '#A8A196', precision: 0 },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.y} check-in${ctx.parsed.y === 1 ? '' : 's'}` } },
         },
-        x: {
-          grid: { display: false },
-          ticks: { color: '#A8A196' },
+        scales: {
+          y: { beginAtZero: true, grid: { color: c.grid }, border: { display: false }, ticks: { color: c.text, precision: 0 } },
+          x: { grid: { display: false }, ticks: { color: c.text } },
         },
+      } as ChartConfiguration<'line'>['options'],
+    });
+  }
+
+  if (dashboardRevenueCanvas.value) {
+    const days = weeklyRevenue.value;
+    adminRevenueChart = new Chart(dashboardRevenueCanvas.value, {
+      type: 'bar',
+      data: {
+        labels: days.map((d) => d.label),
+        datasets: [
+          {
+            label: 'Received',
+            data: days.map((d) => d.amount),
+            // today stands out in bright gold, the other days a softer gold
+            backgroundColor: days.map((_, i) => (i === days.length - 1 ? c.accentLight : c.accentDark)),
+            borderWidth: 0,
+            borderRadius: 6,
+            maxBarThickness: 40,
+          },
+        ],
       },
-    } as ChartConfiguration<'bar'>['options'],
-  });
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: (ctx) => formatCurrency(ctx.parsed.y) } },
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            grid: { color: c.grid },
+            border: { display: false },
+            ticks: { color: c.text, callback: (v) => `₱${Number(v).toLocaleString()}` },
+          },
+          x: { grid: { display: false }, ticks: { color: c.text } },
+        },
+      } as ChartConfiguration<'bar'>['options'],
+    });
+  }
+
+  const slices = dashboardPlanSlices.value;
+  dashboardPlanColors.value = slices.map((_, i) => c.series[i % c.series.length]);
+  if (dashboardPlanCanvas.value && slices.length > 0) {
+    adminPlanChart = new Chart(dashboardPlanCanvas.value, {
+      type: 'doughnut',
+      data: {
+        labels: slices.map((s) => s.name),
+        datasets: [
+          {
+            data: slices.map((s) => s.count),
+            backgroundColor: dashboardPlanColors.value,
+            borderColor: c.surface,
+            borderWidth: 3,
+            hoverOffset: 4,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '72%',
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: (ctx) => ` ${ctx.label}: ${ctx.parsed} member${ctx.parsed === 1 ? '' : 's'}` } },
+        },
+      } as ChartConfiguration<'doughnut'>['options'],
+    });
+  }
 }
 
-// The dashboard canvas only exists once the loading screen is gone, which is after
-// the first data load already tried (and skipped) drawing. Draw when it appears,
-// and redraw when new check-ins come in.
-watch([dashboardChartCanvas, weeklyCheckins], ([canvas]) => {
-  if (canvas) buildAdminDashboardChart();
+// The dashboard canvases only exist once the loading screen is gone, which is after
+// the first data load already tried (and skipped) drawing. Draw when they appear,
+// and redraw when new check-ins, payments or plan numbers come in.
+watch([dashboardChartCanvas, dashboardRevenueCanvas, dashboardPlanCanvas, weeklyCheckins, weeklyRevenue, dashboardPlanSlices], () => {
+  if (dashboardChartCanvas.value) buildAdminDashboardChart();
 });
+
+// Light / dark switch: redraw the charts so they pick up the new palette
+const { theme: fgTheme } = useFgTheme();
+watch(fgTheme, () => nextTick(() => {
+  if (dashboardChartCanvas.value) buildAdminDashboardChart();
+  buildAdminReportCharts();
+}));
 
 const overviewChartData = computed(() => {
   const daily = (reportAttendance.value?.daily_stats as Array<{ date?: string; count?: number }>) || [];
@@ -1585,28 +1709,29 @@ function buildAdminReportCharts() {
   destroyAdminReportCharts();
 
   nextTick(() => {
+    const c = chartPalette();
     const axisOptions = {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { labels: { color: '#A8A196' } },
+        legend: { labels: { color: c.text } },
       },
       scales: {
         y: {
           beginAtZero: true,
-          grid: { color: 'rgba(168,161,150,0.15)' },
-          ticks: { color: '#A8A196' },
+          grid: { color: c.grid },
+          ticks: { color: c.text },
         },
         x: {
           grid: { display: false },
-          ticks: { color: '#A8A196' },
+          ticks: { color: c.text },
         },
       },
     };
     const pieOptions = {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: '#A8A196' } } },
+      plugins: { legend: { labels: { color: c.text } } },
     };
 
     if (reportsTab.value === 'overview' && overviewChartCanvas.value) {
@@ -1619,16 +1744,16 @@ function buildAdminReportCharts() {
             {
               label: 'Check-ins',
               data: overview.checkins,
-              backgroundColor: 'rgba(217,180,90,0.55)',
-              borderColor: '#D9B45A',
+              backgroundColor: `rgba(${c.accentRgb}, 0.55)`,
+              borderColor: c.accent,
               borderWidth: 1,
               borderRadius: 6,
             },
             {
               label: 'Revenue (PHP)',
               data: overview.revenue,
-              backgroundColor: 'rgba(140,122,85,0.55)',
-              borderColor: '#8C7A55',
+              backgroundColor: `rgba(${c.neutralRgb}, 0.55)`,
+              borderColor: c.neutral,
               borderWidth: 1,
               borderRadius: 6,
             },
@@ -1648,10 +1773,10 @@ function buildAdminReportCharts() {
             {
               label: 'Daily Check-ins',
               data: trend.values,
-              borderColor: '#D9B45A',
-              backgroundColor: 'rgba(217,180,90,0.18)',
-              pointBackgroundColor: '#D9B45A',
-              pointBorderColor: '#fff',
+              borderColor: c.accent,
+              backgroundColor: `rgba(${c.accentRgb}, 0.18)`,
+              pointBackgroundColor: c.accent,
+              pointBorderColor: c.surface,
               tension: 0.3,
               fill: true,
             },
@@ -1671,8 +1796,8 @@ function buildAdminReportCharts() {
             {
               label: 'Members',
               data: data.values,
-              backgroundColor: ['#D9B45A', '#B8923A', '#8C7A55', '#F0D48A', '#6B5D45'],
-              borderColor: '#151515',
+              backgroundColor: c.series,
+              borderColor: c.surface,
               borderWidth: 2,
               hoverOffset: 6,
             },
@@ -2041,94 +2166,145 @@ onUnmounted(() => {
             <span>{{ subscriptionNotice }}</span>
             <button type="button" @click="currentView = 'settings'; settingsTab = 'subscription'">How to renew</button>
           </div>
-          <div class="metrics-grid">
-            <div class="metric-card">
-              <div class="metric-icon green">
-                <i class="fas fa-users"></i>
+          <div class="fg-dash">
+            <div class="fg-dash-toolbar">
+              <div class="fg-dash-greeting">
+                <h3>Gym overview</h3>
+                <p>{{ dashboardToday }}</p>
               </div>
-              <div class="metric-content">
-                <h3>{{ membersList.length }}</h3>
-                <p>Total Members</p>
-                <span>{{ activeMemberCount }} active<template v-if="pendingMemberCount"> · {{ pendingMemberCount }} awaiting approval</template></span>
-              </div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-icon blue">
-                <i class="fas fa-calendar-alt"></i>
-              </div>
-              <div class="metric-content">
-                <h3>{{ plansList.length }}</h3>
-                <p>Membership Plans</p>
-                <span>{{ mostSubscribedPlanName() === '-' ? 'No subscribers yet' : `Most popular: ${mostSubscribedPlanName()}` }}</span>
-              </div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-icon yellow">
-                <i class="fas fa-coins"></i>
-              </div>
-              <div class="metric-content">
-                <h3>{{ revenueMonthly() }}</h3>
-                <p>Monthly Revenue</p>
-                <span>{{ pendingPaymentCount ? `${pendingPaymentCount} payment${pendingPaymentCount === 1 ? '' : 's'} to approve` : 'No payments waiting' }}</span>
-              </div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-icon purple">
-                <i class="fas fa-star"></i>
-              </div>
-              <div class="metric-content">
-                <h3>{{ expiringSoon() }}</h3>
-                <p>Expiring Soon</p>
-                <span>Memberships ending in 30 days</span>
-              </div>
-            </div>
-          </div>
-          <div class="dashboard-card dashboard-chart-card">
-            <div class="dashboard-chart-head">
-              <h3>Check-ins, Last 7 Days</h3>
-              <span>{{ weeklyCheckinTotal }} visit{{ weeklyCheckinTotal === 1 ? '' : 's' }} this week</span>
-            </div>
-            <div class="reports-chart-wrap">
-              <canvas ref="dashboardChartCanvas"></canvas>
-              <p v-if="weeklyCheckinTotal === 0" class="dashboard-chart-empty">No check-ins in the last 7 days. Visits show here as members scan in at the front desk.</p>
-            </div>
-          </div>
-          <div class="dashboard-grid">
-            <div class="dashboard-card">
-              <h3>Quick Actions</h3>
-              <div class="quick-actions">
-                <button type="button" class="quick-action-btn green" @click="openAddMember">
-                  <i class="fas fa-user-plus"></i>
-                  <span>Add New Member</span>
+              <div class="fg-dash-actions">
+                <button type="button" class="fg-dash-btn fg-dash-btn--primary" @click="openAddMember">
+                  <i class="fas fa-user-plus" aria-hidden="true"></i>
+                  Add Member
                 </button>
-                <button type="button" class="quick-action-btn blue" @click="openAddPayment">
-                  <i class="fas fa-money-bill-wave"></i>
-                  <span>Record Payment</span>
+                <button type="button" class="fg-dash-btn" @click="openAddPayment">
+                  <i class="fas fa-money-bill-wave" aria-hidden="true"></i>
+                  Record Payment
                 </button>
-                <button type="button" class="quick-action-btn blue" @click="currentView = 'reports'">
-                  <i class="fas fa-file-alt"></i>
-                  <span>Generate Report</span>
+                <button type="button" class="fg-dash-btn" @click="currentView = 'reports'">
+                  <i class="fas fa-file-alt" aria-hidden="true"></i>
+                  Reports
                 </button>
               </div>
             </div>
-          <div class="recent-activity">
-            <h3>Recent Activity</h3>
-            <div class="activity-list">
-              <template v-if="dashboardActivity.length > 0">
-                <div v-for="a in dashboardActivity" :key="a.id" class="activity-item">
-                  <div class="activity-avatar">{{ a.initials }}</div>
-                  <div class="activity-content">
-                    <p class="activity-name">{{ a.name }}</p>
-                    <p class="activity-when">{{ a.when }} · {{ a.detail }}</p>
-                  </div>
-                  <span :class="['activity-tag', a.inside ? 'yellow' : 'blue']">{{ a.inside ? 'In gym' : 'Done' }}</span>
+
+            <div class="fg-dash-kpis">
+              <div class="fg-dash-kpi">
+                <div class="fg-dash-kpi-head">
+                  <span>Total Members</span>
+                  <span class="fg-dash-kpi-icon"><i class="fas fa-users" aria-hidden="true"></i></span>
                 </div>
-              </template>
-              <template v-else>
-                <p class="placeholder-text">No check-ins yet. They show up here as members scan in at the front desk.</p>
-              </template>
+                <div class="fg-dash-kpi-value">{{ membersList.length }}</div>
+                <div :class="['fg-dash-kpi-sub', { 'is-alert': pendingMemberCount }]">
+                  {{ activeMemberCount }} active<template v-if="pendingMemberCount"> · {{ pendingMemberCount }} awaiting approval</template>
+                </div>
+              </div>
+              <div class="fg-dash-kpi">
+                <div class="fg-dash-kpi-head">
+                  <span>Revenue This Month</span>
+                  <span class="fg-dash-kpi-icon"><i class="fas fa-coins" aria-hidden="true"></i></span>
+                </div>
+                <div class="fg-dash-kpi-value">{{ revenueMonthly() }}</div>
+                <div :class="['fg-dash-kpi-sub', { 'is-alert': pendingPaymentCount }]">
+                  {{ pendingPaymentCount ? `${pendingPaymentCount} payment${pendingPaymentCount === 1 ? '' : 's'} to approve` : 'No payments waiting' }}
+                </div>
+              </div>
+              <div class="fg-dash-kpi">
+                <div class="fg-dash-kpi-head">
+                  <span>Check-ins This Week</span>
+                  <span class="fg-dash-kpi-icon"><i class="fas fa-door-open" aria-hidden="true"></i></span>
+                </div>
+                <div class="fg-dash-kpi-value">{{ weeklyCheckinTotal }}</div>
+                <div class="fg-dash-kpi-sub">{{ weeklyCheckins[6]?.count ?? 0 }} today</div>
+              </div>
+              <div class="fg-dash-kpi">
+                <div class="fg-dash-kpi-head">
+                  <span>Expiring Soon</span>
+                  <span class="fg-dash-kpi-icon"><i class="fas fa-hourglass-half" aria-hidden="true"></i></span>
+                </div>
+                <div class="fg-dash-kpi-value">{{ expiringSoon() }}</div>
+                <div class="fg-dash-kpi-sub">Memberships ending in 30 days</div>
+              </div>
             </div>
-          </div>
+
+            <div class="fg-dash-row">
+              <div class="fg-dash-card fg-dash-span-2">
+                <div class="fg-dash-card-head">
+                  <div>
+                    <h3>Check-ins, Last 7 Days</h3>
+                    <p>{{ weeklyCheckinTotal }} visit{{ weeklyCheckinTotal === 1 ? '' : 's' }} this week</p>
+                  </div>
+                  <button type="button" class="fg-dash-link" @click="currentView = 'attendance'">Attendance</button>
+                </div>
+                <div class="fg-dash-chart">
+                  <canvas ref="dashboardChartCanvas" aria-label="Check-ins per day for the last 7 days" role="img"></canvas>
+                  <p v-if="weeklyCheckinTotal === 0" class="fg-dash-empty">No check-ins in the last 7 days. Visits show here as members scan in at the front desk.</p>
+                </div>
+              </div>
+
+              <div class="fg-dash-card">
+                <div class="fg-dash-card-head">
+                  <div>
+                    <h3>Members by Plan</h3>
+                    <p>{{ plansList.length }} plan{{ plansList.length === 1 ? '' : 's' }} offered</p>
+                  </div>
+                  <button type="button" class="fg-dash-link" @click="currentView = 'membership-plans'">Plans</button>
+                </div>
+                <template v-if="dashboardPlanSlices.length > 0">
+                  <div class="fg-dash-donut">
+                    <canvas ref="dashboardPlanCanvas" aria-label="Members per membership plan" role="img"></canvas>
+                    <div class="fg-dash-donut-center">
+                      <strong>{{ dashboardPlanTotal }}</strong>
+                      <span>on a plan</span>
+                    </div>
+                  </div>
+                  <ul class="fg-dash-legend">
+                    <li v-for="(s, i) in dashboardPlanSlices" :key="s.id">
+                      <span class="fg-dash-swatch" :style="{ background: dashboardPlanColors[i] }"></span>
+                      <span class="fg-dash-legend-name">{{ s.name }}</span>
+                      <span class="fg-dash-legend-value">{{ s.count }}</span>
+                    </li>
+                  </ul>
+                </template>
+                <p v-else class="fg-dash-placeholder">No members on a plan yet. The split shows here once members subscribe.</p>
+              </div>
+            </div>
+
+            <div class="fg-dash-row">
+              <div class="fg-dash-card fg-dash-span-2">
+                <div class="fg-dash-card-head">
+                  <div>
+                    <h3>Payments Received, Last 7 Days</h3>
+                    <p>{{ formatCurrency(weeklyRevenueTotal) }} this week</p>
+                  </div>
+                  <button type="button" class="fg-dash-link" @click="currentView = 'payments'">Payments</button>
+                </div>
+                <div class="fg-dash-chart">
+                  <canvas ref="dashboardRevenueCanvas" aria-label="Payments received per day for the last 7 days" role="img"></canvas>
+                  <p v-if="weeklyRevenueTotal === 0" class="fg-dash-empty">No paid payments in the last 7 days.</p>
+                </div>
+              </div>
+
+              <div class="fg-dash-card">
+                <div class="fg-dash-card-head">
+                  <div>
+                    <h3>Recent Activity</h3>
+                    <p>Latest front-desk check-ins</p>
+                  </div>
+                </div>
+                <ul v-if="dashboardActivity.length > 0" class="fg-dash-list">
+                  <li v-for="a in dashboardActivity" :key="a.id">
+                    <span class="fg-dash-avatar">{{ a.initials }}</span>
+                    <div class="fg-dash-person">
+                      <p>{{ a.name }}</p>
+                      <p>{{ a.when }} · {{ a.detail }}</p>
+                    </div>
+                    <span :class="['fg-dash-tag', { 'fg-dash-tag--gold': a.inside }]">{{ a.inside ? 'In gym' : 'Done' }}</span>
+                  </li>
+                </ul>
+                <p v-else class="fg-dash-placeholder">No check-ins yet. They show up here as members scan in at the front desk.</p>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -2157,13 +2333,11 @@ onUnmounted(() => {
             </button>
           </div>
           <div class="table-container">
-            <table class="data-table">
+            <table class="data-table members-table">
               <thead>
                 <tr>
                   <th>Member</th>
-                  <th>ID</th>
                   <th>Contact</th>
-                  <th>Address</th>
                   <th>Plan</th>
                   <th>Status</th>
                   <th>Expiry</th>
@@ -2177,14 +2351,17 @@ onUnmounted(() => {
                     <div class="member-cell">
                       <div class="member-avatar">{{ String(m.full_name || '').slice(0, 2).toUpperCase() }}</div>
                       <div>
-                        <p>{{ m.full_name }}</p>
-                        <span>{{ m.email }}</span>
+                        <p :title="String(m.full_name || '')">{{ m.full_name }}</p>
+                        <span :title="String(m.email || '')">ID {{ m.member_id }} · {{ m.email }}</span>
                       </div>
                     </div>
                   </td>
-                  <td>{{ m.member_id }}</td>
-                  <td>{{ m.phone || '-' }}</td>
-                  <td>{{ memberStreetAddress(m.address) }}</td>
+                  <td>
+                    <div class="members-table-stack">
+                      <p>{{ m.phone || '-' }}</p>
+                      <span :title="memberStreetAddress(m.address)">{{ memberStreetAddress(m.address) }}</span>
+                    </div>
+                  </td>
                   <td>{{ m.membership_plan }}</td>
                   <td>
                     <span :class="['status-badge', memberStatusBadge(m.status, m.expiry_date as string)]">
@@ -2206,7 +2383,7 @@ onUnmounted(() => {
                   </td>
                 </tr>
                 <tr v-if="filteredMembers().length === 0">
-                  <td colspan="9" class="empty-row">No members found.</td>
+                  <td colspan="7" class="empty-row">No members found.</td>
                 </tr>
               </tbody>
             </table>
@@ -2271,7 +2448,7 @@ onUnmounted(() => {
               :class="['plan-card', (p as Record<string, unknown>).is_popular ? 'popular' : '', (p as Record<string, unknown>).is_deactivated ? 'deactivated' : '']"
             >
               <span v-if="(p as Record<string, unknown>).is_popular" class="popular-badge">POPULAR</span>
-              <span v-if="(p as Record<string, unknown>).is_deactivated" class="popular-badge" style="right: auto; left: 1rem; background: #C4544C; color: #fff;">DEACTIVATED</span>
+              <span v-if="(p as Record<string, unknown>).is_deactivated" class="popular-badge" style="right: auto; left: 1rem; background: var(--fg-danger); color: #fff;">DEACTIVATED</span>
               <h3>{{ (p as Record<string, unknown>).name }}</h3>
               <div class="plan-price">
                 <span class="price">{{ formatCurrency((p as Record<string, unknown>).price) }}</span>
@@ -2407,14 +2584,14 @@ onUnmounted(() => {
             <div class="mt-4 flex flex-wrap gap-3">
               <button
                 type="button"
-                class="rounded px-4 py-2 font-medium"
+                class="fg-btn rounded px-4 py-2 font-medium"
                 :class="adminQrScannerActive ? 'bg-[var(--accent-pink)] text-white' : 'bg-[var(--accent-green)] text-[var(--fg-accent-ink)]'"
                 :disabled="adminQrScannerBusy"
                 @click="adminQrScannerActive ? stopAdminQrScanner() : startAdminQrScanner()"
               >
                 {{ adminQrScannerActive ? 'Stop Scan' : 'Start Scan' }}
               </button>
-              <button type="button" class="rounded bg-[var(--bg-input)] px-4 py-2 font-medium text-[var(--text-primary)] hover:opacity-90" @click="stopAdminQrScanner(); showMemberQrScannerModal = false">
+              <button type="button" class="fg-btn rounded bg-[var(--bg-input)] px-4 py-2 font-medium text-[var(--text-primary)] hover:opacity-90" @click="stopAdminQrScanner(); showMemberQrScannerModal = false">
                 Close
               </button>
             </div>
@@ -2428,7 +2605,7 @@ onUnmounted(() => {
             />
             <button
               type="button"
-              class="mt-3 w-full rounded-lg bg-[var(--accent-blue)] py-2 font-medium text-[#f5f1e8] hover:opacity-90"
+              class="fg-btn mt-3 w-full rounded-lg bg-[var(--accent-blue)] py-2 font-medium text-[#f5f1e8] hover:opacity-90"
               :disabled="adminQrScannerBusy"
               @click="submitAdminQrPayload()"
             >
@@ -3601,30 +3778,30 @@ onUnmounted(() => {
   --accent-blue: var(--fg-secondary);
   --accent-purple: var(--fg-accent);
   --accent-purple-light: var(--fg-accent);
-  --accent-pink: #C4544C;
+  --accent-pink: var(--fg-danger);
   --accent-yellow: var(--fg-accent);
   --border-color: var(--fg-card-border);
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: var(--fg-font);
 }
 
 .admin-portal {
   background:
     radial-gradient(circle at top left, rgba(var(--fg-accent-rgb), 0.18), transparent 26%),
-    radial-gradient(circle at bottom right, rgba(255, 107, 107, 0.12), transparent 30%),
+    radial-gradient(circle at bottom right, rgba(var(--fg-accent-dark-rgb), 0.12), transparent 30%),
     var(--bg-primary);
 }
 
 .admin-auth-shell {
   background:
     radial-gradient(circle at top, rgba(var(--fg-accent-rgb), 0.18), transparent 28%),
-    radial-gradient(circle at bottom right, rgba(255, 107, 107, 0.1), transparent 26%),
+    radial-gradient(circle at bottom right, rgba(var(--fg-accent-dark-rgb), 0.1), transparent 26%),
     transparent;
 }
 
 .admin-auth-card {
   background: var(--bg-card);
   border-color: var(--border-color);
-  box-shadow: 0 28px 80px rgba(2, 6, 23, 0.45);
+  box-shadow: none;
 }
 
 .admin-auth-eyebrow {
@@ -3678,10 +3855,10 @@ onUnmounted(() => {
 }
 
 .admin-auth-error {
-  background: rgba(255, 107, 107, 0.12);
-  border: 1px solid rgba(255, 107, 107, 0.3);
+  background: rgba(var(--fg-danger-rgb), 0.12);
+  border: 1px solid rgba(var(--fg-danger-rgb), 0.45);
   border-radius: 0.75rem;
-  color: #fecaca;
+  color: var(--fg-danger-text);
   margin-bottom: 1rem;
   padding: 0.75rem 0.9rem;
 }
@@ -3705,13 +3882,6 @@ onUnmounted(() => {
   border-color: rgba(var(--fg-accent-deep-rgb), 0.35);
 }
 
-/* backdrop-filter would trap the fixed-position mobile drawer inside the shell */
-@media (min-width: 1024px) {
-  .admin-shell {
-    backdrop-filter: blur(12px);
-  }
-}
-
 .admin-sidebar {
   background:
     linear-gradient(180deg, rgba(var(--fg-accent-rgb), 0.07) 0%, rgba(var(--fg-accent-rgb), 0) 45%),
@@ -3724,7 +3894,7 @@ onUnmounted(() => {
 .admin-header-button {
   background: var(--bg-card);
   border-color: var(--border-color);
-  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
+  box-shadow: 0 0 0 1px var(--border-color);
 }
 
 .admin-avatar {
@@ -3745,7 +3915,7 @@ onUnmounted(() => {
 
 .admin-nav-item.active {
   background: rgba(var(--fg-accent-rgb), 0.92);
-  box-shadow: 0 14px 28px rgba(var(--fg-accent-rgb), 0.28);
+  box-shadow: none;
   color: #fff;
 }
 
@@ -3787,7 +3957,8 @@ onUnmounted(() => {
   width: min(26rem, 100vw);
   border-left: 1px solid var(--fg-card-border);
   color: var(--fg-card-ink);
-  box-shadow: -18px 0 40px rgba(0, 0, 0, 0.25) !important;
+  box-shadow: none !important;
+  border-left: 1px solid var(--fg-card-border);
 }
 
 .notif-drawer-head {
@@ -3872,7 +4043,7 @@ onUnmounted(() => {
 
 .notif-drawer-error {
   margin: 0.75rem 1.25rem 0;
-  color: #c4544c;
+  color: var(--fg-danger-text);
   font-size: 0.85rem;
 }
 
@@ -3901,7 +4072,7 @@ onUnmounted(() => {
 }
 
 .notif-item--high {
-  border-left-color: #c4544c;
+  border-left-color: var(--fg-danger);
 }
 
 .notif-item--read {
@@ -4130,7 +4301,7 @@ onUnmounted(() => {
 }
 
 .fitgym-admin .error-message {
-  color: #C4544C;
+  color: var(--fg-danger-text);
   margin-bottom: 0.625rem;
   font-size: 0.875rem;
 }
@@ -4212,7 +4383,7 @@ onUnmounted(() => {
 .nav-item:hover {
   background: var(--bg-card);
   color: var(--text-primary);
-  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
+  box-shadow: 0 0 0 1px var(--border-color);
 }
 
 .nav-item.active {
@@ -4335,7 +4506,7 @@ onUnmounted(() => {
   display: flex;
   gap: 0.625rem;
   align-items: flex-start;
-  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
+  box-shadow: 0 0 0 1px var(--border-color);
 }
 
 .metric-icon {
@@ -4410,7 +4581,7 @@ onUnmounted(() => {
   border-radius: 0.75rem;
   overflow-x: auto;
   width: 100%;
-  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
+  box-shadow: 0 0 0 1px var(--border-color);
 }
 
 /* Wide tables scroll inside .table-container instead of crushing columns */
@@ -4484,13 +4655,13 @@ onUnmounted(() => {
 }
 
 .status-badge.active {
-  background: var(--accent-green);
-  color: var(--fg-accent-ink);
+  background: rgba(var(--fg-success-rgb), 0.16);
+  color: var(--fg-success-text);
 }
 
 .status-badge.inactive {
-  background: var(--accent-pink);
-  color: #fff;
+  background: rgba(var(--fg-neutral-rgb), 0.18);
+  color: var(--fg-neutral-text);
 }
 
 .empty-row {
@@ -4519,7 +4690,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 0.9375rem;
-  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
+  box-shadow: 0 0 0 1px var(--border-color);
 }
 
 .summary-card i {
@@ -4565,12 +4736,12 @@ onUnmounted(() => {
   padding: 1.5625rem;
   border-radius: 0.75rem;
   position: relative;
-  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
+  box-shadow: 0 0 0 1px var(--border-color);
 }
 
 .plan-card.deactivated {
   opacity: 0.85;
-  border: 1px dashed #C4544C;
+  border: 1px dashed var(--fg-danger);
 }
 
 .plan-card.popular .popular-badge {
@@ -4683,7 +4854,7 @@ onUnmounted(() => {
 .plan-actions :is(.btn-edit, .btn-deactivate, .btn-delete) {
   flex: 1;
   padding: 0.625rem;
-  background: linear-gradient(135deg, var(--fg-accent-light) 0%, var(--fg-accent) 55%, var(--fg-accent-dark) 100%);
+  background: var(--fg-accent);
   color: var(--fg-accent-ink);
   border: 1px solid var(--fg-accent-light);
   border-radius: 0.375rem;
@@ -4754,7 +4925,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  box-shadow: 0 0 12px rgba(var(--fg-accent-rgb), 0.3);
+  box-shadow: none;
 }
 
 .btn-add-member:hover {
@@ -4773,7 +4944,7 @@ onUnmounted(() => {
   background: var(--bg-card);
   padding: 1.5625rem;
   border-radius: 0.75rem;
-  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
+  box-shadow: 0 0 0 1px var(--border-color);
 }
 
 .attendance-card p {
@@ -4898,7 +5069,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 1.25rem;
-  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
+  box-shadow: 0 0 0 1px var(--border-color);
 }
 
 .current-member-avatar {
@@ -5047,7 +5218,7 @@ onUnmounted(() => {
   background: var(--bg-card);
   padding: 1.5625rem;
   border-radius: 0.75rem;
-  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
+  box-shadow: 0 0 0 1px var(--border-color);
 }
 
 .report-card h3 {
@@ -5066,7 +5237,7 @@ onUnmounted(() => {
   background: var(--bg-card);
   border-radius: 0.75rem;
   padding: 1.25rem;
-  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
+  box-shadow: 0 0 0 1px var(--border-color);
 }
 
 .reports-chart-card h3 {
@@ -5142,23 +5313,23 @@ onUnmounted(() => {
 }
 
 .status-badge.paid {
-  background: var(--accent-green);
-  color: var(--fg-accent-ink);
+  background: rgba(var(--fg-success-rgb), 0.16);
+  color: var(--fg-success-text);
 }
 
 .status-badge.pending {
-  background: var(--accent-blue);
-  color: #f5f1e8;
+  background: rgba(var(--fg-warning-rgb), 0.16);
+  color: var(--fg-warning-text);
 }
 
 .status-badge.cancelled {
-  background: var(--accent-pink);
-  color: #fff;
+  background: rgba(var(--fg-danger-rgb), 0.16);
+  color: var(--fg-danger-text);
 }
 
 .status-badge.overdue {
-  background: var(--accent-pink);
-  color: #fff;
+  background: rgba(var(--fg-danger-rgb), 0.16);
+  color: var(--fg-danger-text);
 }
 
 /* Empty state & settings */
@@ -5195,10 +5366,10 @@ onUnmounted(() => {
 .notification-inline-error {
   margin-bottom: 1rem;
   padding: 0.875rem 1rem;
-  border: 1px solid rgba(255, 107, 107, 0.35);
+  border: 1px solid rgba(var(--fg-danger-rgb), 0.45);
   border-radius: 0.75rem;
-  background: rgba(255, 107, 107, 0.12);
-  color: #ffd2d2;
+  background: rgba(var(--fg-danger-rgb), 0.12);
+  color: var(--fg-danger-text);
   font-size: 0.875rem;
 }
 
@@ -5262,11 +5433,11 @@ onUnmounted(() => {
   padding: 1.25rem;
   border-radius: 0.75rem;
   border-left: 4px solid var(--border-color);
-  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
+  box-shadow: 0 0 0 1px var(--border-color);
 }
 
 .notification-card.pink {
-  border-left-color: var(--accent-pink);
+  border-left-color: var(--fg-danger);
 }
 
 .notification-card.yellow {
@@ -5320,13 +5491,13 @@ onUnmounted(() => {
 }
 
 .notification-priority.high {
-  background: rgba(255, 107, 107, 0.2);
-  color: var(--accent-pink);
+  background: rgba(var(--fg-danger-rgb), 0.2);
+  color: var(--fg-danger-text);
 }
 
 .notification-priority.info {
-  background: rgba(var(--fg-accent-rgb), 0.2);
-  color: var(--fg-card-gold);
+  background: rgba(var(--fg-info-rgb), 0.18);
+  color: var(--fg-info-text);
 }
 
 .notification-actions {
@@ -5359,15 +5530,15 @@ onUnmounted(() => {
 }
 
 .notification-history-badge.read {
-  background: rgba(var(--fg-accent-rgb), 0.12);
-  border-color: rgba(var(--fg-accent-rgb), 0.28);
-  color: var(--fg-card-gold);
+  background: rgba(var(--fg-info-rgb), 0.12);
+  border-color: rgba(var(--fg-info-rgb), 0.3);
+  color: var(--fg-info-text);
 }
 
 .notification-history-badge.dismissed {
-  background: rgba(255, 107, 107, 0.12);
-  border-color: rgba(255, 107, 107, 0.28);
-  color: var(--accent-pink);
+  background: rgba(var(--fg-neutral-rgb), 0.14);
+  border-color: rgba(var(--fg-neutral-rgb), 0.3);
+  color: var(--fg-neutral-text);
 }
 
 /* Empty states sit straight on the marble background */
@@ -5405,7 +5576,7 @@ onUnmounted(() => {
   padding: 1.875rem;
   border-radius: 0.75rem;
   min-width: 0;
-  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
+  box-shadow: 0 0 0 1px var(--border-color);
 }
 
 .settings-content h3 {
@@ -5431,7 +5602,7 @@ onUnmounted(() => {
   background: var(--bg-card);
   padding: 1.5625rem;
   border-radius: 0.75rem;
-  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
+  box-shadow: 0 0 0 1px var(--border-color);
 }
 
 .dashboard-card h3 {
@@ -5457,7 +5628,7 @@ onUnmounted(() => {
   font-weight: 600;
   cursor: pointer;
   text-align: left;
-  color: #000;
+  color: var(--fg-accent-ink);
 }
 
 .quick-action-btn.green {
@@ -5480,7 +5651,7 @@ onUnmounted(() => {
   padding: 1.5625rem;
   border-radius: 0.75rem;
   margin-top: 1.25rem;
-  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
+  box-shadow: 0 0 0 1px var(--border-color);
 }
 
 .recent-activity h3 {
@@ -5573,13 +5744,13 @@ onUnmounted(() => {
 }
 
 .activity-tag.yellow {
-  background: var(--accent-yellow);
-  color: var(--fg-accent-ink);
+  background: rgba(var(--fg-success-rgb), 0.18);
+  color: var(--fg-success-text);
 }
 
 .activity-tag.blue {
-  background: var(--accent-blue);
-  color: #fff;
+  background: rgba(var(--fg-neutral-rgb), 0.18);
+  color: var(--fg-neutral-text);
 }
 
 /* Settings container */
@@ -5750,11 +5921,11 @@ onUnmounted(() => {
 }
 
 .notification-info-text.is-ok {
-  color: var(--fg-card-gold);
+  color: var(--fg-success-text);
 }
 
 .notification-info-text.is-warn {
-  color: var(--fg-card-gold);
+  color: var(--fg-warning-text);
 }
 
 .settings-section h4 {
@@ -5792,7 +5963,7 @@ onUnmounted(() => {
 
 .subscription-value.is-warn,
 .subscription-sub.is-warn {
-  color: #e08c86;
+  color: var(--fg-danger-text);
 }
 
 .subscription-plans,
@@ -5841,7 +6012,7 @@ onUnmounted(() => {
 }
 
 .subscription-ok {
-  color: var(--fg-accent-light);
+  color: var(--fg-success-text);
 }
 
 .proof-status {
@@ -5849,11 +6020,15 @@ onUnmounted(() => {
 }
 
 .proof-status.is-pending {
-  color: var(--fg-accent-light);
+  color: var(--fg-warning-text);
 }
 
 .proof-status.is-rejected {
-  color: #e08c86;
+  color: var(--fg-danger-text);
+}
+
+.proof-status.is-approved {
+  color: var(--fg-success-text);
 }
 
 .subscription-banner {
@@ -5970,7 +6145,7 @@ onUnmounted(() => {
   max-height: 90vh;
   max-height: 90dvh;
   overflow-y: auto;
-  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
+  box-shadow: 0 0 0 1px var(--border-color);
 }
 
 .receipt-modal-content {

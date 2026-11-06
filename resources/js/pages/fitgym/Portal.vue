@@ -17,21 +17,21 @@ import {
 
 const pw = usePasswordVisibility();
 
-// Same palette as the Admin / Trainer / Member portals — nothing new introduced.
-// Box colors come from the shared --fg-card-* tokens in app.css (the keys keep their old names)
+// Same palette as the Admin / Trainer / Member portals: every color is a shared token in app.css.
+// The keys keep their old names; the role and feature accents are now shades of the brand gold.
 const portal = {
   dark: 'var(--fg-card)',
   dark2: 'var(--fg-card-2)',
   dark3: 'var(--fg-card)',
   sidebar: 'var(--fg-card-sidebar)',
   border: 'var(--fg-card-border)',
-  purple: '#8A2BE2',
-  purpleLight: '#6A4BC4',
-  pink: '#E0565B',
-  cyan: '#1E88C8',
-  lime: '#5FA82E',
+  purple: 'var(--fg-accent)',
+  purpleLight: 'var(--fg-card-gold)',
+  pink: 'var(--fg-accent-light)',
+  cyan: 'var(--fg-accent-dark)',
+  lime: 'var(--fg-accent)',
   textDim: 'var(--fg-card-ink-soft)',
-  primaryText: '#FFFFFF',
+  primaryText: 'var(--fg-accent-ink)',
 };
 
 type RoleCard = {
@@ -259,10 +259,14 @@ async function handleGymSignup() {
     const { data } = await gymSignup.store(gymSignupForm.value);
 
     if (data.success) {
+      const email = gymSignupForm.value.admin_email.trim().toLowerCase();
       resetGymSignupForm();
       selectedRole.value = 'admin';
       authMode.value = 'login';
-      notice.value = 'Your gym is ready! Sign in below as its Admin.';
+      loginForm.value.email = email;
+      // the owner confirms their email before they can sign in
+      verifyEmail.value = (data as { needs_verification?: boolean }).needs_verification ? email : '';
+      notice.value = (data as { message?: string }).message || 'Your gym is ready! Sign in below as its Admin.';
       return;
     }
 
@@ -336,8 +340,32 @@ async function handleLogin() {
     loginError.value = (data as { message?: string })?.message || 'Login failed. Please try again.';
   } catch (err: unknown) {
     loginError.value = loginErrorMessage(err);
+    // an owner who has not confirmed their email yet gets a "send it again" button
+    const needs = (err as { response?: { data?: { needs_verification?: boolean } } }).response?.data?.needs_verification;
+    verifyEmail.value = needs ? credentials.email : '';
   } finally {
     loginLoading.value = false;
+  }
+}
+
+// Email confirmation for gym owners who signed up on the website
+const verifyEmail = ref('');
+const resendLoading = ref(false);
+
+async function resendVerification() {
+  if (resendLoading.value || !verifyEmail.value) return;
+  resendLoading.value = true;
+  loginError.value = '';
+  try {
+    const { data } = await gymSignup.resendVerification(verifyEmail.value);
+    notice.value = (data as { message?: string }).message || 'A new confirmation link is on its way.';
+  } catch (err: unknown) {
+    const ax = err as { response?: { status?: number; data?: { message?: string } } };
+    loginError.value = ax.response?.status === 429
+      ? 'Please wait a minute before asking for another email.'
+      : ax.response?.data?.message || 'Could not send the email. Please try again.';
+  } finally {
+    resendLoading.value = false;
   }
 }
 
@@ -477,6 +505,15 @@ onMounted(async () => {
   } else if (params.get('reason') === 'password-reset') {
     notice.value = 'Your password has been reset. Sign in with your new password.';
     viewState.value = 'auth';
+  } else if (params.get('reason') === 'verified') {
+    notice.value = 'Your email is confirmed and your gym is open. Sign in below as its Admin.';
+    viewState.value = 'auth';
+  } else if (params.get('reason') === 'verify-expired') {
+    loginError.value = 'That confirmation link has expired. Sign in with your email and password to get a new one.';
+    viewState.value = 'auth';
+  } else if (params.get('reason') === 'verify-invalid') {
+    loginError.value = 'That confirmation link is not valid. Sign in with your email and password to get a new one.';
+    viewState.value = 'auth';
   }
 
   try {
@@ -537,7 +574,7 @@ onUnmounted(() => {
       <rect x="88" y="10" width="10" height="20" rx="2" />
     </svg>
     <svg class="entry-deco entry-deco--pulse" viewBox="0 0 200 40" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-      <path d="M0 20h30l10-14 12 28 10-20 8 12 10-6h130" stroke-linecap="round" stroke-linejoin="round" />
+      <path d="M0 20h30l10-14 12 28 10-20 8 12 10-6h130" pathLength="100" stroke-linecap="round" stroke-linejoin="round" />
     </svg>
     <svg class="entry-deco entry-deco--kettlebell" viewBox="0 0 40 46" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M14 10c0-5 3-8 6-8s6 3 6 8" />
@@ -721,6 +758,13 @@ onUnmounted(() => {
           </div>
 
           <div v-if="loginError" class="entry-error">{{ loginError }}</div>
+
+          <div v-if="verifyEmail && selectedRole === 'admin'" class="entry-verify">
+            <span>Didn't get the email for <strong>{{ verifyEmail }}</strong>? Check your spam folder, or</span>
+            <button type="button" class="entry-verify-btn" :disabled="resendLoading" @click="resendVerification">
+              {{ resendLoading ? 'Sending…' : 'Resend confirmation email' }}
+            </button>
+          </div>
 
           <form class="entry-form" @submit.prevent="handleLogin">
             <div class="entry-field">
@@ -1111,7 +1155,7 @@ onUnmounted(() => {
   overflow: hidden;
   padding: 1.25rem 1rem;
   color: var(--fg-card-ink);
-  font-family: 'Instrument Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: var(--fg-font);
 }
 
 .entry-deco {
@@ -1189,7 +1233,7 @@ onUnmounted(() => {
 .entry-logo svg {
   width: 1.6rem;
   height: 1.6rem;
-  color: #ffffff;
+  color: var(--fg-accent-ink);
 }
 
 /* Brand, hero and footnote text sit straight on the marble background, so they use dark ink */
@@ -1314,8 +1358,8 @@ onUnmounted(() => {
 }
 
 .hero-ghost {
-  border-color: #3f6b00;
-  color: #3f6b00;
+  border-color: var(--fg-accent-deep);
+  color: var(--fg-accent-deep);
 }
 
 .hero-footnote {
@@ -1325,7 +1369,7 @@ onUnmounted(() => {
 }
 
 .hero-footnote a {
-  color: #6b3fc4;
+  color: var(--fg-accent-deep);
   text-decoration: none;
   font-weight: 600;
 }
@@ -1353,7 +1397,7 @@ onUnmounted(() => {
   border-width: 1px;
   border-style: solid;
   padding: 1.4rem 1.6rem;
-  box-shadow: 0 18px 44px rgba(92, 70, 30, 0.1);
+  box-shadow: none;
 }
 
 .entry-card--center {
@@ -1488,11 +1532,47 @@ onUnmounted(() => {
 .entry-error {
   margin-bottom: 0.85rem;
   border-radius: 0.7rem;
-  border: 1px solid rgba(224, 86, 91, 0.5);
-  background-color: rgba(224, 86, 91, 0.1);
+  border: 1px solid rgba(var(--fg-danger-rgb), 0.45);
+  background-color: rgba(var(--fg-danger-rgb), 0.12);
   padding: 0.7rem 0.85rem;
   font-size: 0.85rem;
-  color: #f08a8e;
+  color: var(--fg-danger-text);
+}
+
+/* "Didn't get the confirmation email?" under the sign-in messages */
+.entry-verify {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  margin-bottom: 0.85rem;
+  border: 1px solid var(--fg-card-border);
+  border-radius: 0.7rem;
+  background: var(--fg-accent-tint);
+  padding: 0.7rem 0.85rem;
+  font-size: 0.82rem;
+  color: var(--fg-card-ink-soft);
+}
+
+.entry-verify strong {
+  color: var(--fg-card-ink);
+  overflow-wrap: anywhere;
+}
+
+.entry-verify-btn {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  color: var(--fg-card-gold);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.entry-verify-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
 }
 
 .entry-form {
@@ -1573,22 +1653,22 @@ onUnmounted(() => {
 }
 
 .entry-field input::placeholder {
-  color: #77716a;
+  color: var(--fg-field-hint);
 }
 
 .entry-field input:focus,
 .entry-field select:focus {
-  border-color: #8a2be2;
+  border-color: var(--fg-accent);
 }
 
 .entry-field input:-webkit-autofill,
 .entry-field input:-webkit-autofill:hover,
 .entry-field input:-webkit-autofill:focus,
 .entry-field input:-webkit-autofill:active {
-  -webkit-text-fill-color: #2b2418;
-  -webkit-box-shadow: 0 0 0px 1000px #fffaf0 inset;
-  box-shadow: 0 0 0px 1000px #fffaf0 inset;
-  caret-color: #2b2418;
+  -webkit-text-fill-color: var(--fg-field-ink);
+  -webkit-box-shadow: 0 0 0px 1000px var(--fg-field) inset;
+  box-shadow: 0 0 0px 1000px var(--fg-field) inset;
+  caret-color: var(--fg-field-ink);
   transition: background-color 5000s ease-in-out 0s;
 }
 
@@ -1613,7 +1693,7 @@ onUnmounted(() => {
   padding: 0.85rem 1rem;
   font-size: 1rem;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--fg-accent-ink);
   cursor: pointer;
   transition: opacity 0.18s ease;
 }
@@ -1820,7 +1900,7 @@ onUnmounted(() => {
   height: 3rem;
   overflow: hidden;
   border-radius: 0.7rem;
-  background: linear-gradient(135deg, var(--fg-accent-light) 0%, var(--fg-accent) 55%, var(--fg-accent-dark) 100%);
+  background: var(--fg-accent);
   color: var(--fg-accent-ink);
   font-size: 0.95rem;
   font-weight: 700;
@@ -1944,8 +2024,7 @@ onUnmounted(() => {
   display: grid;
   place-items: center;
   padding: 1rem;
-  background: rgba(15, 12, 6, 0.6);
-  backdrop-filter: blur(3px);
+  background: rgba(0, 0, 0, 0.7);
 }
 
 .gym-preview {
@@ -1984,9 +2063,7 @@ onUnmounted(() => {
   place-items: center;
   height: 9.5rem;
   overflow: hidden;
-  background:
-    linear-gradient(rgba(10, 10, 10, 0.35), rgba(10, 10, 10, 0.35)),
-    url('../../../images/fitgym-box-marble.jpg') center / cover;
+  background: var(--fg-card-2);
 }
 
 .gym-preview-cover img {
@@ -2001,11 +2078,11 @@ onUnmounted(() => {
   width: 4.5rem;
   height: 4.5rem;
   border-radius: 1.1rem;
-  background: linear-gradient(135deg, var(--fg-accent-light) 0%, var(--fg-accent) 55%, var(--fg-accent-dark) 100%);
+  background: var(--fg-accent);
   color: var(--fg-accent-ink);
   font-size: 1.6rem;
   font-weight: 700;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+  box-shadow: none;
 }
 
 .gym-preview-body {
@@ -2139,7 +2216,7 @@ onUnmounted(() => {
 .gym-preview-join {
   flex: 1;
   border: 1px solid var(--fg-accent-light);
-  background: linear-gradient(135deg, var(--fg-accent-light) 0%, var(--fg-accent) 55%, var(--fg-accent-dark) 100%);
+  background: var(--fg-accent);
   color: var(--fg-accent-ink);
 }
 

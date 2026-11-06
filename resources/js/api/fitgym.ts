@@ -190,6 +190,7 @@ export const gymsPublic = {
 export const gymSignup = {
     store: (data: { gym_name: string; admin_name: string; admin_email: string; admin_password: string }) =>
         api.post('/gyms/signup', data),
+    resendVerification: (email: string) => api.post('/gyms/resend-verification', { email }),
 };
 
 /** Platform / Super Admin auth — deliberately not on the shared role-selector. */
@@ -209,6 +210,13 @@ export const platformGyms = {
     delete: (id: string | number) => api.delete(`/platform/gyms/${id}`),
     restore: (id: string | number) => api.post(`/platform/gyms/${id}/restore`),
     sendAdminReset: (id: string | number) => api.post(`/platform/gyms/${id}/send-admin-reset`),
+};
+
+export const platformDashboard = {
+    get: () => api.get('/platform/dashboard'),
+    notifications: () => api.get('/platform/notifications'),
+    markRead: (id: number) => api.post(`/platform/notifications/${id}/read`),
+    markAllRead: () => api.post('/platform/notifications/read-all'),
 };
 
 export const platformAnalytics = {

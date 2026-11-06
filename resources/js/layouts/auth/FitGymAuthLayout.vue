@@ -54,7 +54,7 @@ defineProps<{
     overflow: hidden;
     padding: 2rem 1rem;
     color: var(--fg-card-ink);
-    font-family: 'Instrument Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    font-family: var(--fg-font);
 }
 
 .fg-auth-shell {
@@ -76,14 +76,14 @@ defineProps<{
 }
 
 .fg-auth-logo {
-    color: #ffffff;
     display: grid;
     flex-shrink: 0;
     width: 3rem;
     height: 3rem;
     place-items: center;
     border-radius: 0.9rem;
-    background: #8a2be2;
+    background: var(--fg-accent);
+    color: var(--fg-accent-ink);
 }
 
 .fg-auth-logo svg {
@@ -112,7 +112,7 @@ defineProps<{
     border: 1px solid var(--fg-card-border);
     border-radius: 1.25rem;
     background: var(--fg-card);
-    box-shadow: 0 18px 44px rgba(92, 70, 30, 0.1);
+    box-shadow: none;
     padding: 1.75rem;
 }
 
@@ -187,11 +187,11 @@ defineProps<{
 }
 
 .fg-auth .fg-field input::placeholder {
-    color: #77716a;
+    color: var(--fg-field-hint);
 }
 
 .fg-auth .fg-field input:focus {
-    border-color: #8a2be2;
+    border-color: var(--fg-accent);
 }
 
 .fg-auth .fg-field input[readonly] {
@@ -200,17 +200,17 @@ defineProps<{
 
 .fg-auth .fg-error {
     margin: 0;
-    color: #f08a8e;
+    color: var(--fg-danger-text);
     font-size: 0.82rem;
 }
 
 .fg-auth .fg-status {
     margin: 0 0 1.1rem;
-    border: 1px solid rgba(141, 255, 0, 0.35);
+    border: 1px solid rgba(var(--fg-success-rgb), 0.45);
     border-radius: 0.7rem;
-    background: rgba(141, 255, 0, 0.1);
+    background: rgba(var(--fg-success-rgb), 0.12);
     padding: 0.75rem 0.85rem;
-    color: #8fd16a;
+    color: var(--fg-success-text);
     font-size: 0.875rem;
 }
 
@@ -218,7 +218,7 @@ defineProps<{
     width: 100%;
     border: none;
     border-radius: 0.7rem;
-    background: linear-gradient(135deg, var(--fg-accent-light) 0%, var(--fg-accent) 55%, var(--fg-accent-dark) 100%);
+    background: var(--fg-accent);
     padding: 0.85rem 1rem;
     color: var(--fg-accent-ink);
     font-size: 1rem;

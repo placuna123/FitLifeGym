@@ -9,7 +9,7 @@
 
 @theme inline {
     --font-sans:
-        Instrument Sans, ui-sans-serif, system-ui, sans-serif,
+        'Inter', ui-sans-serif, system-ui, sans-serif,
         'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
         'Noto Color Emoji';
 
@@ -83,7 +83,7 @@
     body,
     html {
         --font-sans:
-            'Instrument Sans', ui-sans-serif, system-ui, sans-serif,
+            'Inter', ui-sans-serif, system-ui, sans-serif,
             'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
             'Noto Color Emoji';
     }
@@ -182,10 +182,10 @@
     flex-shrink: 0;
     align-items: center;
     justify-content: center;
-    width: 2.75rem;
-    height: 2.75rem;
+    width: var(--ui-icon-btn);
+    height: var(--ui-icon-btn);
     border: 1px solid var(--fg-card-border);
-    border-radius: 0.75rem;
+    border-radius: var(--ui-btn-radius);
     background: var(--fg-card);
     color: var(--fg-card-ink);
     cursor: pointer;
@@ -213,7 +213,7 @@
         padding: 0.75rem 1rem;
         border-bottom: 1px solid var(--fg-card-border);
         background: var(--fg-card-sidebar);
-        backdrop-filter: blur(10px);
+        backdrop-filter: none;
     }
 
     .fg-sidebar {
@@ -233,7 +233,8 @@
     .fg-sidebar.is-open {
         transform: translateX(0);
         visibility: visible;
-        box-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
+        box-shadow: none;
+        border-right: 1px solid var(--fg-line);
         transition: transform 0.25s ease;
     }
 
@@ -298,158 +299,440 @@
     color: var(--fg-card-ink, #f5f1e8);
 }
 
-/* Soft cream-and-gold marble backdrop behind every FitGym page. Only the page background
-   uses it; cards, tables and the sidebar keep their own colors. !important beats the
-   pages' scoped and inline background colors. Fixed so the page frame and the area
-   around it line up as one continuous surface. */
-.fg-marble-bg {
-    background-color: #f6f1e7 !important;
-    background-image:
-        linear-gradient(rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.42)),
-        url('../images/fitgym-marble.jpg') !important;
-    background-size: cover !important;
-    background-position: center !important;
-    background-attachment: fixed !important;
-}
-
-
-/* Theme tokens. Global (:root) so popups teleported to <body> get them too.
-   --fg-ink* is text that sits straight on the cream marble; --fg-card-* are the
-   colors of the big black boxes; the light surfaces below redefine them. */
+/* ==========================================================================
+   FitGym theme: flat black and gold
+   Flat means solid colors and 1px borders: no background textures, no gradients,
+   no blur, no drop shadows. Gold is the signature accent (primary buttons, the open
+   menu item, key icons and highlighted numbers), not the main surface color.
+   Every color in the app reads one of these tokens, so the whole palette lives here.
+   Light mode (the sun / moon button adds `fg-day` to <html>) is further down.
+   ========================================================================== */
 :root {
-    --fg-ink: #2b2418;
-    --fg-ink-soft: #6b5d45;
-    --fg-gold: var(--fg-accent-deep);
+    /* surfaces */
+    --fg-bg: #121212;            /* page background */
+    --fg-card-sidebar: #1e1e1e;  /* sidebar and top bar */
+    --fg-card: #292929;          /* cards, tables, pop-ups */
+    --fg-card-2: #333333;        /* tiles inside a card, table header row, hover */
+    --fg-line: #3a3a3a;          /* neutral dividers (table rows, sidebar edge) */
+    --fg-card-border: rgba(var(--fg-accent-rgb), 0.22); /* subtle gold card border */
+    --fg-hover: rgba(255, 255, 255, 0.05);
 
-    --fg-card: #151515;
-    --fg-card-2: #222222;
-    --fg-card-sidebar: #101010;
-    --fg-card-border: #2f2c27;
-    --fg-card-ink: #f5f1e8;
-    --fg-card-ink-soft: #a8a196;
-    --fg-card-gold: var(--fg-accent);
+    /* text */
+    --fg-ink: #f5f5f5;           /* text straight on the page */
+    --fg-ink-soft: #a3a3a3;
+    --fg-card-ink: #f5f5f5;      /* text inside cards */
+    --fg-card-ink-soft: #a3a3a3;
+    --fg-gold: var(--fg-accent);      /* gold text on the page */
+    --fg-card-gold: var(--fg-accent); /* gold text inside cards */
 
-    /* form fields (sign-in, Settings, pop-ups): dark with light text; light mode flips them */
-    --fg-field: #1b1a18;
-    --fg-field-ink: #f5f1e8;
-    --fg-field-hint: rgba(245, 241, 232, 0.42);
-    --fg-field-icon: rgba(245, 241, 232, 0.65);
+    /* form fields */
+    --fg-field: #1e1e1e;
+    --fg-field-ink: #f5f5f5;
+    --fg-field-border: #464646;
+    --fg-field-hint: #8a8a8a;
+    --fg-field-icon: #a3a3a3;
     --fg-field-scheme: dark;
+
+    /* accent: gold */
+    --fg-accent: #d9b454;
+    --fg-accent-light: #e6c776;
+    --fg-accent-dark: #b8953e;
+    --fg-accent-deep: #8c6d1f;
+    --fg-accent-soft: #e2c56e;
+    --fg-accent-pale: #5a4b25;
+    --fg-accent-tint: rgba(217, 180, 84, 0.14);
+    --fg-accent-tint-2: rgba(217, 180, 84, 0.24);
+    --fg-accent-rgb: 217, 180, 84;
+    --fg-accent-light-rgb: 230, 199, 118;
+    --fg-accent-dark-rgb: 184, 149, 62;
+    --fg-accent-deep-rgb: 140, 109, 31;
+    /* text on a gold fill */
+    --fg-accent-ink: #121212;
+    /* secondary buttons and less important actions: dark gray */
+    --fg-secondary: #3d3d3d;
+
+    /* ---- status colors ----
+       success  green   active, approved, paid, checked in, saved
+       warning  orange  pending, expiring / ending soon, class full
+       danger   red     expired, rejected, cancelled, overdue, suspended, errors, delete
+       info     blue    trial, informational notices
+       neutral  gray    inactive, finished, unknown
+       --fg-X fills, rgba(var(--fg-X-rgb), a) tints, --fg-X-text readable text */
+    --fg-success: #3fb950;
+    --fg-success-rgb: 63, 185, 80;
+    --fg-success-text: #6fdd8b;
+
+    --fg-warning: #f0883e;
+    --fg-warning-rgb: 240, 136, 62;
+    --fg-warning-text: #ffa657;
+
+    --fg-danger: #e5534b;
+    --fg-danger-rgb: 229, 83, 75;
+    --fg-danger-text: #ff7b72;
+
+    --fg-info: #4493f8;
+    --fg-info-rgb: 68, 147, 248;
+    --fg-info-text: #79b8ff;
+
+    --fg-neutral: #8b8b8b;
+    --fg-neutral-rgb: 139, 139, 139;
+    --fg-neutral-text: #b3b3b3;
+
+    /* text on a solid status fill */
+    --fg-status-ink: #ffffff;
 }
 
-/* Big boxes (sidebars, tables, charts, plan cards, the sign-in card): black marble
-   with smoky white swirls and a faint gold rim. Only the image and rim are added;
-   size and layout stay. !important beats the pages' scoped `background:` shorthands. */
-.fg-marble-bg :is(
-    .admin-sidebar,
-    .table-container, .plan-card, .current-member-card,
-    .reports-chart-card, .notification-card, .settings-content, .dashboard-card, .recent-activity,
-    .trainer-sidebar,
-    .member-sidebar,
-    .entry-card, .fg-auth-card
-),
-.fg-marble-bg.trainer-portal :is(.bg-\[\#2A3042\].rounded-lg, .bg-\[\#2A3042\].rounded-xl),
-.member-portal main .rounded-xl.border,
-.platform-shell .login-card {
+html {
+    background-color: var(--fg-bg);
+}
+
+/* ---- Page background: one flat color, no texture ---- */
+.fg-marble-bg {
+    background: var(--fg-bg) !important;
+}
+
+.fg-shell {
+    border-color: var(--fg-line) !important;
+    box-shadow: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+}
+
+:is(.admin-auth-shell, .trainer-auth-shell) {
+    background: transparent !important;
+}
+
+/* ---- Sign-in page background strength, per theme. Dark: bright gold on black.
+   Light: a deeper gold, because pale gold barely shows on white. ---- */
+.fitgym-entry {
+    --entry-motion-rgb: var(--fg-accent-rgb);
+    --entry-deco-color: var(--fg-gold);
+    --entry-deco-opacity: 0.2;
+    --entry-glow-1: 0.22;
+    --entry-glow-2: 0.16;
+    --entry-speck-1: 0.7;
+    --entry-speck-2: 0.45;
+    --entry-specks-opacity: 0.85;
+}
+
+html.fg-day .fitgym-entry {
+    --entry-motion-rgb: var(--fg-accent-dark-rgb);
+    --entry-deco-color: var(--fg-accent-dark);
+    --entry-deco-opacity: 0.28;
+    --entry-glow-1: 0.24;
+    --entry-glow-2: 0.18;
+    --entry-speck-1: 0.75;
+    --entry-speck-2: 0.5;
+    --entry-specks-opacity: 0.9;
+}
+
+/* the gym equipment icons: clearly visible, still behind the form */
+.fitgym-entry .entry-deco {
+    color: var(--entry-deco-color) !important;
+    opacity: var(--entry-deco-opacity) !important;
+}
+
+/* ---- Sign-in page background: soft gold light drifting behind everything, and fine
+   gold specks rising slowly. Both sit under the page content (isolation + z-index -1). ---- */
+.fitgym-entry {
+    isolation: isolate;
+}
+
+.fitgym-entry::before,
+.fitgym-entry::after {
+    content: '';
+    position: absolute;
+    z-index: -1;
+    pointer-events: none;
+}
+
+/* two gold glows, like gym lights, one top-left and one bottom-right */
+.fitgym-entry::before {
+    inset: -25%;
+    background:
+        radial-gradient(circle at 30% 30%, rgba(var(--entry-motion-rgb), var(--entry-glow-1)), transparent 34%),
+        radial-gradient(circle at 72% 70%, rgba(var(--entry-motion-rgb), var(--entry-glow-2)), transparent 32%);
+}
+
+/* rising specks: two dot layers of different size, faded out at the top and bottom */
+.fitgym-entry::after {
+    inset: 0;
     background-image:
-        linear-gradient(rgba(10, 10, 10, 0.35), rgba(10, 10, 10, 0.35)),
-        url('../images/fitgym-box-marble.jpg') !important;
-    background-size: cover !important;
-    background-position: center !important;
-    box-shadow: 0 0 0 1px rgba(var(--fg-accent-rgb), 0.22), 0 14px 34px rgba(20, 16, 8, 0.22) !important;
+        radial-gradient(circle, rgba(var(--entry-motion-rgb), var(--entry-speck-1)) 1.4px, transparent 2.2px),
+        radial-gradient(circle, rgba(var(--entry-motion-rgb), var(--entry-speck-2)) 2px, transparent 3px);
+    background-size: 90px 90px, 150px 150px;
+    background-position: 0 0, 40px 60px;
+    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 20%, #000 80%, transparent);
+    mask-image: linear-gradient(to bottom, transparent, #000 20%, #000 80%, transparent);
+    opacity: var(--entry-specks-opacity);
 }
 
-/* Small boxes and every popup / edit form: white with gold, dark text. Redefining the
-   tokens here flips everything inside (labels, inputs, buttons) to the light palette. */
-.fg-light-surface,
+@media (prefers-reduced-motion: no-preference) {
+    .fitgym-entry::before {
+        animation: fg-glow-drift 22s ease-in-out infinite alternate;
+    }
+
+    .fitgym-entry::after {
+        animation: fg-specks-rise 40s linear infinite;
+    }
+}
+
+@keyframes fg-glow-drift {
+    0% { translate: 0 0; scale: 1; }
+    50% { translate: 6% -4%; scale: 1.08; }
+    100% { translate: -5% 5%; scale: 0.96; }
+}
+
+/* moves exactly one tile of each layer, so the loop has no jump */
+@keyframes fg-specks-rise {
+    from { background-position: 0 0, 40px 60px; }
+    to { background-position: 0 -900px, 40px -840px; }
+}
+
+/* ---- Sign-in page motion: the gym equipment in the background moves like it is in use ----
+   `translate` and `rotate` are used (not `transform`) so they add to each icon's own tilt. */
+@media (prefers-reduced-motion: no-preference) {
+    /* dumbbells: lifted and lowered, slowly */
+    .fitgym-entry .entry-deco--dumbbell-1 {
+        animation: fg-lift 6s ease-in-out infinite;
+    }
+
+    .fitgym-entry .entry-deco--dumbbell-2 {
+        animation: fg-lift 7.5s ease-in-out -2.5s infinite;
+    }
+
+    /* kettlebell: swings from its handle */
+    .fitgym-entry .entry-deco--kettlebell {
+        transform-origin: 50% 4%;
+        animation: fg-swing 3.8s ease-in-out infinite;
+    }
+
+    /* weight plate: turns slowly */
+    .fitgym-entry .entry-deco--plate {
+        animation: fg-spin 28s linear infinite;
+    }
+
+    /* heartbeat line: drawn like a heart rate monitor */
+    .fitgym-entry .entry-deco--pulse path {
+        stroke-dasharray: 100;
+        stroke-dashoffset: 100;
+        animation: fg-heartbeat 3.2s ease-in-out infinite;
+    }
+
+    /* page content slides up into place on load, one part after another */
+    .fitgym-entry :is(.entry-brand, .entry-card, .entry-hero > *, .entry-footnote) {
+        animation: fg-rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+    }
+
+    .fitgym-entry .entry-card { animation-delay: 0.08s; }
+    .fitgym-entry .entry-hero > :nth-child(1) { animation-delay: 0.05s; }
+    .fitgym-entry .entry-hero > :nth-child(2) { animation-delay: 0.12s; }
+    .fitgym-entry .entry-hero > :nth-child(3) { animation-delay: 0.19s; }
+    .fitgym-entry .entry-hero > :nth-child(4) { animation-delay: 0.26s; }
+    .fitgym-entry .entry-hero > :nth-child(5) { animation-delay: 0.33s; }
+    .fitgym-entry .entry-hero > :nth-child(6) { animation-delay: 0.4s; }
+    .fitgym-entry .entry-footnote { animation-delay: 0.2s; }
+
+    /* the Members / Staff / Attendance / Payments row pops in one by one */
+    .fitgym-entry .hero-feature {
+        animation: fg-rise 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+    }
+
+    .fitgym-entry .hero-feature:nth-child(1) { animation-delay: 0.45s; }
+    .fitgym-entry .hero-feature:nth-child(2) { animation-delay: 0.52s; }
+    .fitgym-entry .hero-feature:nth-child(3) { animation-delay: 0.59s; }
+    .fitgym-entry .hero-feature:nth-child(4) { animation-delay: 0.66s; }
+
+    /* the logo gives a small "rep" every few seconds */
+    .fitgym-entry .entry-logo svg {
+        animation: fg-rep 4s ease-in-out 1s infinite;
+    }
+
+    /* role cards and the main buttons lift a little under the mouse */
+    .fitgym-entry :is(.entry-role, .entry-primary, .entry-ghost) {
+        transition: translate 0.18s ease, border-color 0.18s ease, background-color 0.18s ease;
+    }
+
+    .fitgym-entry :is(.entry-role, .entry-primary, .entry-ghost):not(:disabled):hover {
+        translate: 0 -2px;
+    }
+}
+
+@keyframes fg-lift {
+    0%, 100% { translate: 0 0; rotate: 0deg; }
+    45% { translate: 0 -16px; rotate: -3deg; }
+    55% { translate: 0 -16px; rotate: -3deg; }
+}
+
+@keyframes fg-swing {
+    0%, 100% { rotate: -14deg; }
+    50% { rotate: 14deg; }
+}
+
+@keyframes fg-spin {
+    to { rotate: 360deg; }
+}
+
+@keyframes fg-heartbeat {
+    0% { stroke-dashoffset: 100; opacity: 0.4; }
+    55% { stroke-dashoffset: 0; opacity: 1; }
+    80% { stroke-dashoffset: 0; opacity: 1; }
+    100% { stroke-dashoffset: -100; opacity: 0.4; }
+}
+
+@keyframes fg-rise {
+    from { opacity: 0; translate: 0 14px; }
+    to { opacity: 1; translate: 0 0; }
+}
+
+@keyframes fg-rep {
+    0%, 70%, 100% { translate: 0 0; }
+    78% { translate: 0 -3px; }
+    86% { translate: 0 0; }
+}
+
+/* ---- Sidebar and top bar ---- */
+.fg-marble-bg :is(.admin-sidebar, .trainer-sidebar, .member-sidebar),
+.fg-marble-bg .fg-sidebar {
+    background: var(--fg-card-sidebar) !important;
+    border-right: 1px solid var(--fg-line) !important;
+    box-shadow: none;
+}
+
+.fg-marble-bg :is(.admin-header, .trainer-header, .member-header) {
+    background: var(--fg-card-sidebar) !important;
+    border-bottom: 1px solid var(--fg-line) !important;
+}
+
+.fg-mobile-bar {
+    border-bottom-color: var(--fg-line) !important;
+    background: var(--fg-card-sidebar) !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+}
+
+.fg-menu-btn {
+    border-color: var(--fg-line);
+    background: var(--fg-card);
+}
+
+/* ---- Cards: one flat dark gray with a subtle gold border, everywhere ---- */
 .fg-marble-bg :is(
-    .admin-profile-card,
-    .metric-card, .summary-card, .attendance-card, .report-card, .modal-content,
-    .trainer-profile-card,
-    .stat-card, .modal-card, .entry-role
+    .table-container, .plan-card, .current-member-card, .reports-chart-card, .notification-card,
+    .settings-content, .settings-sidebar, .dashboard-card, .recent-activity, .announcement-card,
+    .admin-profile-card, .trainer-profile-card,
+    .metric-card, .summary-card, .attendance-card, .report-card, .stat-card,
+    .admin-header-card, .admin-header-button, .trainer-header-card,
+    .entry-card, .fg-auth-card, .login-card, .admin-auth-card, .trainer-auth-card, .entry-role
 ),
-.fg-marble-bg.trainer-portal .lg\:grid-cols-4 > .bg-\[\#2A3042\],
+.fg-marble-bg.trainer-portal div.bg-\[\#2A3042\],
+.member-portal main .rounded-xl.border,
+.member-portal .fg-shell header :is(.rounded-xl.border, button.rounded-xl, .absolute.rounded-2xl),
+:is(.modal-content, .modal-card, .fg-light-surface),
 :is(.fitgym-admin, .trainer-portal) .fixed.inset-0.z-50 > div,
-body > .fixed.inset-0.z-50 > div,
-.fg-marble-bg :is(.admin-header-card, .admin-header-button, .trainer-header-card),
-.member-portal header :is(.rounded-xl.border, button.rounded-xl) {
-    --fg-card: #fffdf8;
-    --fg-card-2: #f6efdf;
-    --fg-card-sidebar: #fffdf8;
-    --fg-card-border: var(--fg-accent-pale);
-    --fg-card-ink: #2b2418;
-    --fg-card-ink-soft: #6b5d45;
-    --fg-card-gold: var(--fg-accent-dark);
-    --bg-primary: #fffdf8;
-    --bg-secondary: #fffdf8;
-    --bg-card: #fffdf8;
-    --bg-input: #f6efdf;
-    --text-primary: #2b2418;
-    --text-secondary: #6b5d45;
-    --border-color: var(--fg-accent-pale);
-
-    background: linear-gradient(160deg, #fffefb 0%, #faf3e3 100%) !important;
-    border-color: var(--fg-accent-pale) !important;
-    box-shadow: inset 0 3px 0 var(--fg-accent), 0 12px 30px rgba(120, 90, 30, 0.14) !important;
-    color: #2b2418;
+body > .fixed.inset-0.z-50 > div {
+    background: var(--fg-card) !important;
+    border: 1px solid var(--fg-card-border) !important;
+    box-shadow: none !important;
+    color: var(--fg-card-ink);
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
 }
 
-/* Inner tiles inside the black boxes (stat tiles, achievements, settings rows). */
+/* The Member payment / renewal banners keep their own status tint */
+.member-portal .fg-shell > .flex-col > div.rounded-xl.border {
+    box-shadow: none !important;
+}
+
+/* Inner tiles inside a card (stat tiles, achievements, settings rows) */
 .fg-tile {
-    --fg-card: #fffdf8;
-    --fg-card-2: #f6efdf;
-    --fg-card-border: var(--fg-accent-pale);
-    --fg-card-ink: #2b2418;
-    --fg-card-ink-soft: #6b5d45;
-
-    background: linear-gradient(160deg, #fffefb 0%, #f8f0de 100%) !important;
-    border: 1px solid var(--fg-accent-pale);
-    box-shadow: inset 0 2px 0 var(--fg-accent);
-    color: #2b2418 !important;
+    border: 1px solid var(--fg-line) !important;
+    background: var(--fg-card-2) !important;
+    box-shadow: none !important;
+    color: var(--fg-card-ink) !important;
 }
 
-.fg-tile.fg-tile--earned {
+.fg-tile.fg-tile--earned,
+.fg-marble-bg .entry-role.entry-role--active {
     border-color: var(--fg-accent) !important;
-    background: linear-gradient(160deg, var(--fg-accent-tint) 0%, var(--fg-accent-tint-2) 100%) !important;
-    box-shadow: inset 0 2px 0 var(--fg-accent-dark), 0 8px 22px rgba(var(--fg-accent-rgb), 0.35) !important;
+    background: var(--fg-accent-tint) !important;
+    box-shadow: none !important;
 }
 
-/* Small boxes lift a little on hover, so the dashboard feels alive. */
-.fg-marble-bg :is(.metric-card, .summary-card, .attendance-card, .report-card, .stat-card, .fg-tile),
-.fg-marble-bg.trainer-portal .lg\:grid-cols-4 > .bg-\[\#2A3042\] {
-    transition: transform 0.18s ease, box-shadow 0.18s ease;
+/* Rows: a faint lift on hover */
+.fg-marble-bg :is(.activity-item, .data-table tbody tr:hover, .notif-item:hover) {
+    background: var(--fg-hover) !important;
 }
 
-.fg-marble-bg :is(.metric-card, .summary-card, .attendance-card, .report-card, .stat-card, .fg-tile):hover,
-.fg-marble-bg.trainer-portal .lg\:grid-cols-4 > .bg-\[\#2A3042\]:hover {
-    transform: translateY(-2px);
+/* Tables: gray header row, neutral row lines */
+:is(.fitgym-admin, .trainer-portal, .platform-shell) table thead {
+    background: var(--fg-card-2) !important;
 }
 
-/* Inputs inside pop-ups and edit forms: dark with a gold edge (same as the sign-in
-   fields), light text, and a gold ring when clicked. */
-:is(.fg-light-surface, .fg-tile, .modal-content, .modal-card, .fixed.inset-0.z-50 > div) :is(input, select, textarea):not([type='checkbox']):not([type='radio']):not([type='file']) {
-    border-color: rgba(var(--fg-accent-rgb), 0.4) !important;
+:is(.fitgym-admin, .trainer-portal, .platform-shell) table :is(th, td) {
+    border-color: var(--fg-line) !important;
+}
+
+:is(.fitgym-admin, .trainer-portal, .platform-shell) table th {
+    color: var(--fg-card-ink-soft) !important;
+    font-weight: 600 !important;
+}
+
+/* ---- Form fields: one style in every portal, pop-up and sign-in card ---- */
+:is(.fitgym-admin, .trainer-portal, .member-portal, .platform-shell, .fitgym-entry, .fg-auth, .fg-light-surface, body > .fixed)
+    :is(input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='hidden']):not([type='color']), select, textarea) {
+    border: 1px solid var(--fg-field-border) !important;
     background-color: var(--fg-field) !important;
     color: var(--fg-field-ink) !important;
+    -webkit-text-fill-color: var(--fg-field-ink);
+    caret-color: var(--fg-field-ink);
     color-scheme: var(--fg-field-scheme);
 }
 
-:is(.fg-light-surface, .fg-tile, .modal-content, .modal-card, .fixed.inset-0.z-50 > div) :is(input, select, textarea)::placeholder {
+:is(.fitgym-admin, .trainer-portal, .member-portal, .platform-shell, .fitgym-entry, .fg-auth, .fg-light-surface, body > .fixed)
+    :is(input, textarea)::placeholder {
     color: var(--fg-field-hint) !important;
+    -webkit-text-fill-color: var(--fg-field-hint) !important;
 }
 
-:is(.fg-light-surface, .fg-tile, .modal-content, .modal-card, .fixed.inset-0.z-50 > div) :is(input, select, textarea):focus {
+:is(.fitgym-admin, .trainer-portal, .member-portal, .platform-shell, .fitgym-entry, .fg-auth, .fg-light-surface, body > .fixed)
+    :is(input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']), select, textarea):focus {
     border-color: var(--fg-accent) !important;
-    box-shadow: 0 0 0 3px rgba(var(--fg-accent-rgb), 0.28) !important;
+    box-shadow: 0 0 0 3px rgba(var(--fg-accent-rgb), 0.25) !important;
     outline: none !important;
 }
 
-/* Gold marks whatever is selected or being pressed: the open page in the menu,
-   the active tab, the chosen role card, and any button while it is clicked. */
-.fg-marble-bg :is(.admin-nav-item.active, .trainer-nav-item.active, .member-nav-item.active, .report-tab.active, .settings-nav-item.active) {
-    background: linear-gradient(135deg, var(--fg-accent-light) 0%, var(--fg-accent) 55%, var(--fg-accent-dark) 100%) !important;
-    border-color: var(--fg-accent-light) !important;
-    box-shadow: 0 10px 26px rgba(var(--fg-accent-rgb), 0.35) !important;
+:is(.fitgym-admin, .trainer-portal, .member-portal, .platform-shell, .fitgym-entry, .fg-auth, .fg-light-surface, body > .fixed) :is(input[type='checkbox'], input[type='radio']) {
+    accent-color: var(--fg-accent);
+}
+
+/* The eye button in password fields */
+:is(.fg-marble-bg, .fg-light-surface, body > .fixed) .fg-password-toggle {
+    color: var(--fg-field-icon) !important;
+}
+
+/* "Choose File" button on file fields (receipts, photos, GCash QR): gold */
+:is(.fg-marble-bg, .fg-light-surface, body > .fixed) input[type='file'] {
+    color: var(--fg-card-ink-soft);
+}
+
+:is(.fg-marble-bg, .fg-light-surface, body > .fixed) input[type='file']::file-selector-button {
+    margin-right: 0.75rem;
+    border: 0;
+    border-radius: 0.45rem;
+    background: var(--fg-accent);
+    padding: 0.4rem 0.85rem;
+    color: var(--fg-accent-ink);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+/* ---- Gold marks what is selected: the open page in the menu, the active tab ---- */
+.fg-marble-bg :is(.admin-nav-item.active, .trainer-nav-item.active, .member-nav-item.active, .report-tab.active, .settings-nav-item.active),
+.fg-tab-active {
+    border-color: var(--fg-accent) !important;
+    background: var(--fg-accent) !important;
+    box-shadow: none !important;
     color: var(--fg-accent-ink) !important;
 }
 
@@ -457,96 +740,100 @@ body > .fixed.inset-0.z-50 > div,
     color: var(--fg-accent-ink) !important;
 }
 
+.fg-marble-bg :is(.admin-nav-item, .trainer-nav-item, .member-nav-item):not(.active) {
+    border-color: transparent !important;
+    background: transparent !important;
+    color: var(--fg-card-ink-soft);
+}
+
+.fg-marble-bg :is(.admin-nav-item, .trainer-nav-item, .member-nav-item):not(.active) .text-sm {
+    color: var(--fg-card-ink);
+}
+
 .fg-marble-bg :is(.admin-nav-item, .trainer-nav-item, .member-nav-item):not(.active):hover {
-    border-color: rgba(var(--fg-accent-rgb), 0.45) !important;
-    background: rgba(var(--fg-accent-rgb), 0.12) !important;
+    background: var(--fg-hover) !important;
 }
 
-.fg-marble-bg .entry-role.entry-role--active {
-    border-color: var(--fg-accent) !important;
-    background: linear-gradient(160deg, var(--fg-accent-tint) 0%, var(--fg-accent-tint-2) 100%) !important;
-    box-shadow: 0 0 0 1px var(--fg-accent), 0 10px 26px rgba(var(--fg-accent-rgb), 0.4) !important;
-}
-
+/* Pressing a button: a small darken instead of a glow */
 :is(.fg-marble-bg, body > .fixed) :is(button, a, [role='button']):not(:disabled):active {
-    box-shadow: 0 0 0 2px var(--fg-accent), 0 0 22px rgba(var(--fg-accent-rgb), 0.6) !important;
+    filter: brightness(0.92);
 }
 
-/* The page header strip (workspace label, page title, account boxes) is a black
-   marble band; its text tokens flip to light so the title stays readable. */
-.fg-marble-bg :is(.admin-header, .trainer-header, .member-header) {
-    --fg-ink: #f5f1e8;
-    --fg-ink-soft: #b9b2a5;
-    --fg-gold: var(--fg-accent-soft);
-
-    background-image:
-        linear-gradient(rgba(10, 10, 10, 0.25), rgba(10, 10, 10, 0.25)),
-        url('../images/fitgym-box-marble.jpg') !important;
-    background-size: cover !important;
-    background-position: center 30% !important;
-    border-bottom: 1px solid rgba(var(--fg-accent-rgb), 0.45) !important;
-}
-
-/* Boxes inside the band get a gold rim so they stand off the same marble. */
-.fg-marble-bg :is(.admin-header, .trainer-header, .member-header) :is(.admin-header-card, .admin-header-button, .trainer-header-card, .rounded-xl.border, button.rounded-xl) {
-    box-shadow: inset 0 3px 0 var(--fg-accent), 0 0 0 1px rgba(var(--fg-accent-rgb), 0.6), 0 10px 24px rgba(0, 0, 0, 0.45) !important;
-}
-
-/* Form fields inside the black-marble boxes (Settings / Gym Info, profiles, sign-in):
-   dark with a gold edge and light text, the same as the sign-in fields. The fill is
-   also a solid color and a full inset shadow, and background changes are held off:
-   when the browser pre-fills a saved login it paints its own fill otherwise. */
-.fg-marble-bg :is(.settings-content, .entry-card, .fg-auth-card, .trainer-profile-form, .member-portal main .rounded-xl.border)
-    :is(input, select, textarea):not([type='checkbox']):not([type='radio']):not([type='range']) {
-    border: 1px solid rgba(var(--fg-accent-rgb), 0.4) !important;
-    background: var(--fg-field) !important;
-    background-color: var(--fg-field) !important;
-    color: var(--fg-field-ink) !important;
-    -webkit-text-fill-color: var(--fg-field-ink) !important;
-    caret-color: var(--fg-field-ink);
-    box-shadow: 0 0 0 1000px var(--fg-field) inset !important;
-    color-scheme: var(--fg-field-scheme);
-    transition: background-color 600000s ease-in-out 0s, border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.fg-marble-bg :is(.settings-content, .entry-card, .fg-auth-card, .trainer-profile-form, .member-portal main .rounded-xl.border)
-    :is(input, textarea)::placeholder {
-    color: var(--fg-field-hint) !important;
-    -webkit-text-fill-color: var(--fg-field-hint);
-}
-
-.fg-marble-bg :is(.settings-content, .entry-card, .fg-auth-card, .trainer-profile-form, .member-portal main .rounded-xl.border)
-    :is(input, select, textarea):focus {
-    border-color: var(--fg-accent) !important;
-    box-shadow: 0 0 0 1000px var(--fg-field) inset, 0 0 0 3px rgba(var(--fg-accent-rgb), 0.3) !important;
-    outline: none !important;
-}
-
-/* The eye button in password fields sits on the dark field */
-.fg-marble-bg :is(.settings-content, .entry-card, .fg-auth-card, .trainer-profile-form) .fg-password-toggle,
-:is(.modal-content, .modal-card, .fixed.inset-0.z-50 > div) .fg-password-toggle {
-    color: var(--fg-field-icon);
-}
-
-/* "Choose File" button on file fields (receipts, photos, GCash QR): gold */
-:is(.fg-marble-bg, .fg-light-surface, .fixed.inset-0.z-50 > div) input[type='file']::file-selector-button {
-    margin-right: 0.75rem;
-    border: 0;
-    border-radius: 0.45rem;
-    background: linear-gradient(135deg, var(--fg-accent-light) 0%, var(--fg-accent) 55%, var(--fg-accent-dark) 100%);
-    padding: 0.4rem 0.85rem;
-    color: var(--fg-accent-ink);
-    font-weight: 600;
-    cursor: pointer;
-}
-
-/* Save buttons in Settings: gold */
-.fg-marble-bg :is(.btn-update-gym, .btn-update-profile, .btn-save-settings) {
-    background: linear-gradient(135deg, var(--fg-accent-light) 0%, var(--fg-accent) 55%, var(--fg-accent-dark) 100%) !important;
-    border: 1px solid var(--fg-accent-light) !important;
+/* ---- Buttons ---- */
+/* Primary: solid gold */
+.fg-marble-bg :is(.btn-update-gym, .btn-update-profile, .btn-save-settings, .entry-primary, .hero-primary, .btn-signin, .admin-auth-primary, .trainer-auth-primary),
+.fg-auth .fg-primary {
+    border: 1px solid var(--fg-accent) !important;
+    background: var(--fg-accent) !important;
+    box-shadow: none !important;
     color: var(--fg-accent-ink) !important;
-    font-weight: 700 !important;
-    box-shadow: 0 8px 20px rgba(var(--fg-accent-rgb), 0.3) !important;
+    font-weight: 600 !important;
+}
+
+/* Secondary / ghost on the sign-in page: outlined gold */
+.fitgym-entry :is(.entry-ghost, .hero-ghost) {
+    border: 1px solid rgba(var(--fg-accent-rgb), 0.6) !important;
+    background: transparent !important;
+    color: var(--fg-gold) !important;
+}
+
+.fitgym-entry :is(.entry-kicker span, .entry-field-head a, .hero-footnote a) {
+    color: var(--fg-gold) !important;
+}
+
+/* Logout: a quiet red outline, easy to find without a bright block */
+.fg-marble-bg :is(.admin-logout-btn, .trainer-logout-btn, .member-logout-btn) {
+    border: 1px solid rgba(var(--fg-danger-rgb), 0.5) !important;
+    background: rgba(var(--fg-danger-rgb), 0.1) !important;
+    box-shadow: none !important;
+    color: var(--fg-danger-text) !important;
+}
+
+.fg-marble-bg :is(.admin-logout-btn, .trainer-logout-btn, .member-logout-btn):hover {
+    background: rgba(var(--fg-danger-rgb), 0.18) !important;
+}
+
+/* Status badges / pills: tinted fill, colored text, the same everywhere */
+.fg-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border-radius: 999px;
+    padding: 2px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 18px;
+    white-space: nowrap;
+}
+
+.fg-badge--success { background: rgba(var(--fg-success-rgb), 0.16); color: var(--fg-success-text); }
+.fg-badge--warning { background: rgba(var(--fg-warning-rgb), 0.16); color: var(--fg-warning-text); }
+.fg-badge--danger { background: rgba(var(--fg-danger-rgb), 0.16); color: var(--fg-danger-text); }
+.fg-badge--info { background: rgba(var(--fg-info-rgb), 0.16); color: var(--fg-info-text); }
+.fg-badge--neutral { background: rgba(var(--fg-neutral-rgb), 0.16); color: var(--fg-neutral-text); }
+
+/* Alert boxes (form errors, notices): tint + border + text from one status */
+.fg-alert--danger {
+    border: 1px solid rgba(var(--fg-danger-rgb), 0.45) !important;
+    background: rgba(var(--fg-danger-rgb), 0.1) !important;
+    color: var(--fg-danger-text) !important;
+}
+
+.fg-alert--success {
+    border: 1px solid rgba(var(--fg-success-rgb), 0.45) !important;
+    background: rgba(var(--fg-success-rgb), 0.1) !important;
+    color: var(--fg-success-text) !important;
+}
+
+/* Highlighted statistics: the big number on every stat card is gold */
+.fg-marble-bg :is(.metric-content h3, .summary-card h3, .attendance-card h3, .report-card h2, .stat-value),
+.fg-marble-bg.trainer-portal main .lg\:grid-cols-4 > .bg-\[\#2A3042\] p.text-xl {
+    color: var(--fg-card-gold) !important;
+}
+
+/* Inline error text written with Tailwind's red utilities reads the danger color */
+:is(.fg-marble-bg, body > .fixed) :is(.text-red-300, .text-red-400) {
+    color: var(--fg-danger-text) !important;
 }
 
 /* ---- Tidy layout (colors unchanged) ---- */
@@ -594,10 +881,6 @@ body > .fixed.inset-0.z-50 > div,
         padding-bottom: 1.5rem !important;
     }
 
-    .fg-shell :is(.admin-header, .trainer-header, .member-header) {
-        padding-top: 1rem !important;
-        padding-bottom: 1rem !important;
-    }
 }
 
 /* Browser autofill (a saved email or password) repaints the field with its own color.
@@ -627,483 +910,6 @@ body > .fixed input:not([type='checkbox']):not([type='radio']):not([type='range'
 body > .fixed textarea:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='hidden']):-webkit-autofill:focus {
     -webkit-box-shadow: 0 0 0 1000px var(--fg-field) inset, 0 0 0 3px rgba(var(--fg-accent-rgb), 0.3) !important;
     box-shadow: 0 0 0 1000px var(--fg-field) inset, 0 0 0 3px rgba(var(--fg-accent-rgb), 0.3) !important;
-}
-
-/* ==== Glass look ====
-   Switched on by the single `fg-glass` line in resources/js/app.ts; delete that line
-   to go back to the solid black-marble boxes on the cream page.
-   Every FitGym page (sign-in, password reset, Admin, Staff, Member, Super Admin)
-   gets the black marble with a warm gold glow, and every box turns into see-through
-   frosted glass over it. Colors, layout and sizes stay the same.
-   On the big boxes the blur sits on a ::before layer behind the box, not on the box
-   itself, so pop-ups and drawers inside a box still cover the whole screen. */
-
-:root.fg-glass .fg-marble-bg {
-    background:
-        /* the gold glow is kept soft so it doesn't pull the eye away from the content */
-        radial-gradient(ellipse 55% 45% at 10% 6%, rgba(var(--fg-accent-rgb), 0.3), transparent 70%),
-        radial-gradient(ellipse 50% 50% at 95% 92%, rgba(var(--fg-accent-dark-rgb), 0.28), transparent 70%),
-        radial-gradient(ellipse 35% 30% at 72% 28%, rgba(var(--fg-accent-light-rgb), 0.12), transparent 70%),
-        linear-gradient(rgba(6, 6, 6, 0.42), rgba(6, 6, 6, 0.42)),
-        url('../images/fitgym-box-marble.jpg') center / cover fixed !important;
-
-    /* text sitting straight on the page (titles, hints, empty states) is light now */
-    --fg-ink: #f5f1e8;
-    --fg-ink-soft: #d2cabb;
-    --fg-gold: var(--fg-accent-soft);
-}
-
-/* ---- Dark glass: the big boxes, header bands, sign-in cards ---- */
-:root.fg-glass .fg-marble-bg :is(
-    .table-container, .plan-card, .current-member-card,
-    .reports-chart-card, .notification-card, .settings-content, .dashboard-card, .recent-activity,
-    .admin-header, .trainer-header, .member-header,
-    .entry-card, .fg-auth-card, .login-card
-),
-:root.fg-glass .fg-marble-bg.trainer-portal :is(.bg-\[\#2A3042\].rounded-lg, .bg-\[\#2A3042\].rounded-xl),
-:root.fg-glass .member-portal .fg-shell main .rounded-xl.border {
-    position: relative;
-    isolation: isolate;
-    background:
-        linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.03) 40%, rgba(255, 255, 255, 0) 70%),
-        /* dense enough that the marble swirls behind the text stay a soft blur, not a pattern */
-        rgba(16, 14, 10, 0.58) !important;
-    border: 1px solid rgba(255, 255, 255, 0.2) !important;
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.3),
-        inset 0 -1px 0 rgba(255, 255, 255, 0.05),
-        inset 0 0 0 1px rgba(var(--fg-accent-rgb), 0.14),
-        0 24px 50px rgba(0, 0, 0, 0.4) !important;
-}
-
-:root.fg-glass .fg-marble-bg :is(
-    .table-container, .plan-card, .current-member-card,
-    .reports-chart-card, .notification-card, .settings-content, .dashboard-card, .recent-activity,
-    .admin-header, .trainer-header, .member-header,
-    .entry-card, .fg-auth-card, .login-card
-)::before,
-:root.fg-glass .fg-marble-bg.trainer-portal :is(.bg-\[\#2A3042\].rounded-lg, .bg-\[\#2A3042\].rounded-xl)::before,
-:root.fg-glass .member-portal .fg-shell main .rounded-xl.border::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    border-radius: inherit;
-    -webkit-backdrop-filter: blur(28px) saturate(170%);
-    backdrop-filter: blur(28px) saturate(170%);
-    pointer-events: none;
-}
-
-/* The sidebars are their own fixed drawer on phones, so the blur can go on them directly */
-:root.fg-glass .fg-marble-bg :is(.admin-sidebar, .trainer-sidebar, .member-sidebar) {
-    background:
-        linear-gradient(170deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 35%),
-        rgba(14, 12, 9, 0.62) !important;
-    border-right: 1px solid rgba(255, 255, 255, 0.18) !important;
-    -webkit-backdrop-filter: blur(30px) saturate(170%);
-    backdrop-filter: blur(30px) saturate(170%);
-}
-
-/* ---- Light glass: small cream boxes, tiles, role cards (dark text stays readable) ---- */
-:root.fg-glass .fg-marble-bg :is(
-    .admin-profile-card, .trainer-profile-card,
-    .metric-card, .summary-card, .attendance-card, .report-card, .stat-card,
-    .admin-header-card, .admin-header-button, .trainer-header-card, .fg-tile, .entry-role
-),
-:root.fg-glass .fg-marble-bg.trainer-portal .lg\:grid-cols-4 > .bg-\[\#2A3042\],
-:root.fg-glass .member-portal .fg-shell header :is(.rounded-xl.border, button.rounded-xl) {
-    /* warm grey-cream rather than bright white, so moving between these and the dark
-       boxes doesn't make the eye keep re-adjusting */
-    background:
-        linear-gradient(135deg, rgba(255, 255, 255, 0.32) 0%, rgba(255, 255, 255, 0.04) 55%, rgba(255, 255, 255, 0.1) 100%),
-        rgba(222, 214, 198, 0.86) !important;
-    border: 1px solid rgba(255, 255, 255, 0.45) !important;
-    -webkit-backdrop-filter: blur(20px) saturate(140%);
-    backdrop-filter: blur(20px) saturate(140%);
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.6),
-        0 12px 30px rgba(0, 0, 0, 0.3) !important;
-}
-
-/* chosen role card and gold-earned tiles keep a warmer gold glass */
-:root.fg-glass .fg-marble-bg :is(.entry-role.entry-role--active, .fg-tile.fg-tile--earned) {
-    background:
-        linear-gradient(135deg, rgba(255, 255, 255, 0.65) 0%, rgba(255, 255, 255, 0.1) 60%),
-        rgba(var(--fg-accent-light-rgb), 0.62) !important;
-    border-color: rgba(255, 236, 190, 0.95) !important;
-}
-
-/* ---- Pop-ups, edit forms, the notifications drawer, the gym details pop-up ---- */
-:root.fg-glass :is(
-    .fg-light-surface,
-    .fg-marble-bg .modal-content, .fg-marble-bg .modal-card,
-    .fitgym-admin .fixed.inset-0.z-50 > div, .trainer-portal .fixed.inset-0.z-50 > div,
-    body > .fixed.inset-0.z-50 > div
-) {
-    background:
-        linear-gradient(140deg, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0.1) 60%),
-        rgba(236, 229, 215, 0.9) !important;
-    border: 1px solid rgba(255, 255, 255, 0.85) !important;
-    -webkit-backdrop-filter: blur(26px) saturate(180%);
-    backdrop-filter: blur(26px) saturate(180%);
-}
-
-/* ...now black glass with a gold top line, like the big dashboard boxes. The tokens
-   flip the text inside to light; fields stay white-and-gold (rule above), the same
-   as the forms inside the black Settings box. */
-:root.fg-glass:not(.fg-red):not(.fg-day) :is(
-    .fg-light-surface,
-    .fg-marble-bg .modal-content, .fg-marble-bg .modal-card,
-    .fitgym-admin .fixed.inset-0.z-50 > div, .trainer-portal .fixed.inset-0.z-50 > div,
-    body > .fixed.inset-0.z-50 > div
-) {
-    --fg-card: #1d1a15;
-    --fg-card-2: #2a261f;
-    --fg-card-sidebar: #1d1a15;
-    --fg-card-border: rgba(255, 255, 255, 0.14);
-    --fg-card-ink: #f5f1e8;
-    --fg-card-ink-soft: #cdc4b3;
-    --fg-card-gold: var(--fg-accent-light);
-    --bg-primary: #1d1a15;
-    --bg-secondary: #1d1a15;
-    --bg-card: #1d1a15;
-    --bg-input: #2a261f;
-    --text-primary: #f5f1e8;
-    --text-secondary: #cdc4b3;
-    --border-color: rgba(255, 255, 255, 0.14);
-
-    background:
-        linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.02) 45%, rgba(255, 255, 255, 0) 70%),
-        rgba(18, 16, 12, 0.9) !important;
-    border: 1px solid rgba(var(--fg-accent-rgb), 0.4) !important;
-    box-shadow:
-        inset 0 3px 0 var(--fg-accent),
-        inset 0 1px 0 rgba(255, 255, 255, 0.2),
-        0 30px 70px rgba(0, 0, 0, 0.6) !important;
-    color: #f5f1e8;
-}
-
-/* Rows inside the dark glass (activity rows, table hover) become a lighter smoke */
-:root.fg-glass .fg-marble-bg :is(.activity-item, .data-table tbody tr:hover) {
-    background: rgba(255, 255, 255, 0.08) !important;
-}
-
-/* Gold text inside the light glass boxes (Role, Status, member status) needs a deeper
-   gold to stay readable on the frosted cream. */
-:root.fg-glass .fg-marble-bg :is(
-    .admin-profile-card, .trainer-profile-card,
-    .metric-card, .summary-card, .attendance-card, .report-card, .stat-card,
-    .admin-header-card, .admin-header-button, .trainer-header-card, .fg-tile, .entry-role
-),
-:root.fg-glass .fg-marble-bg.trainer-portal .lg\:grid-cols-4 > .bg-\[\#2A3042\],
-:root.fg-glass .member-portal .fg-shell header :is(.rounded-xl.border, button.rounded-xl) {
-    --fg-card-gold: var(--fg-accent-deep);
-    --accent-green: var(--fg-accent-deep);
-    --accent-yellow: var(--fg-accent-deep);
-    --fg-card-ink-soft: #5c5040;
-    --text-secondary: #5c5040;
-}
-
-/* ...the small cards are now black glass with gold too (profile card, dashboard numbers,
-   header email/role boxes, tiles, sign-in role cards), so nothing on the page is white.
-   The tokens flip their text to light; the chosen role card and earned tiles stay gold. */
-:root.fg-glass:not(.fg-red):not(.fg-day) .fg-marble-bg :is(
-    .admin-profile-card, .trainer-profile-card,
-    .metric-card, .summary-card, .attendance-card, .report-card, .stat-card,
-    .admin-header-card, .admin-header-button, .trainer-header-card, .fg-tile, .entry-role
-):not(.entry-role--active):not(.fg-tile--earned),
-:root.fg-glass:not(.fg-red):not(.fg-day) .fg-marble-bg.trainer-portal .lg\:grid-cols-4 > .bg-\[\#2A3042\],
-:root.fg-glass:not(.fg-red):not(.fg-day) .member-portal .fg-shell header :is(.rounded-xl.border, button.rounded-xl) {
-    --fg-card: #1d1a15;
-    --fg-card-2: #2a261f;
-    --fg-card-border: rgba(var(--fg-accent-rgb), 0.35);
-    --fg-card-ink: #f5f1e8;
-    --fg-card-ink-soft: #cdc4b3;
-    --fg-card-gold: var(--fg-accent-light);
-    --accent-green: var(--fg-accent-light);
-    --accent-yellow: var(--fg-accent-light);
-    --bg-card: #1d1a15;
-    --bg-input: #2a261f;
-    --text-primary: #f5f1e8;
-    --text-secondary: #cdc4b3;
-    --border-color: rgba(var(--fg-accent-rgb), 0.35);
-
-    background:
-        linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.02) 45%, rgba(255, 255, 255, 0) 70%),
-        rgba(20, 17, 12, 0.72) !important;
-    border: 1px solid rgba(var(--fg-accent-rgb), 0.35) !important;
-    box-shadow:
-        inset 0 2px 0 rgba(var(--fg-accent-rgb), 0.85),
-        inset 0 1px 0 rgba(255, 255, 255, 0.12),
-        0 12px 30px rgba(0, 0, 0, 0.35) !important;
-    color: #f5f1e8 !important;
-}
-
-/* Landing page: the trial button's text sits on the dark glass background now */
-:root.fg-glass .fitgym-entry .hero-ghost {
-    border-color: rgba(232, 201, 122, 0.7) !important;
-    background: rgba(255, 255, 255, 0.06) !important;
-    color: var(--fg-accent-light) !important;
-    -webkit-backdrop-filter: blur(12px);
-    backdrop-filter: blur(12px);
-}
-
-/* ==== Accent color ====
-   Every gold in the UI reads these, so the accent is themed in one place.
-   Default: black and gold. */
-:root {
-    --fg-accent: #d9b45a;
-    --fg-accent-light: #f0d48a;
-    --fg-accent-dark: #b8923a;
-    --fg-accent-deep: #8a6a1c;
-    --fg-accent-soft: #e8c97a;
-    --fg-accent-pale: #e6d3a3;
-    --fg-accent-tint: #fff6d8;
-    --fg-accent-tint-2: #f3dc9c;
-    --fg-accent-rgb: 217, 180, 90;
-    --fg-accent-light-rgb: 240, 212, 138;
-    --fg-accent-dark-rgb: 184, 146, 58;
-    --fg-accent-deep-rgb: 160, 122, 31;
-    /* text on an accent fill */
-    --fg-accent-ink: #151515;
-    /* secondary buttons (Record Payment, Renew next to Check Attendance) */
-    --fg-secondary: #4a4337;
-}
-
-/* ==== Red and white glass (try-out) ====
-   Switched on by the `fg-red` line in resources/js/app.ts (together with `fg-glass`).
-   Delete that line to go back to black and gold. */
-:root.fg-red {
-    --fg-accent: #e11d2e;
-    --fg-accent-light: #ff5c69;
-    --fg-accent-dark: #a5101d;
-    --fg-accent-deep: #b3121f;
-    --fg-accent-soft: #ff8f98;
-    --fg-accent-pale: #f5c2c7;
-    --fg-accent-tint: #ffe3e6;
-    --fg-accent-tint-2: #ffc9ce;
-    --fg-accent-rgb: 225, 29, 46;
-    --fg-accent-light-rgb: 255, 92, 105;
-    --fg-accent-dark-rgb: 165, 16, 29;
-    --fg-accent-deep-rgb: 179, 18, 31;
-    --fg-accent-ink: #ffffff;
-    --fg-secondary: rgba(255, 255, 255, 0.18);
-}
-
-/* Background: deep crimson to bright red with soft white light, instead of the marble */
-:root.fg-glass.fg-red .fg-marble-bg {
-    background:
-        radial-gradient(ellipse 50% 40% at 12% 8%, rgba(255, 255, 255, 0.35), transparent 70%),
-        radial-gradient(ellipse 45% 45% at 92% 90%, rgba(255, 210, 214, 0.32), transparent 70%),
-        radial-gradient(ellipse 35% 30% at 70% 25%, rgba(255, 120, 130, 0.45), transparent 70%),
-        radial-gradient(ellipse 40% 40% at 25% 80%, rgba(120, 0, 15, 0.55), transparent 70%),
-        linear-gradient(135deg, #4a0810 0%, #9e111d 42%, #d51f2f 75%, #ff4b58 100%) fixed !important;
-
-    --fg-ink: #ffffff;
-    --fg-ink-soft: rgba(255, 255, 255, 0.82);
-    --fg-gold: #ffffff;
-}
-
-/* Big boxes: clear white glass with white text */
-:root.fg-glass.fg-red .fg-marble-bg :is(
-    .table-container, .plan-card, .current-member-card,
-    .reports-chart-card, .notification-card, .settings-content, .dashboard-card, .recent-activity,
-    .admin-header, .trainer-header, .member-header,
-    .entry-card, .fg-auth-card, .login-card
-),
-:root.fg-glass.fg-red .fg-marble-bg.trainer-portal :is(.bg-\[\#2A3042\].rounded-lg, .bg-\[\#2A3042\].rounded-xl),
-:root.fg-glass.fg-red .member-portal .fg-shell main .rounded-xl.border {
-    --fg-card-ink: #ffffff;
-    --fg-card-ink-soft: rgba(255, 255, 255, 0.8);
-    --fg-card-border: rgba(255, 255, 255, 0.28);
-    --text-primary: #ffffff;
-    --text-secondary: rgba(255, 255, 255, 0.8);
-    --border-color: rgba(255, 255, 255, 0.28);
-    --fg-card-gold: #ffffff;
-
-    background:
-        linear-gradient(135deg, rgba(255, 255, 255, 0.28) 0%, rgba(255, 255, 255, 0.08) 45%, rgba(255, 255, 255, 0.04) 100%),
-        rgba(255, 255, 255, 0.06) !important;
-    border: 1px solid rgba(255, 255, 255, 0.35) !important;
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.5),
-        0 24px 50px rgba(70, 0, 10, 0.35) !important;
-}
-
-:root.fg-glass.fg-red .fg-marble-bg :is(.admin-sidebar, .trainer-sidebar, .member-sidebar) {
-    --fg-card-ink: #ffffff;
-    --fg-card-ink-soft: rgba(255, 255, 255, 0.8);
-    --text-primary: #ffffff;
-    --text-secondary: rgba(255, 255, 255, 0.8);
-
-    background:
-        linear-gradient(170deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.04) 40%),
-        rgba(80, 4, 14, 0.25) !important;
-    border-right: 1px solid rgba(255, 255, 255, 0.3) !important;
-}
-
-/* Small boxes and pop-ups: bright frosted white with dark text, red accents */
-:root.fg-glass.fg-red .fg-marble-bg :is(
-    .admin-profile-card, .trainer-profile-card,
-    .metric-card, .summary-card, .attendance-card, .report-card, .stat-card,
-    .admin-header-card, .admin-header-button, .trainer-header-card, .fg-tile, .entry-role
-),
-:root.fg-glass.fg-red .fg-marble-bg.trainer-portal .lg\:grid-cols-4 > .bg-\[\#2A3042\],
-:root.fg-glass.fg-red .member-portal .fg-shell header :is(.rounded-xl.border, button.rounded-xl) {
-    --fg-card-ink: #2a0a0e;
-    --fg-card-ink-soft: #6b3a40;
-    --text-primary: #2a0a0e;
-    --text-secondary: #6b3a40;
-    --fg-card-gold: #c8101f;
-    --accent-green: #c8101f;
-    --accent-yellow: #c8101f;
-
-    background:
-        linear-gradient(135deg, rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 0.45) 60%),
-        rgba(255, 255, 255, 0.55) !important;
-    border: 1px solid rgba(255, 255, 255, 0.9) !important;
-    box-shadow:
-        inset 0 1px 0 #ffffff,
-        0 14px 34px rgba(70, 0, 10, 0.28) !important;
-}
-
-:root.fg-glass.fg-red :is(
-    .fg-light-surface,
-    .fg-marble-bg .modal-content, .fg-marble-bg .modal-card,
-    .fitgym-admin .fixed.inset-0.z-50 > div, .trainer-portal .fixed.inset-0.z-50 > div,
-    body > .fixed.inset-0.z-50 > div
-) {
-    --fg-card-ink: #2a0a0e;
-    --fg-card-ink-soft: #6b3a40;
-    --fg-card-gold: #c8101f;
-    --text-primary: #2a0a0e;
-    --text-secondary: #6b3a40;
-
-    background:
-        linear-gradient(140deg, rgba(255, 255, 255, 0.92) 0%, rgba(255, 255, 255, 0.6) 60%),
-        rgba(255, 255, 255, 0.75) !important;
-}
-
-/* the chosen role card / earned tiles */
-:root.fg-glass.fg-red .fg-marble-bg :is(.entry-role.entry-role--active, .fg-tile.fg-tile--earned) {
-    background:
-        linear-gradient(135deg, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0.3) 60%),
-        rgba(255, 200, 205, 0.7) !important;
-    border-color: #ffffff !important;
-}
-
-/* Sidebar active item: solid white with red text stands out on the red glass */
-:root.fg-glass.fg-red .fg-marble-bg :is(.admin-nav-item.active, .trainer-nav-item.active, .member-nav-item.active) {
-    background: #ffffff !important;
-    border-color: #ffffff !important;
-    box-shadow: 0 10px 26px rgba(70, 0, 10, 0.3) !important;
-    color: #c8101f !important;
-}
-
-:root.fg-glass.fg-red .fg-marble-bg :is(.admin-nav-item.active, .trainer-nav-item.active, .member-nav-item.active) * {
-    color: #c8101f !important;
-}
-
-/* Rows inside the glass */
-:root.fg-glass.fg-red .fg-marble-bg :is(.activity-item, .data-table tbody tr:hover) {
-    background: rgba(255, 255, 255, 0.12) !important;
-}
-
-
-/* Inside the red glass, red buttons would vanish: the accent turns white with red text,
-   secondary buttons become clear glass. (The --accent-* tokens are redeclared here
-   because each portal resolves them where it declares them.) */
-:root.fg-glass.fg-red .fg-marble-bg :is(
-    .table-container, .plan-card, .current-member-card,
-    .reports-chart-card, .notification-card, .settings-content, .dashboard-card, .recent-activity,
-    .admin-header, .trainer-header, .member-header,
-    .entry-card, .fg-auth-card, .login-card, .admin-sidebar, .trainer-sidebar, .member-sidebar
-),
-:root.fg-glass.fg-red .fg-marble-bg.trainer-portal :is(.bg-[#2A3042].rounded-lg, .bg-[#2A3042].rounded-xl),
-:root.fg-glass.fg-red .member-portal .fg-shell main .rounded-xl.border {
-    --fg-accent: #ffffff;
-    --fg-accent-light: #ffffff;
-    --fg-accent-dark: #ffe3e6;
-    --fg-accent-rgb: 255, 255, 255;
-    --fg-accent-ink: #c8101f;
-    --accent-green: #ffffff;
-    --accent-purple: #ffffff;
-    --accent-purple-light: #ffffff;
-    --accent-yellow: #ffffff;
-    --accent-blue: rgba(255, 255, 255, 0.18);
-    --accent-pink: rgba(60, 0, 8, 0.35);
-    --fg-ink: #ffffff;
-    --fg-ink-soft: rgba(255, 255, 255, 0.85);
-    --fg-gold: #ffffff;
-}
-
-/* Sign-in page: role colors (purple/blue/pink) don't read on red; use white */
-:root.fg-glass.fg-red .fitgym-entry :is(.entry-kicker span, .entry-field-head a, .entry-register > p) {
-    color: #ffffff !important;
-}
-
-:root.fg-glass.fg-red .fitgym-entry .entry-primary {
-    background: #ffffff !important;
-    color: #c8101f !important;
-    box-shadow: 0 12px 28px rgba(70, 0, 10, 0.3);
-}
-
-:root.fg-glass.fg-red .fitgym-entry .entry-ghost {
-    border-color: rgba(255, 255, 255, 0.8) !important;
-    background: rgba(255, 255, 255, 0.1) !important;
-    color: #ffffff !important;
-}
-
-/* Logout and other danger buttons: dark glass, white text */
-:root.fg-glass.fg-red .fg-marble-bg :is(.admin-logout-btn, .trainer-logout-btn, .member-logout-btn) {
-    border: 1px solid rgba(255, 255, 255, 0.45) !important;
-    background: rgba(60, 0, 8, 0.35) !important;
-    color: #ffffff !important;
-}
-
-/* White tiles and small boxes inside the red glass keep the red accent (numbers, icons) */
-:root.fg-glass.fg-red .fg-marble-bg :is(
-    .admin-profile-card, .trainer-profile-card,
-    .metric-card, .summary-card, .attendance-card, .report-card, .stat-card,
-    .admin-header-card, .admin-header-button, .trainer-header-card, .fg-tile, .entry-role
-),
-:root.fg-glass.fg-red .fg-marble-bg.trainer-portal .lg\:grid-cols-4 > .bg-\[\#2A3042\],
-:root.fg-glass.fg-red .member-portal .fg-shell header :is(.rounded-xl.border, button.rounded-xl) {
-    --fg-accent: #e11d2e;
-    --fg-accent-light: #ff5c69;
-    --fg-accent-dark: #a5101d;
-    --fg-accent-rgb: 225, 29, 46;
-    --fg-accent-ink: #ffffff;
-    --accent-purple: #e11d2e;
-    --accent-purple-light: #e11d2e;
-}
-
-/* ==== Easier on the eyes (black and gold glass) ==== */
-
-/* Sign-in page: one gold accent instead of a purple / blue / pink button per role */
-:root.fg-glass:not(.fg-red) .fitgym-entry :is(.entry-primary, .hero-primary) {
-    background: linear-gradient(135deg, var(--fg-accent-light) 0%, var(--fg-accent) 55%, var(--fg-accent-dark) 100%) !important;
-    color: #151515 !important;
-}
-
-:root.fg-glass:not(.fg-red) .fitgym-entry :is(.entry-kicker span, .entry-field-head a) {
-    color: var(--fg-accent-soft) !important;
-}
-
-:root.fg-glass:not(.fg-red) .fitgym-entry .entry-register .entry-ghost {
-    border-color: rgba(var(--fg-accent-rgb), 0.7) !important;
-    color: var(--fg-accent-soft) !important;
-}
-
-/* Logout: a soft red that is easy to find, without a bright block pulling the eye */
-:root.fg-glass:not(.fg-red) .fg-marble-bg :is(.admin-logout-btn, .trainer-logout-btn, .member-logout-btn) {
-    border: 1px solid rgba(232, 112, 102, 0.85) !important;
-    background: rgba(196, 84, 76, 0.28) !important;
-    color: #ffe1dd !important;
-}
-
-:root.fg-glass:not(.fg-red) .fg-marble-bg :is(.admin-logout-btn, .trainer-logout-btn, .member-logout-btn):hover {
-    background: rgba(196, 84, 76, 0.42) !important;
 }
 
 /* ---- Sidebar sizes: the same in every portal (Super Admin, Admin, Staff, Member) ----
@@ -1177,7 +983,7 @@ body > .fixed textarea:not([type='checkbox']):not([type='radio']):not([type='ran
 /* One sidebar width on desktop for every portal */
 @media (min-width: 1024px) {
     .fg-marble-bg .fg-sidebar {
-        width: 17.5rem !important;
+        width: var(--ui-sidebar-w) !important;
     }
 }
 
@@ -1212,7 +1018,7 @@ body > .fixed textarea:not([type='checkbox']):not([type='radio']):not([type='ran
 :root .fg-marble-bg.fg-auth .fg-auth-card.fg-auth-card :is(input, select, textarea):not([type='checkbox']):not([type='radio']):not([type='range']),
 :root .fg-marble-bg.fitgym-entry .entry-card.entry-card :is(input, textarea):not([type='checkbox']):not([type='radio']):not([type='range']):-webkit-autofill,
 :root .fg-marble-bg.fg-auth .fg-auth-card.fg-auth-card :is(input, textarea):not([type='checkbox']):not([type='radio']):not([type='range']):-webkit-autofill {
-    border: 1px solid rgba(var(--fg-accent-rgb), 0.4) !important;
+    border: 1px solid var(--fg-field-border) !important;
     background: var(--fg-field) !important;
     background-color: var(--fg-field) !important;
     color: var(--fg-field-ink) !important;
@@ -1225,7 +1031,7 @@ body > .fixed textarea:not([type='checkbox']):not([type='radio']):not([type='ran
 
 :root .fg-marble-bg.fitgym-entry .entry-card.entry-card :is(input, select, textarea):not([type='checkbox']):not([type='radio']):not([type='range']):focus,
 :root .fg-marble-bg.fg-auth .fg-auth-card.fg-auth-card :is(input, select, textarea):not([type='checkbox']):not([type='radio']):not([type='range']):focus {
-    border-color: rgba(var(--fg-accent-rgb), 0.8) !important;
+    border-color: var(--fg-accent) !important;
     -webkit-box-shadow: 0 0 0 1000px var(--fg-field) inset, 0 0 0 3px rgba(var(--fg-accent-rgb), 0.25) !important;
     box-shadow: 0 0 0 1000px var(--fg-field) inset, 0 0 0 3px rgba(var(--fg-accent-rgb), 0.25) !important;
 }
@@ -1250,7 +1056,7 @@ body > .fixed textarea:not([type='checkbox']):not([type='radio']):not([type='ran
 :root .fg-marble-bg .trainer-auth-card.trainer-auth-card input:not([type='checkbox']):not([type='radio']):not([type='range']):-webkit-autofill,
 :root .fg-marble-bg.fitgym-entry .entry-card.entry-card input:not([type='checkbox']):not([type='radio']):not([type='range']):-webkit-autofill,
 :root .fg-marble-bg.fg-auth .fg-auth-card.fg-auth-card input:not([type='checkbox']):not([type='radio']):not([type='range']):-webkit-autofill {
-    border: 1px solid rgba(var(--fg-accent-rgb), 0.4) !important;
+    border: 1px solid var(--fg-field-border) !important;
     background: var(--fg-field) !important;
     background-color: var(--fg-field) !important;
     color: var(--fg-field-ink) !important;
@@ -1264,7 +1070,7 @@ body > .fixed textarea:not([type='checkbox']):not([type='radio']):not([type='ran
 
 :root .fg-marble-bg .admin-auth-card.admin-auth-card input:not([type='checkbox']):not([type='radio']):not([type='range']):focus,
 :root .fg-marble-bg .trainer-auth-card.trainer-auth-card input:not([type='checkbox']):not([type='radio']):not([type='range']):focus {
-    border-color: rgba(var(--fg-accent-rgb), 0.8) !important;
+    border-color: var(--fg-accent) !important;
     -webkit-box-shadow: 0 0 0 1000px var(--fg-field) inset, 0 0 0 3px rgba(var(--fg-accent-rgb), 0.25) !important;
     box-shadow: 0 0 0 1000px var(--fg-field) inset, 0 0 0 3px rgba(var(--fg-accent-rgb), 0.25) !important;
 }
@@ -1280,149 +1086,48 @@ body > .fixed textarea:not([type='checkbox']):not([type='radio']):not([type='ran
     color: var(--fg-field-icon);
 }
 
-/* ==== Light mode: white and gold glass ====
+/* ==== Light mode: flat white and gold ====
    Switched on by the sun / moon button (FgThemeToggle), which adds `fg-day` to <html>
-   and remembers the choice in the browser. The page turns to the cream marble, every
-   box becomes white frosted glass with a gold rim, and text goes dark. Gold stays the
-   accent, so buttons, the open menu item and badges look the same as in dark mode. */
+   and remembers the choice in the browser. Same layout, same flat rules; only the
+   tokens change: a soft off-white page, white cards with a light gold border, near-black
+   text, and a deeper gold for gold text so it stays readable on white. Gold fills
+   (primary buttons, the open menu item) stay the same gold as in dark mode. */
 :root.fg-day {
-    --fg-ink: #2b2418;
-    --fg-ink-soft: #6b5d45;
-    --fg-gold: var(--fg-accent-deep);
+    --fg-bg: #f5f5f3;
+    --fg-card-sidebar: #ffffff;
+    --fg-card: #ffffff;
+    --fg-card-2: #f4f3ef;
+    --fg-line: #e5e3dd;
+    --fg-card-border: rgba(var(--fg-accent-dark-rgb), 0.28);
+    --fg-hover: rgba(0, 0, 0, 0.04);
 
-    --fg-card: #fffdf8;
-    --fg-card-2: #f6efdf;
-    --fg-card-sidebar: #fffdf8;
-    --fg-card-border: rgba(var(--fg-accent-rgb), 0.35);
-    --fg-card-ink: #2b2418;
-    --fg-card-ink-soft: #6b5d45;
+    --fg-ink: #1c1c1c;
+    --fg-ink-soft: #5c5c5c;
+    --fg-card-ink: #1c1c1c;
+    --fg-card-ink-soft: #5c5c5c;
+    --fg-gold: var(--fg-accent-deep);
     --fg-card-gold: var(--fg-accent-deep);
 
     --fg-field: #ffffff;
-    --fg-field-ink: #2b2418;
-    --fg-field-hint: rgba(43, 36, 24, 0.42);
-    --fg-field-icon: rgba(43, 36, 24, 0.6);
+    --fg-field-ink: #1c1c1c;
+    --fg-field-border: #d6d3cb;
+    --fg-field-hint: #8f8f8f;
+    --fg-field-icon: #5c5c5c;
     --fg-field-scheme: light;
+
+    --fg-accent-pale: #ecdcb2;
+    --fg-accent-tint: rgba(217, 180, 84, 0.14);
+    --fg-accent-tint-2: rgba(217, 180, 84, 0.26);
+
+    /* status text, deep enough to read on white */
+    --fg-success-text: #1a7f37;
+    --fg-warning-text: #bc4c00;
+    --fg-danger-text: #cf222e;
+    --fg-info-text: #0969da;
+    --fg-neutral-text: #5c5c5c;
 }
 
-html.fg-day {
-    background-color: #f6f1e7;
-}
-
-/* Background: the cream marble with a soft gold glow */
-:root.fg-glass.fg-day .fg-marble-bg {
-    background:
-        radial-gradient(ellipse 55% 45% at 10% 6%, rgba(var(--fg-accent-light-rgb), 0.35), transparent 70%),
-        radial-gradient(ellipse 50% 50% at 95% 92%, rgba(var(--fg-accent-rgb), 0.22), transparent 70%),
-        linear-gradient(rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.5)),
-        url('../images/fitgym-marble.jpg') center / cover fixed !important;
-
-    --fg-ink: #2b2418;
-    --fg-ink-soft: #6b5d45;
-    --fg-gold: var(--fg-accent-deep);
-}
-
-/* Big boxes and header bands: white frosted glass with a gold rim */
-:root.fg-glass.fg-day .fg-marble-bg :is(
-    .table-container, .plan-card, .current-member-card,
-    .reports-chart-card, .notification-card, .settings-content, .dashboard-card, .recent-activity,
-    .admin-header, .trainer-header, .member-header,
-    .entry-card, .fg-auth-card, .login-card
-),
-:root.fg-glass.fg-day .fg-marble-bg.trainer-portal :is(.bg-\[\#2A3042\].rounded-lg, .bg-\[\#2A3042\].rounded-xl),
-:root.fg-glass.fg-day .member-portal .fg-shell main .rounded-xl.border {
-    --fg-ink: #2b2418;
-    --fg-ink-soft: #6b5d45;
-    --fg-gold: var(--fg-accent-deep);
-
-    background:
-        linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.7) 55%, rgba(255, 250, 238, 0.8) 100%),
-        rgba(255, 253, 248, 0.72) !important;
-    border: 1px solid rgba(var(--fg-accent-rgb), 0.35) !important;
-    box-shadow:
-        inset 0 1px 0 #ffffff,
-        inset 0 0 0 1px rgba(var(--fg-accent-rgb), 0.1),
-        0 18px 40px rgba(120, 90, 30, 0.16) !important;
-}
-
-:root.fg-glass.fg-day .fg-marble-bg :is(.admin-header, .trainer-header, .member-header) {
-    border-bottom: 1px solid rgba(var(--fg-accent-rgb), 0.5) !important;
-}
-
-:root.fg-glass.fg-day .fg-marble-bg :is(.admin-sidebar, .trainer-sidebar, .member-sidebar) {
-    background:
-        linear-gradient(170deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.75) 40%),
-        rgba(255, 250, 238, 0.7) !important;
-    border-right: 1px solid rgba(var(--fg-accent-rgb), 0.4) !important;
-}
-
-/* Small cards, tiles and pop-ups: bright white with a gold top line */
-:root.fg-glass.fg-day .fg-marble-bg :is(
-    .admin-profile-card, .trainer-profile-card,
-    .metric-card, .summary-card, .attendance-card, .report-card, .stat-card,
-    .admin-header-card, .admin-header-button, .trainer-header-card, .fg-tile, .entry-role
-):not(.entry-role--active):not(.fg-tile--earned),
-:root.fg-glass.fg-day .fg-marble-bg.trainer-portal .lg\:grid-cols-4 > .bg-\[\#2A3042\],
-:root.fg-glass.fg-day .member-portal .fg-shell header :is(.rounded-xl.border, button.rounded-xl) {
-    background: linear-gradient(160deg, #ffffff 0%, #fbf5e7 100%) !important;
-    border: 1px solid rgba(var(--fg-accent-rgb), 0.4) !important;
-    box-shadow:
-        inset 0 2px 0 var(--fg-accent),
-        0 10px 24px rgba(120, 90, 30, 0.14) !important;
-}
-
-:root.fg-glass.fg-day :is(
-    .fg-light-surface,
-    .fg-marble-bg .modal-content, .fg-marble-bg .modal-card,
-    .fitgym-admin .fixed.inset-0.z-50 > div, .trainer-portal .fixed.inset-0.z-50 > div,
-    body > .fixed.inset-0.z-50 > div
-) {
-    background:
-        linear-gradient(140deg, rgba(255, 255, 255, 0.98) 0%, rgba(255, 251, 242, 0.94) 100%) !important;
-    border: 1px solid rgba(var(--fg-accent-rgb), 0.45) !important;
-    box-shadow:
-        inset 0 3px 0 var(--fg-accent),
-        0 30px 70px rgba(60, 45, 15, 0.25) !important;
-    color: #2b2418;
-}
-
-/* Rows inside the white glass: a faint gold wash on hover */
-:root.fg-glass.fg-day .fg-marble-bg :is(.activity-item, .data-table tbody tr:hover) {
-    background: rgba(var(--fg-accent-rgb), 0.08) !important;
-}
-
-/* Logout: soft red with dark-red text so it reads on white */
-:root.fg-glass.fg-day .fg-marble-bg :is(.admin-logout-btn, .trainer-logout-btn, .member-logout-btn) {
-    border: 1px solid rgba(196, 84, 76, 0.6) !important;
-    background: rgba(196, 84, 76, 0.1) !important;
-    color: #9b2c22 !important;
-}
-
-:root.fg-glass.fg-day .fg-marble-bg :is(.admin-logout-btn, .trainer-logout-btn, .member-logout-btn):hover {
-    background: rgba(196, 84, 76, 0.18) !important;
-}
-
-/* Sign-in page: the light-gold links and the trial button need a deeper gold on white */
-:root.fg-glass.fg-day .fitgym-entry :is(.entry-kicker span, .entry-field-head a) {
-    color: var(--fg-accent-deep) !important;
-}
-
-:root.fg-glass.fg-day .fitgym-entry .entry-register .entry-ghost,
-:root.fg-glass.fg-day .fitgym-entry .hero-ghost {
-    border-color: rgba(var(--fg-accent-dark-rgb), 0.7) !important;
-    background: rgba(255, 255, 255, 0.6) !important;
-    color: var(--fg-accent-deep) !important;
-}
-
-/* Error and warning text was a pale red for the dark boxes; deepen it on white */
-:root.fg-day :is(.entry-error, .fg-error, .admin-auth-error, .notification-inline-error, .over-limit, .attendance-error) {
-    color: #b42318 !important;
-}
-
-:root.fg-day .fg-marble-bg :is(.badge-active, .badge-trial, .badge-pending, .badge-suspended, .badge-expired) {
-    filter: brightness(0.6) saturate(1.3);
-}
-
+/* Light mode: the black page band behind the sidebar and the sun / moon button follow */
 :root.fg-day .fg-marble-bg select {
     color-scheme: light;
 }
@@ -1449,25 +1154,1282 @@ html.fg-day {
     top: 1rem;
     right: 1rem;
     z-index: 40;
-    width: 2.75rem;
-    height: 2.75rem;
-    border: 1px solid rgba(var(--fg-accent-rgb), 0.5);
+    width: var(--ui-icon-btn);
+    height: var(--ui-icon-btn);
+    border: 1px solid var(--fg-card-border);
     border-radius: 999px;
-    background: rgba(20, 17, 12, 0.6);
-    -webkit-backdrop-filter: blur(14px);
-    backdrop-filter: blur(14px);
-    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.3);
+    background: var(--fg-card);
 }
 
 .fg-theme-toggle--floating svg {
-    color: var(--fg-accent-light);
+    color: var(--fg-card-gold);
 }
 
-:root.fg-day .fg-theme-toggle--floating {
-    background: rgba(255, 255, 255, 0.85);
-    box-shadow: 0 8px 22px rgba(120, 90, 30, 0.18);
+/* ==========================================================================
+   UI standard: one set of sizes for every FitGym page
+   (Super Admin, Admin, Staff, Member, sign-in and password pages).
+   Sizes, spacing and type only; the black-and-gold / light-mode colors above
+   stay as they are. Change a size here and it changes everywhere.
+   !important is used where the pages' own (scoped) rules set the same property.
+   ========================================================================== */
+:root {
+    --fg-font: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+    /* layout */
+    --ui-sidebar-w: 250px;
+    --ui-sidebar-w-collapsed: 75px;
+    --ui-topbar-h: 64px;
+    --ui-content-pad: 24px;
+    --ui-content-max: 1440px;
+    --ui-section-gap: 24px;
+
+    /* spacing scale */
+    --ui-space-xs: 4px;
+    --ui-space-sm: 8px;
+    --ui-space-md: 16px;
+    --ui-space-lg: 24px;
+    --ui-space-xl: 32px;
+
+    /* type */
+    --ui-fs-title: 26px;
+    --ui-fs-section: 20px;
+    --ui-fs-card-title: 16px;
+    --ui-fs-body: 14px;
+    --ui-fs-table: 14px;
+    --ui-fs-table-head: 13px;
+    --ui-fs-menu: 14px;
+    --ui-fs-button: 14px;
+    --ui-fs-label: 13px;
+    --ui-fs-small: 12px;
+
+    /* cards */
+    --ui-card-pad: 20px;
+    --ui-card-radius: 12px;
+    --ui-stat-h: 120px;
+    --ui-stat-num: 26px;
+    --ui-stat-title: 14px;
+    --ui-card-gap: 20px;
+    --ui-icon: 22px;
+
+    /* buttons */
+    --ui-btn-h: 40px;
+    --ui-btn-h-sm: 32px;
+    --ui-btn-h-lg: 46px;
+    --ui-icon-btn: 38px;
+    --ui-btn-radius: 8px;
+    --ui-btn-px: 16px;
+
+    /* forms and pop-ups */
+    --ui-input-h: 42px;
+    --ui-textarea-min: 100px;
+    --ui-input-radius: 8px;
+    --ui-label-gap: 8px;
+    --ui-field-gap: 16px;
+    --ui-modal-w: 550px;
+    --ui-modal-pad: 24px;
+
+    /* tables */
+    --ui-th-h: 48px;
+    --ui-tr-h: 54px;
+    --ui-cell-px: 16px;
+    --ui-action-btn: 32px;
+    --ui-cell-control-h: 34px;
+    --ui-pager-h: 36px;
 }
 
-:root.fg-day .fg-theme-toggle--floating svg {
-    color: var(--fg-accent-deep);
+/* Phones: the same scale, a little tighter */
+@media (max-width: 767.98px) {
+    :root {
+        --ui-content-pad: 16px;
+        --ui-card-pad: 16px;
+        --ui-modal-pad: 20px;
+        --ui-fs-title: 22px;
+        --ui-fs-section: 18px;
+        --ui-stat-h: 104px;
+        --ui-stat-num: 24px;
+    }
+}
+
+/* ---- Font ---- */
+:is(.fitgym-admin, .trainer-portal, .member-portal, .platform-shell, .fitgym-entry, .fg-auth),
+body > .fixed.inset-0.z-50 {
+    font-family: var(--fg-font);
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ---- Layout: sidebar, top bar, content area ---- */
+.fg-marble-bg .fg-sidebar {
+    padding: 20px var(--ui-space-md) !important;
+}
+
+.fg-marble-bg .fg-sidebar > div:first-child h1 {
+    font-size: var(--ui-fs-section) !important;
+}
+
+.fg-marble-bg .fg-sidebar > div:first-child p {
+    font-size: var(--ui-fs-small) !important;
+}
+
+.fg-marble-bg .fg-sidebar > div:nth-child(2) {
+    border-radius: var(--ui-card-radius) !important;
+}
+
+.fg-marble-bg .fg-sidebar :is(.admin-nav-item, .trainer-nav-item, .member-nav-item) {
+    min-height: var(--ui-btn-h);
+    align-items: center !important;
+    padding: var(--ui-space-sm) 12px !important;
+    border-radius: var(--ui-btn-radius) !important;
+    font-size: var(--ui-fs-menu) !important;
+}
+
+.fg-marble-bg .fg-sidebar :is(.admin-nav-item, .trainer-nav-item, .member-nav-item) .text-sm {
+    font-size: var(--ui-fs-menu) !important;
+    line-height: 20px;
+}
+
+.fg-marble-bg .fg-sidebar :is(.admin-logout-btn, .trainer-logout-btn, .member-logout-btn) {
+    min-height: var(--ui-btn-h);
+    padding: 0 var(--ui-btn-px) !important;
+    border-radius: var(--ui-btn-radius) !important;
+    font-size: var(--ui-fs-button) !important;
+}
+
+/* Top bar: page title on the left, account boxes and buttons on the right */
+.fg-marble-bg :is(.admin-header, .trainer-header, .member-header) {
+    min-height: var(--ui-topbar-h);
+    gap: 12px var(--ui-space-md) !important;
+    padding: 12px var(--ui-content-pad) !important;
+}
+
+.fg-marble-bg :is(.admin-header, .trainer-header, .member-header) > div:first-child h2 {
+    font-size: var(--ui-fs-title) !important;
+    line-height: 1.25 !important;
+}
+
+.fg-marble-bg :is(.admin-header, .trainer-header, .member-header) > div:first-child p {
+    margin-top: 2px !important;
+    font-size: var(--ui-fs-small) !important;
+    line-height: 16px !important;
+}
+
+.fg-marble-bg :is(.admin-header, .trainer-header, .member-header) > .flex-wrap {
+    gap: var(--ui-space-sm) !important;
+}
+
+/* The boxes and buttons in the top bar: all one height */
+.fg-marble-bg :is(.admin-header, .trainer-header, .member-header) > .flex-wrap > :not(.absolute) {
+    min-height: var(--ui-btn-h);
+    padding: 3px 12px !important;
+    border-radius: var(--ui-btn-radius) !important;
+    font-size: var(--ui-fs-label) !important;
+}
+
+.fg-marble-bg :is(.admin-header, .trainer-header, .member-header) > .flex-wrap > div:not(.absolute) {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.fg-marble-bg :is(.admin-header, .trainer-header, .member-header) > .flex-wrap > div:not(.absolute) p:first-child {
+    font-size: var(--ui-fs-small) !important;
+    line-height: 14px;
+}
+
+.fg-marble-bg :is(.admin-header, .trainer-header, .member-header) > .flex-wrap > div:not(.absolute) p + p {
+    margin-top: 1px !important;
+    font-size: var(--ui-fs-label) !important;
+    line-height: 18px;
+}
+
+@media (max-width: 1023.98px) {
+    .fg-mobile-bar {
+        min-height: var(--ui-topbar-h);
+        padding: var(--ui-space-sm) var(--ui-content-pad);
+    }
+}
+
+/* Content area: 24px around, centred, never wider than 1440px */
+.fg-shell main {
+    padding: var(--ui-content-pad) !important;
+    font-size: var(--ui-fs-body);
+}
+
+.fg-shell main > :not(.modal):not(.modal-overlay):not(.fixed) {
+    max-width: var(--ui-content-max);
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* Member payment / renewal banner above the content lines up with it */
+.member-portal .fg-shell > .flex-col > div.rounded-xl.border {
+    margin: var(--ui-content-pad) max(var(--ui-content-pad), calc((100% - var(--ui-content-max)) / 2)) 0 !important;
+    padding: 12px var(--ui-space-md) !important;
+}
+
+/* 24px between the blocks of a page */
+.fg-shell main .view > * {
+    margin-top: 0 !important;
+}
+
+.fg-shell main .view > :not(:last-child):not(.modal):not(.fixed) {
+    margin-bottom: var(--ui-section-gap) !important;
+}
+
+.fg-shell main :is(.page-header, .current-gym-header, .reports-tabs, .attendance-tabs, .notification-tabs, .section-toolbar) {
+    margin-bottom: var(--ui-section-gap) !important;
+}
+
+/* ---- Typography ---- */
+/* Section headings */
+.fg-marble-bg :is(.page-header h2, .section-title, .settings-content > h3, .settings-tab-content > h3),
+.fg-shell main :is(h2.text-xl, h3.text-xl, h2.text-2xl) {
+    font-size: var(--ui-fs-section) !important;
+    line-height: 1.3 !important;
+}
+
+.platform-portal .section-title {
+    margin: var(--ui-section-gap) 0 12px !important;
+}
+
+/* Card titles */
+.fg-marble-bg :is(
+    .dashboard-card h3, .recent-activity > h3, .reports-chart-card h3, .plan-card h3,
+    .current-gym-header h3, .settings-section h4, .notification-content h4
+),
+.fg-shell main :is(h3.text-lg, h4.text-lg, h4.text-xl) {
+    font-size: var(--ui-fs-card-title) !important;
+    line-height: 1.35 !important;
+}
+
+/* Small descriptions */
+.fg-marble-bg :is(.hint-row, .branch-sub, .stat-sub, .plan-description, .notification-time, .activity-when, .placeholder-text) {
+    font-size: var(--ui-fs-small) !important;
+}
+
+/* ---- Cards ---- */
+.fg-marble-bg :is(.dashboard-card, .recent-activity, .reports-chart-card, .settings-content, .plan-card),
+.fg-marble-bg.trainer-portal main .bg-\[\#2A3042\]:is(.p-6, .p-4),
+.member-portal main .rounded-xl.border:is(.p-4, .p-6) {
+    padding: var(--ui-card-pad) !important;
+    border-radius: var(--ui-card-radius) !important;
+}
+
+.fg-marble-bg :is(.table-container, .notification-card, .current-member-card, .settings-sidebar, .admin-profile-card, .trainer-profile-card),
+.member-portal main .rounded-xl.border {
+    border-radius: var(--ui-card-radius) !important;
+}
+
+/* Card grids: 20px apart */
+.fg-marble-bg :is(.metrics-grid, .plans-summary, .attendance-metrics, .payment-metrics, .reports-metrics, .stat-grid, .plans-grid, .dashboard-grid),
+.fg-marble-bg.trainer-portal main .lg\:grid-cols-4 {
+    gap: var(--ui-card-gap) !important;
+}
+
+/* 4-across statistics drop to 2-across on laptops, where the sidebar takes room */
+@media (min-width: 1024px) and (max-width: 1279.98px) {
+    .fg-marble-bg.trainer-portal main .lg\:grid-cols-4 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+/* Statistics cards: one height, one padding, one number size */
+.fg-marble-bg :is(.metric-card, .summary-card, .attendance-card, .payment-card, .report-card, .stat-card),
+.fg-marble-bg.trainer-portal main .lg\:grid-cols-4 > .bg-\[\#2A3042\],
+.member-portal main .grid > .fg-tile.text-center:has(> p.text-3xl) {
+    box-sizing: border-box;
+    min-height: var(--ui-stat-h);
+    padding: var(--ui-card-pad) !important;
+    border-radius: var(--ui-card-radius) !important;
+}
+
+/* stacked cards keep their content centred in the taller box */
+.fg-marble-bg :is(.attendance-card, .payment-card, .report-card, .stat-card),
+.member-portal main .grid > .fg-tile.text-center:has(> p.text-3xl) {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.fg-marble-bg :is(.metric-card, .summary-card) {
+    align-items: center !important;
+    gap: var(--ui-space-md) !important;
+}
+
+.fg-marble-bg :is(.metric-content h3, .summary-card h3, .attendance-card h3, .payment-card h3, .report-card h2, .stat-value),
+.fg-marble-bg.trainer-portal main .lg\:grid-cols-4 > .bg-\[\#2A3042\] p.text-xl,
+.member-portal main .grid > .fg-tile.text-center > p.text-3xl {
+    margin-bottom: var(--ui-space-xs) !important;
+    font-size: var(--ui-stat-num) !important;
+    line-height: 1.2 !important;
+}
+
+.fg-marble-bg :is(.metric-content p, .summary-card p, .attendance-card p, .payment-card p, .report-card h3, .stat-label),
+.fg-marble-bg.trainer-portal main .lg\:grid-cols-4 > .bg-\[\#2A3042\] p.text-sm,
+.member-portal main .grid > .fg-tile.text-center > p.text-sm {
+    margin-bottom: var(--ui-space-xs) !important;
+    font-size: var(--ui-stat-title) !important;
+    line-height: 1.35 !important;
+}
+
+.fg-marble-bg :is(.metric-content span, .attendance-card span, .stat-sub),
+.fg-marble-bg.trainer-portal main .lg\:grid-cols-4 > .bg-\[\#2A3042\] p.text-xs {
+    font-size: var(--ui-fs-small) !important;
+}
+
+/* Card icons */
+.fg-marble-bg .metric-icon {
+    width: 44px !important;
+    height: 44px !important;
+    border-radius: 10px !important;
+    font-size: var(--ui-icon) !important;
+}
+
+.fg-marble-bg .summary-card > i {
+    font-size: 24px !important;
+}
+
+.fg-marble-bg.trainer-portal main .lg\:grid-cols-4 > .bg-\[\#2A3042\] .rounded-full svg {
+    width: var(--ui-icon) !important;
+    height: var(--ui-icon) !important;
+}
+
+/* ---- Buttons ---- */
+/* Default: 40px */
+:is(.fitgym-admin, .trainer-portal, .member-portal, .platform-shell, .fitgym-entry, .fg-light-surface, body > .fixed) :is(
+    .fg-btn,
+    .btn-add-plan, .btn-add-member, .btn-add-payment, .btn-add-trainer, .btn-export, .btn-create-plan, .btn-refresh-plans,
+    .btn-cancel, .btn-add-member-modal, .btn-add-payment-modal, .btn-add-trainer-modal, .btn-edit-member,
+    .btn-update-gym, .btn-update-profile, .btn-save-settings, .btn-cancel-settings, .btn-change-password,
+    .btn-notification-settings, .btn-mark-all-read, .btn-clear-filter, .quick-action-btn,
+    .plan-actions > button, .subscription-banner button,
+    .primary-btn, .ghost-btn, .gym-preview-join, .gym-preview-back
+) {
+    min-height: var(--ui-btn-h) !important;
+    padding: 0 var(--ui-btn-px) !important;
+    border-radius: var(--ui-btn-radius) !important;
+    font-size: var(--ui-fs-button) !important;
+    line-height: 1.25 !important;
+}
+
+/* Small: 32px */
+:is(.fitgym-admin, .trainer-portal, .member-portal, .platform-shell, .fitgym-entry, .fg-light-surface, body > .fixed) :is(
+    .fg-btn-sm, .notif-btn, .notif-drawer-markall, .btn-view, .btn-mark-read, .btn-dismiss, .plan-feature-add
+) {
+    min-height: var(--ui-btn-h-sm) !important;
+    padding: 0 12px !important;
+    border-radius: var(--ui-btn-radius) !important;
+    font-size: var(--ui-fs-label) !important;
+    line-height: 1.25 !important;
+}
+
+/* Large: 46px (sign-in and other main form buttons) */
+:is(.fitgym-admin, .trainer-portal, .member-portal, .platform-shell, .fitgym-entry, .fg-auth, body > .fixed) :is(
+    .fg-btn-lg, .entry-primary, .entry-ghost, .btn-signin, .admin-auth-primary, .trainer-auth-primary, .fg-primary
+) {
+    min-height: var(--ui-btn-h-lg) !important;
+    padding: 0 var(--ui-btn-px) !important;
+    border-radius: var(--ui-btn-radius) !important;
+    font-size: var(--ui-fs-button) !important;
+    line-height: 1.25 !important;
+}
+
+/* left-aligned menu-style buttons keep their text on the left */
+:is(.fg-btn, .fg-btn-sm, .fg-btn-lg).text-left,
+.fg-marble-bg .quick-action-btn {
+    justify-content: flex-start;
+    text-align: left;
+}
+
+/* Icon-only buttons: 38px square */
+:is(.fitgym-admin, .trainer-portal, .member-portal, .platform-shell, .fitgym-entry, .fg-light-surface, body > .fixed) :is(.modal-close, .notif-drawer-close, .gym-preview-close) {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    width: var(--ui-icon-btn) !important;
+    height: var(--ui-icon-btn) !important;
+    padding: 0 !important;
+    border-radius: var(--ui-btn-radius) !important;
+    flex-shrink: 0;
+}
+
+/* Table row actions: 32px */
+:is(.fitgym-admin, .trainer-portal, .platform-shell) .action-btn {
+    width: auto !important;
+    min-width: var(--ui-action-btn) !important;
+    height: var(--ui-action-btn) !important;
+    padding: 0 10px !important;
+    border-radius: var(--ui-btn-radius) !important;
+    font-size: var(--ui-fs-label) !important;
+}
+
+:is(.fitgym-admin, .trainer-portal) .action-btn:has(> i:only-child) {
+    width: var(--ui-action-btn) !important;
+    padding: 0 !important;
+}
+
+:is(.fitgym-admin, .trainer-portal, .platform-shell) :is(.action-buttons, .actions-cell) {
+    gap: 6px !important;
+}
+
+/* ---- Forms ---- */
+/* Text fields and selects: 42px. Textareas: at least 100px. */
+:is(.fitgym-admin, .trainer-portal, .member-portal, .platform-shell, .fitgym-entry, .fg-auth, .fg-light-surface, body > .fixed)
+    :is(input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='hidden']):not([type='color']):not([type='submit']):not([type='button']), select) {
+    height: var(--ui-input-h) !important;
+    min-height: var(--ui-input-h);
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    border-radius: var(--ui-input-radius) !important;
+    font-size: var(--ui-fs-body) !important;
+}
+
+:is(.fitgym-admin, .trainer-portal, .member-portal, .platform-shell, .fitgym-entry, .fg-auth, .fg-light-surface, body > .fixed) textarea {
+    min-height: var(--ui-textarea-min) !important;
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
+    border-radius: var(--ui-input-radius) !important;
+    font-size: var(--ui-fs-body) !important;
+    line-height: 1.5;
+}
+
+/* Fields inside a table row match the 32-34px row actions */
+:is(.fitgym-admin, .trainer-portal, .platform-shell) td :is(input:not([type='checkbox']):not([type='radio']), select) {
+    height: var(--ui-cell-control-h) !important;
+    min-height: var(--ui-cell-control-h);
+    font-size: var(--ui-fs-label) !important;
+}
+
+/* Labels: 13px, 8px above the field */
+:is(.fitgym-admin, .trainer-portal, .member-portal, .platform-shell, .fitgym-entry, .fg-auth, .fg-light-surface, body > .fixed)
+    :is(label.block, .form-group > label, .field > label, .entry-field > label, .entry-field-head label, .fg-field > label, .detail-item > label) {
+    font-size: var(--ui-fs-label) !important;
+}
+
+:is(.fitgym-admin, .trainer-portal, .member-portal, .fg-light-surface, body > .fixed) :is(label.block, .form-group > label) {
+    margin-bottom: var(--ui-label-gap) !important;
+}
+
+:is(.fitgym-admin, .trainer-portal, .member-portal, .fg-light-surface, body > .fixed) label.block + :is(input, select, textarea, .fg-password-field) {
+    margin-top: 0 !important;
+}
+
+:is(.platform-shell, .fitgym-entry, .fg-auth) :is(.field, .entry-field, .fg-field) {
+    gap: var(--ui-label-gap) !important;
+}
+
+/* 16px between fields */
+.fitgym-admin .form-group,
+.platform-shell .field {
+    margin-bottom: var(--ui-field-gap) !important;
+}
+
+:is(.fitgym-entry, .fg-auth) :is(.entry-form, .fg-form) {
+    gap: var(--ui-field-gap) !important;
+}
+
+/* iPhone zooms into fields under 16px, so phones keep 16px text in fields */
+@media (max-width: 767.98px) {
+    :is(.fitgym-admin, .trainer-portal, .member-portal, .platform-shell, .fitgym-entry, .fg-auth, .fg-light-surface, body > .fixed)
+        :is(input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='hidden']), select, textarea) {
+        font-size: 16px !important;
+    }
+}
+
+/* ---- Pop-ups: 550px wide, 24px padding ---- */
+:is(.fitgym-admin .modal, .platform-shell .modal-overlay, body > .fixed.inset-0.z-50) {
+    padding: var(--ui-space-md) !important;
+}
+
+:is(
+    .modal-content, .modal-card,
+    .fitgym-admin .fixed.inset-0.z-50 > div, .trainer-portal .fixed.inset-0.z-50 > div, body > .fixed.inset-0.z-50 > div
+) {
+    box-sizing: border-box;
+    width: 100% !important;
+    max-width: min(var(--ui-modal-w), 100%) !important;
+    margin-inline: 0 !important;
+    padding: var(--ui-modal-pad) !important;
+    border-radius: var(--ui-card-radius) !important;
+}
+
+/* the receipt viewer shows a photo, so it stays a little wider */
+.modal-content.receipt-modal-content {
+    max-width: min(36rem, 100%) !important;
+}
+
+:is(
+    .modal-header h3, .modal-card > h3,
+    .fitgym-admin .fixed.inset-0.z-50 > div > h3, .trainer-portal .fixed.inset-0.z-50 > div > h3,
+    body > .fixed.inset-0.z-50 > div > div:first-child > h2
+) {
+    font-size: var(--ui-fs-section) !important;
+    line-height: 1.3 !important;
+}
+
+.modal-header {
+    margin-bottom: 20px !important;
+}
+
+:is(.modal-actions, .trainer-portal .fixed.inset-0.z-50 > div > .flex.gap-2:last-child) {
+    gap: 12px !important;
+    margin-top: var(--ui-space-lg) !important;
+}
+
+/* ---- Tables: 48px header, 54px rows, 16px cell padding ---- */
+:is(.fitgym-admin, .trainer-portal, .platform-shell) table th {
+    height: var(--ui-th-h) !important;
+    padding: var(--ui-space-sm) var(--ui-cell-px) !important;
+    font-size: var(--ui-fs-table-head) !important;
+    line-height: 1.3 !important;
+    vertical-align: middle;
+}
+
+:is(.fitgym-admin, .trainer-portal, .platform-shell) table td {
+    height: var(--ui-tr-h) !important;
+    padding: var(--ui-space-sm) var(--ui-cell-px) !important;
+    font-size: var(--ui-fs-table) !important;
+    line-height: 1.4 !important;
+    vertical-align: middle;
+}
+
+:is(.fitgym-admin, .trainer-portal, .platform-shell) table td.empty-row {
+    padding: var(--ui-space-xl) var(--ui-cell-px) !important;
+}
+
+@media (max-width: 767.98px) {
+    :is(.fitgym-admin, .trainer-portal, .platform-shell) table td {
+        font-size: var(--ui-fs-table-head) !important;
+    }
+}
+
+/* ---- Pagination (for any list that pages): 36px ---- */
+.fg-pagination {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--ui-space-xs);
+}
+
+.fg-pagination > :is(a, button, span) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--ui-pager-h);
+    height: var(--ui-pager-h);
+    padding: 0 10px;
+    border-radius: var(--ui-btn-radius);
+    font-size: var(--ui-fs-label);
+}
+
+/* ---- Settings pages (starter-kit sidebar): icons centred in the 75px collapsed rail ---- */
+[data-collapsible='icon'] :is([data-sidebar='menu-button'], [data-sidebar='menu-item']) {
+    margin-inline: auto;
+}
+
+/* ---- Sign-in and password cards ---- */
+.fg-marble-bg :is(.entry-card, .fg-auth-card, .admin-auth-card, .trainer-auth-card, .login-card) {
+    border-radius: var(--ui-card-radius) !important;
+}
+
+.fg-marble-bg :is(.entry-card, .fg-auth-card) {
+    padding: var(--ui-modal-pad) !important;
+}
+
+/* =====================================================================
+   Dashboard (Admin and Staff): flat cards on the black-and-gold theme.
+   Toolbar of quick actions, a KPI row, then chart and list cards in a
+   3-column grid. Colors come from the theme tokens, so light mode and
+   the accent switch work without extra rules.
+   ===================================================================== */
+.fg-dash {
+    display: grid;
+    gap: var(--ui-card-gap);
+    color: var(--fg-card-ink);
+}
+
+.fg-dash-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ui-space-md);
+}
+
+.fg-dash-greeting h3 {
+    margin: 0;
+    font-size: var(--ui-fs-section);
+    font-weight: 700;
+    color: var(--fg-ink);
+}
+
+.fg-dash-greeting p {
+    margin: 2px 0 0;
+    font-size: var(--ui-fs-label);
+    color: var(--fg-ink-soft);
+}
+
+.fg-dash-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--ui-space-sm);
+}
+
+.fg-dash-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ui-space-sm);
+    min-height: var(--ui-btn-h);
+    padding: 0 var(--ui-btn-px);
+    border: 1px solid var(--fg-card-border);
+    border-radius: var(--ui-btn-radius);
+    background: var(--fg-card);
+    color: var(--fg-card-ink);
+    font-size: var(--ui-fs-button);
+    font-weight: 600;
+    line-height: 1.25;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.fg-dash-btn:hover {
+    border-color: var(--fg-accent);
+    color: var(--fg-card-gold);
+}
+
+.fg-dash-btn:focus-visible {
+    outline: 2px solid var(--fg-accent);
+    outline-offset: 2px;
+}
+
+.fg-dash-btn svg,
+.fg-dash-btn i {
+    width: 16px;
+    height: 16px;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.fg-dash-btn--primary {
+    border-color: var(--fg-accent);
+    background: var(--fg-accent);
+    color: var(--fg-accent-ink);
+}
+
+.fg-dash-btn--primary:hover {
+    background: var(--fg-accent-light);
+    color: var(--fg-accent-ink);
+}
+
+.fg-dash-btn--sm {
+    min-height: var(--ui-btn-h-sm);
+    padding: 0 12px;
+    font-size: var(--ui-fs-label);
+}
+
+.fg-dash-btn--danger:hover {
+    border-color: var(--fg-danger);
+    color: var(--fg-danger-text);
+}
+
+.fg-dash-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+/* KPI row: 4 across on wide screens, 2 on laptops and tablets, 1 on phones */
+.fg-dash-kpis {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--ui-card-gap);
+}
+
+@media (max-width: 1279.98px) {
+    .fg-dash-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 559.98px) {
+    .fg-dash-kpis { grid-template-columns: minmax(0, 1fr); }
+}
+
+.fg-dash-card,
+.fg-dash-kpi {
+    min-width: 0;
+    padding: var(--ui-card-pad);
+    border: 1px solid var(--fg-card-border);
+    border-radius: var(--ui-card-radius);
+    background: var(--fg-card);
+    color: var(--fg-card-ink);
+}
+
+.fg-dash-kpi {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ui-space-xs);
+}
+
+.fg-dash-kpi-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ui-space-sm);
+    font-size: var(--ui-stat-title);
+    color: var(--fg-card-ink-soft);
+}
+
+.fg-dash-kpi-icon {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: var(--fg-accent-tint);
+    color: var(--fg-card-gold);
+    flex-shrink: 0;
+}
+
+.fg-dash-kpi-icon svg { width: 18px; height: 18px; }
+.fg-dash-kpi-icon i { font-size: 16px; }
+
+.fg-dash-kpi-value {
+    margin-top: var(--ui-space-xs);
+    font-size: var(--ui-stat-num);
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--fg-card-gold);
+    font-variant-numeric: tabular-nums;
+}
+
+.fg-dash-kpi-sub {
+    font-size: var(--ui-fs-small);
+    color: var(--fg-card-ink-soft);
+}
+
+.fg-dash-kpi-sub.is-alert { color: var(--fg-warning-text); }
+
+/* Chart and list cards: 3 columns, a card can take 2 */
+.fg-dash-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--ui-card-gap);
+}
+
+.fg-dash-span-2 { grid-column: span 2; }
+.fg-dash-span-3 { grid-column: 1 / -1; }
+
+@media (max-width: 1023.98px) {
+    .fg-dash-row { grid-template-columns: minmax(0, 1fr); }
+    .fg-dash-span-2, .fg-dash-span-3 { grid-column: auto; }
+}
+
+.fg-dash-card { display: flex; flex-direction: column; }
+
+.fg-dash-card-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--ui-space-sm);
+    margin-bottom: var(--ui-space-md);
+}
+
+.fg-dash-card-head h3 {
+    margin: 0;
+    font-size: var(--ui-fs-card-title);
+    font-weight: 600;
+    color: var(--fg-card-ink);
+}
+
+.fg-dash-card-head p {
+    margin: 2px 0 0;
+    font-size: var(--ui-fs-small);
+    color: var(--fg-card-ink-soft);
+}
+
+.fg-dash-link {
+    padding: 4px 0;
+    border: 0;
+    background: none;
+    font-size: var(--ui-fs-label);
+    font-weight: 600;
+    color: var(--fg-card-gold);
+    cursor: pointer;
+}
+
+.fg-dash-link:hover { text-decoration: underline; }
+
+.fg-dash-chart {
+    position: relative;
+    flex: 1;
+    min-height: 240px;
+    height: 260px;
+}
+
+.fg-dash-empty {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 0 var(--ui-space-md);
+    text-align: center;
+    font-size: var(--ui-fs-label);
+    color: var(--fg-card-ink-soft);
+    pointer-events: none;
+}
+
+/* Doughnut with the total in the middle and a legend underneath */
+.fg-dash-donut {
+    position: relative;
+    width: 100%;
+    max-width: 200px;
+    height: 200px;
+    margin: 0 auto var(--ui-space-md);
+}
+
+.fg-dash-donut-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+
+.fg-dash-donut-center strong {
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1.1;
+    color: var(--fg-card-gold);
+    font-variant-numeric: tabular-nums;
+}
+
+.fg-dash-donut-center span {
+    font-size: var(--ui-fs-small);
+    color: var(--fg-card-ink-soft);
+}
+
+.fg-dash-legend {
+    display: grid;
+    gap: var(--ui-space-sm);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.fg-dash-legend li {
+    display: flex;
+    align-items: center;
+    gap: var(--ui-space-sm);
+    font-size: var(--ui-fs-label);
+}
+
+.fg-dash-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+
+.fg-dash-legend-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--fg-card-ink-soft);
+}
+
+.fg-dash-legend-value {
+    font-weight: 600;
+    color: var(--fg-card-ink);
+    font-variant-numeric: tabular-nums;
+}
+
+/* People lists (check-ins, expiring memberships, payments) */
+.fg-dash-list {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.fg-dash-list > li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-top: 1px solid var(--fg-line);
+}
+
+.fg-dash-list > li:first-child {
+    padding-top: 0;
+    border-top: 0;
+}
+
+.fg-dash-avatar {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--fg-line);
+    border-radius: 50%;
+    background: var(--fg-card-2);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--fg-card-gold);
+    flex-shrink: 0;
+}
+
+.fg-dash-person {
+    flex: 1;
+    min-width: 0;
+}
+
+.fg-dash-person p {
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fg-dash-person p:first-child {
+    font-size: var(--ui-fs-body);
+    font-weight: 600;
+    color: var(--fg-card-ink);
+}
+
+.fg-dash-person p + p {
+    font-size: var(--ui-fs-small);
+    color: var(--fg-card-ink-soft);
+}
+
+.fg-dash-tag {
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(var(--fg-neutral-rgb), 0.16);
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    color: var(--fg-neutral-text);
+    flex-shrink: 0;
+}
+
+.fg-dash-tag--gold {
+    background: var(--fg-accent-tint);
+    color: var(--fg-card-gold);
+}
+
+.fg-dash-tag--danger {
+    background: rgba(var(--fg-danger-rgb), 0.16);
+    color: var(--fg-danger-text);
+}
+
+.fg-dash-placeholder {
+    margin: 0;
+    padding: var(--ui-space-md) 0;
+    font-size: var(--ui-fs-label);
+    color: var(--fg-card-ink-soft);
+}
+
+.fg-dash-pay-actions {
+    display: flex;
+    gap: var(--ui-space-sm);
+    flex-shrink: 0;
+}
+
+@media (max-width: 559.98px) {
+    .fg-dash-list > li.fg-dash-pay { flex-wrap: wrap; }
+    .fg-dash-pay-actions { width: 100%; }
+}
+
+/* =====================================================================
+   Notification bell and panel (Super Admin). The panel is a floating
+   overlay, so it gets the one light glass touch: a slightly see-through
+   card with a soft blur. Everything inside it stays flat.
+   ===================================================================== */
+.fg-notif {
+    position: relative;
+}
+
+.fg-notif-bell {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 46px;
+    height: 46px;
+    border: 1px solid var(--fg-card-border);
+    border-radius: 12px;
+    background: var(--fg-card);
+    color: var(--fg-card-ink);
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.fg-notif-bell:hover,
+.fg-notif-bell[aria-expanded='true'] {
+    border-color: var(--fg-accent);
+    color: var(--fg-card-gold);
+}
+
+.fg-notif-bell:focus-visible {
+    outline: 2px solid var(--fg-accent);
+    outline-offset: 2px;
+}
+
+.fg-notif-bell svg {
+    width: 20px;
+    height: 20px;
+}
+
+.fg-notif-count {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 5px;
+    border: 2px solid var(--fg-card-sidebar);
+    border-radius: 999px;
+    background: var(--fg-accent);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 16px;
+    text-align: center;
+    color: var(--fg-accent-ink);
+}
+
+.fg-notif-panel {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 60;
+    width: min(380px, calc(100vw - 32px));
+    max-height: min(480px, 70vh);
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--fg-card-border);
+    border-radius: var(--ui-card-radius);
+    background: color-mix(in srgb, var(--fg-card) 88%, transparent);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+    color: var(--fg-card-ink);
+    overflow: hidden;
+}
+
+/* phones: the header wraps, so line the panel up with the left edge instead */
+@media (max-width: 1023.98px) {
+    .fg-notif-panel {
+        right: auto;
+        left: 0;
+    }
+}
+
+.fg-notif-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ui-space-sm);
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--fg-line);
+}
+
+.fg-notif-head h3 {
+    margin: 0;
+    font-size: var(--ui-fs-card-title);
+    font-weight: 600;
+}
+
+.fg-notif-list {
+    margin: 0;
+    padding: 4px 0;
+    overflow-y: auto;
+    list-style: none;
+}
+
+.fg-notif-item {
+    display: flex;
+    gap: 12px;
+    width: 100%;
+    padding: 12px 16px;
+    border: 0;
+    background: none;
+    text-align: left;
+    color: inherit;
+    cursor: pointer;
+}
+
+.fg-notif-item:hover,
+.fg-notif-item:focus-visible {
+    background: var(--fg-hover);
+    outline: none;
+}
+
+.fg-notif-item.is-unread {
+    background: var(--fg-accent-tint);
+}
+
+.fg-notif-icon {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    background: var(--fg-card-2);
+    color: var(--fg-card-gold);
+    flex-shrink: 0;
+}
+
+.fg-notif-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+.fg-notif-icon--expiry {
+    color: var(--fg-warning-text);
+}
+
+.fg-notif-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.fg-notif-text strong {
+    font-size: var(--ui-fs-label);
+    font-weight: 600;
+    color: var(--fg-card-ink);
+}
+
+.fg-notif-text span {
+    font-size: var(--ui-fs-small);
+    line-height: 1.4;
+    color: var(--fg-card-ink-soft);
+}
+
+.fg-notif-text small {
+    font-size: 11px;
+    color: var(--fg-card-ink-soft);
+    opacity: 0.8;
+}
+
+.fg-notif-empty {
+    padding: var(--ui-space-md);
+}
+
+/* =====================================================================
+   Members table (Admin and Staff): fits its box with no sideways
+   scroll. 7 columns: Member (name, ID and email), Contact (phone and
+   address), Plan, Status, Expiry, Payment, Actions. Long text ends
+   with "..." (hover shows it all). When the box itself gets narrow,
+   the less needed columns hide; View still shows everything.
+   ===================================================================== */
+:is(.fitgym-admin, .trainer-portal) .table-container:has(> .members-table) {
+    container-type: inline-size;
+    overflow-x: hidden !important;
+}
+
+:is(.fitgym-admin, .trainer-portal) .members-table {
+    width: 100%;
+}
+
+:is(.fitgym-admin, .trainer-portal) .members-table :is(th, td) {
+    padding-left: 10px !important;
+    padding-right: 10px !important;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+:is(.fitgym-admin, .trainer-portal) .members-table :is(th, td):first-child {
+    padding-left: 16px !important;
+}
+
+:is(.fitgym-admin, .trainer-portal) .members-table :is(th, td):last-child {
+    padding-right: 16px !important;
+}
+
+/* the Member column takes the spare width; the rest stay as small as their content */
+:is(.fitgym-admin, .trainer-portal) .members-table :is(th, td):first-child {
+    width: 100%;
+    min-width: 190px;
+}
+
+/* name and email never push the column wider; they shorten to fit it */
+:is(.fitgym-admin, .trainer-portal) .members-table .member-cell > div {
+    flex: 1 1 0;
+    width: 0;
+    min-width: 0;
+}
+
+:is(.fitgym-admin, .trainer-portal) .members-table-stack {
+    width: 150px;
+    min-width: 0;
+}
+
+:is(.fitgym-admin, .trainer-portal) .members-table-stack p {
+    margin: 0 0 1px;
+    line-height: 1.25;
+}
+
+:is(.fitgym-admin, .trainer-portal) .members-table-stack span {
+    font-size: 0.75rem;
+    line-height: 1.25;
+    color: var(--fg-card-ink-soft);
+}
+
+:is(.fitgym-admin, .trainer-portal) .members-table :is(.member-cell, .members-table-stack) :is(p, span) {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* narrow box: Contact goes (it is in View) */
+@container (max-width: 1000px) {
+    :is(.fitgym-admin, .trainer-portal) .members-table :is(th, td):nth-child(2) {
+        display: none;
+    }
+}
+
+/* phone-size box: Member, Status and Actions only */
+@container (max-width: 640px) {
+    :is(.fitgym-admin, .trainer-portal) .members-table :is(th, td):is(:nth-child(3), :nth-child(5), :nth-child(6)) {
+        display: none;
+    }
+    :is(.fitgym-admin, .trainer-portal) .members-table :is(th, td):first-child {
+        min-width: 150px;
+    }
+}
+
+:is(.fitgym-admin, .trainer-portal) .members-table .member-cell :is(p, span) {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+:is(.fitgym-admin, .trainer-portal) .members-table .member-avatar {
+    flex-shrink: 0;
+}
+
+:is(.fitgym-admin, .trainer-portal) .members-table .status-badge {
+    white-space: nowrap;
+}
+
+:is(.fitgym-admin, .trainer-portal) .members-table .action-buttons {
+    display: flex !important;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 4px !important;
+}
+
+:is(.fitgym-admin, .trainer-portal) .members-table .action-btn {
+    width: 30px !important;
+    min-width: 30px !important;
+    height: 30px !important;
+    padding: 0 !important;
+    font-size: 13px !important;
+    flex-shrink: 0;
 }

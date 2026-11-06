@@ -173,6 +173,9 @@ Route::post('api/trainer/profile/change-password', [App\Http\Controllers\Trainer
 // Gym self-signup (SaaS onboarding) — public.
 Route::get('api/gyms/public', [App\Http\Controllers\GymSignupController::class, 'publicList'])->name('gyms.public');
 Route::post('api/gyms/signup', [App\Http\Controllers\GymSignupController::class, 'store'])->name('gyms.signup');
+// The link in the "confirm your email" message a gym owner gets after signing up
+Route::get('fitgym/verify-email/{id}/{hash}', [App\Http\Controllers\GymSignupController::class, 'verifyEmail'])->middleware('throttle:10,1')->whereNumber('id')->name('gyms.verify-email');
+Route::post('api/gyms/resend-verification', [App\Http\Controllers\GymSignupController::class, 'resendVerification'])->middleware('throttle:3,1')->name('gyms.resend-verification');
 
 // Platform / Super Admin
 Route::post('api/platform/login', [App\Http\Controllers\PlatformAuthController::class, 'login'])->name('platform.login');
@@ -194,6 +197,10 @@ Route::post('api/platform/payment-proofs/{id}/reject', [App\Http\Controllers\Pla
 Route::get('api/platform/subscription-payments',[App\Http\Controllers\PlatformBillingController::class, 'index'])->middleware(['auth', 'role:SuperAdmin'])->name('platform.billing.index');
 Route::post('api/platform/gyms/{id}/subscription-payments', [App\Http\Controllers\PlatformBillingController::class, 'store'])->middleware(['auth', 'role:SuperAdmin'])->name('platform.billing.store');
 Route::post('api/platform/announcements',[App\Http\Controllers\PlatformGymController::class, 'announce'])->middleware(['auth', 'role:SuperAdmin'])->name('platform.announcements.store');
+Route::get('api/platform/dashboard', [App\Http\Controllers\PlatformDashboardController::class, 'dashboard'])->middleware(['auth', 'role:SuperAdmin'])->name('platform.dashboard');
+Route::get('api/platform/notifications', [App\Http\Controllers\PlatformDashboardController::class, 'notifications'])->middleware(['auth', 'role:SuperAdmin'])->name('platform.notifications.index');
+Route::post('api/platform/notifications/read-all', [App\Http\Controllers\PlatformDashboardController::class, 'markAllRead'])->middleware(['auth', 'role:SuperAdmin'])->name('platform.notifications.read-all');
+Route::post('api/platform/notifications/{id}/read', [App\Http\Controllers\PlatformDashboardController::class, 'markRead'])->middleware(['auth', 'role:SuperAdmin'])->whereNumber('id')->name('platform.notifications.read');
 Route::get('api/platform/analytics', [App\Http\Controllers\PlatformGymController::class, 'analytics'])->middleware(['auth', 'role:SuperAdmin'])->name('platform.analytics');
 Route::get('api/platform/audit-logs', [App\Http\Controllers\PlatformAuditLogController::class, 'index'])->middleware(['auth', 'role:SuperAdmin'])->name('platform.audit-logs');
 

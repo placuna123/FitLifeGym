@@ -1,6 +1,6 @@
 ﻿<script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
-import { CheckCircle2, Clock, Menu, UserCheck, Users, X } from 'lucide-vue-next';
+import { CheckCircle2, ClipboardList, Clock, Menu, QrCode, UserCheck, UserPlus, Users, X } from 'lucide-vue-next';
 import { ref, shallowRef, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import {
   trainerAuth,
@@ -25,6 +25,9 @@ import { useQrCheckinScanner } from '@/composables/useQrCheckinScanner';
 import { useSessionGuard } from '@/composables/useSessionGuard';
 import { mergeMemberStreetAddress, memberStreetAddress } from '@/lib/memberAddress';
 import { goToEntry } from '@/lib/portal';
+import { isUserEditing } from '@/lib/editing';
+import { chartPalette } from '@/lib/chartPalette';
+import { useFgTheme } from '@/composables/useFgTheme';
 
 const { mobileNavOpen, closeMobileNav } = useMobileNav();
 const pw = usePasswordVisibility();
@@ -271,10 +274,10 @@ async function loadDashboardData() {
 }
 
 function destroyDashboardChart() {
-  if (dashboardChart) {
-    dashboardChart.destroy();
-    dashboardChart = null;
-  }
+  dashboardChart?.destroy();
+  dashboardChart = null;
+  todayChart?.destroy();
+  todayChart = null;
 }
 
 // Check-ins per day for the last 7 days (today last), from the attendance report.
@@ -315,46 +318,111 @@ const expiringRows = computed(() => {
   });
 });
 
+// Dashboard header line, e.g. "Thursday, November 5"
+const dashboardToday = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+
+// Today's visits split into members still inside and those who already left.
+const todaySplit = computed(() => {
+  const inside = currentlyInGym.value.length;
+  const done = Math.max(0, trainerCheckinsToday.value - inside);
+  return { inside, done, total: inside + done };
+});
+const todayCanvas = ref<HTMLCanvasElement | null>(null);
+let todayChart: InstanceType<typeof Chart> | null = null;
+
 function buildDashboardChart() {
-  if (currentView.value !== 'dashboard' || !dashboardChartCanvas.value) return;
+  if (currentView.value !== 'dashboard') return;
   destroyDashboardChart();
-  const days = staffWeek.value;
-  dashboardChart = new Chart(dashboardChartCanvas.value, {
-    type: 'bar',
-    data: {
-      labels: days.map((d) => d.label),
-      datasets: [
-        {
-          label: 'Check-ins',
-          data: days.map((d) => d.count),
-          // today stands out in bright gold, the other days a softer gold
-          backgroundColor: days.map((_, i) => (i === days.length - 1 ? '#F0D48A' : '#B8923A')),
-          borderWidth: 0,
-          borderRadius: 6,
-          maxBarThickness: 46,
+  const c = chartPalette();
+
+  if (dashboardChartCanvas.value) {
+    const days = staffWeek.value;
+    dashboardChart = new Chart(dashboardChartCanvas.value, {
+      type: 'line',
+      data: {
+        labels: days.map((d) => d.label),
+        datasets: [
+          {
+            label: 'Check-ins',
+            data: days.map((d) => d.count),
+            borderColor: c.accent,
+            // gold fill that fades towards the bottom of the chart
+            backgroundColor: (ctx: { chart: Chart }) => {
+              const { ctx: g, chartArea } = ctx.chart;
+              if (!chartArea) return `rgba(${c.accentRgb}, 0.18)`;
+              const gradient = g.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+              gradient.addColorStop(0, `rgba(${c.accentRgb}, 0.35)`);
+              gradient.addColorStop(1, `rgba(${c.accentRgb}, 0)`);
+              return gradient;
+            },
+            fill: true,
+            tension: 0.35,
+            borderWidth: 2,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            pointBackgroundColor: c.accent,
+            pointBorderColor: c.surface,
+            pointBorderWidth: 2,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.y} check-in${ctx.parsed.y === 1 ? '' : 's'}` } },
         },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.y} check-in${ctx.parsed.y === 1 ? '' : 's'}` } },
+        scales: {
+          y: { beginAtZero: true, grid: { color: c.grid }, border: { display: false }, ticks: { color: c.text, precision: 0 } },
+          x: { grid: { display: false }, ticks: { color: c.text } },
+        },
+      } as ChartConfiguration<'line'>['options'],
+    });
+  }
+
+  const split = todaySplit.value;
+  if (todayCanvas.value && split.total > 0) {
+    todayChart = new Chart(todayCanvas.value, {
+      type: 'doughnut',
+      data: {
+        labels: ['In the gym now', 'Checked out'],
+        datasets: [
+          {
+            data: [split.inside, split.done],
+            backgroundColor: [c.accent, `rgba(${c.neutralRgb}, 0.45)`],
+            borderColor: c.surface,
+            borderWidth: 3,
+            hoverOffset: 4,
+          },
+        ],
       },
-      scales: {
-        y: { beginAtZero: true, grid: { color: 'rgba(168,161,150,0.15)' }, ticks: { color: '#A8A196', precision: 0 } },
-        x: { grid: { display: false }, ticks: { color: '#A8A196' } },
-      },
-    } as ChartConfiguration<'bar'>['options'],
-  });
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '72%',
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: (ctx) => ` ${ctx.label}: ${ctx.parsed}` } },
+        },
+      } as ChartConfiguration<'doughnut'>['options'],
+    });
+  }
 }
 
-// The canvas only exists once the dashboard is on screen; draw when it appears and
-// whenever the week's numbers change.
-watch([dashboardChartCanvas, staffWeek], ([canvas]) => {
-  if (canvas) buildDashboardChart();
+// The canvases only exist once the dashboard is on screen; draw when they appear and
+// whenever the numbers change.
+watch([dashboardChartCanvas, todayCanvas, staffWeek, todaySplit], () => {
+  if (dashboardChartCanvas.value) buildDashboardChart();
 });
+
+// Light / dark switch: redraw the charts so they pick up the new palette
+const { theme: fgTheme } = useFgTheme();
+watch(fgTheme, () => nextTick(() => {
+  if (dashboardChartCanvas.value) buildDashboardChart();
+  buildReportsCharts();
+}));
 
 async function loadAttendanceData() {
   dataLoading.value = true;
@@ -413,12 +481,10 @@ async function refreshTrainerViewData(view = currentView.value) {
 
   if (view === 'memberships') {
     await loadMembershipsData();
-    return;
   }
 
-  if (view === 'profile') {
-    await loadProfileData();
-  }
+  // Profile is not refreshed in the background: it is a form, and reloading it
+  // would replace what the staff member typed. It loads fresh each time it is opened.
 }
 
 function stopTrainerPortalAutoRefresh() {
@@ -433,6 +499,8 @@ function startTrainerPortalAutoRefresh() {
   if (!isLoggedIn.value) return;
 
   trainerPortalRefreshTimer = window.setInterval(() => {
+    // never refresh under someone who is typing or has a form open
+    if (isUserEditing()) return;
     void refreshTrainerViewData();
   }, 15000);
 }
@@ -792,7 +860,7 @@ function paymentBadgeClass(paymentStatus: unknown): string {
   const p = String(paymentStatus || '').toLowerCase();
   if (p === 'paid') return 'bg-green-500/20 text-green-300';
   if (p === 'pending') return 'bg-yellow-500/20 text-yellow-300';
-  if (p === 'overdue') return 'bg-red-500/20 text-red-300';
+  if (p === 'overdue' || p === 'cancelled' || p === 'rejected') return 'bg-red-500/20 text-red-300';
   return 'bg-gray-500/20 text-gray-300';
 }
 
@@ -1133,8 +1201,9 @@ function buildReportsCharts() {
   if (currentView.value !== 'reports') return;
   destroyReportCharts();
   nextTick(() => {
-    const commonOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#A8A196' } } }, scales: { y: { beginAtZero: true, grid: { color: 'rgba(168,161,150,0.15)' }, ticks: { color: '#A8A196' } }, x: { grid: { display: false }, ticks: { color: '#A8A196' } } } };
-    const doughnutPieOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#A8A196' } } } };
+    const c = chartPalette();
+    const commonOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: c.text } } }, scales: { y: { beginAtZero: true, grid: { color: c.grid }, ticks: { color: c.text } }, x: { grid: { display: false }, ticks: { color: c.text } } } };
+    const doughnutPieOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: c.text } } } };
     if (reportsTab.value === 'overview' && weeklyChartCanvas.value) {
       const w = weeklyActivityData.value;
       reportCharts.value.weekly = new Chart(weeklyChartCanvas.value, {
@@ -1142,8 +1211,8 @@ function buildReportsCharts() {
         data: {
           labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
           datasets: [
-            { label: 'Check-ins', data: w.checkins, backgroundColor: 'rgba(217, 180, 90, 0.6)', borderColor: '#D9B45A', borderWidth: 1, borderRadius: 4 },
-            { label: 'Revenue', data: w.revenue, backgroundColor: 'rgba(140, 122, 85, 0.6)', borderColor: '#8C7A55', borderWidth: 1, borderRadius: 4 },
+            { label: 'Check-ins', data: w.checkins, backgroundColor: `rgba(${c.accentRgb}, 0.6)`, borderColor: c.accent, borderWidth: 1, borderRadius: 4 },
+            { label: 'Revenue', data: w.revenue, backgroundColor: `rgba(${c.neutralRgb}, 0.6)`, borderColor: c.neutral, borderWidth: 1, borderRadius: 4 },
           ],
         },
         options: commonOptions as ChartConfiguration<'bar'>['options'],
@@ -1154,7 +1223,7 @@ function buildReportsCharts() {
         type: 'line',
         data: {
           labels: ['Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan'],
-          datasets: [{ label: 'Total Members', data: membershipGrowthData.value, fill: false, borderColor: '#D9B45A', tension: 0.1 }],
+          datasets: [{ label: 'Total Members', data: membershipGrowthData.value, fill: false, borderColor: c.accent, tension: 0.1 }],
         },
         options: commonOptions as ChartConfiguration<'line'>['options'],
       });
@@ -1164,7 +1233,7 @@ function buildReportsCharts() {
         const p = planDistributionChartData.value;
         reportCharts.value.planDist = new Chart(planDistCanvas.value, {
           type: 'doughnut',
-          data: { labels: p.labels, datasets: [{ label: 'Members', data: p.data, backgroundColor: ['#D9B45A', '#8C7A55', '#F0D48A'], hoverOffset: 4 }] },
+          data: { labels: p.labels, datasets: [{ label: 'Members', data: p.data, backgroundColor: c.series, borderColor: c.surface, hoverOffset: 4 }] },
           options: doughnutPieOptions as ChartConfiguration<'doughnut'>['options'],
         });
       }
@@ -1172,7 +1241,7 @@ function buildReportsCharts() {
         const r = revenueByPlanChartData.value;
         reportCharts.value.revenue = new Chart(revenueChartCanvas.value, {
           type: 'pie',
-          data: { labels: r.labels, datasets: [{ label: 'Revenue (PHP)', data: r.data, backgroundColor: ['#D9B45A', '#8C7A55', '#F0D48A'], hoverOffset: 4 }] },
+          data: { labels: r.labels, datasets: [{ label: 'Revenue (PHP)', data: r.data, backgroundColor: c.series, borderColor: c.surface, hoverOffset: 4 }] },
           options: doughnutPieOptions as ChartConfiguration<'pie'>['options'],
         });
       }
@@ -1664,127 +1733,181 @@ onUnmounted(() => {
 
           <main class="trainer-main flex-1 overflow-x-hidden overflow-y-auto px-4 py-5 sm:px-6 sm:py-6 lg:px-10">
           <!-- Dashboard -->
-          <div v-if="currentView === 'dashboard'" class="space-y-6">
+          <div v-if="currentView === 'dashboard'" class="fg-dash">
             <h2 class="sr-only">Dashboard</h2>
-            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <div class="flex items-center justify-between rounded-lg bg-[#2A3042] p-6 shadow">
-                <div>
-                  <p class="text-sm text-gray-400">Check-ins Today</p>
-                  <p class="text-xl font-bold text-white">{{ dataLoading ? '-' : trainerCheckinsToday }}</p>
-                  <p class="mt-1 text-xs text-gray-400">{{ staffWeekTotal }} this week</p>
-                </div>
-                <div class="rounded-full bg-green-500 p-3 text-white"><CheckCircle2 class="h-5 w-5" aria-hidden="true" /></div>
+            <div class="fg-dash-toolbar">
+              <div class="fg-dash-greeting">
+                <h3>Front desk</h3>
+                <p>{{ dashboardToday }}</p>
               </div>
-              <div class="flex items-center justify-between rounded-lg bg-[#2A3042] p-6 shadow">
-                <div>
-                  <p class="text-sm text-gray-400">Members Inside</p>
-                  <p class="text-xl font-bold text-white">{{ dataLoading ? '-' : currentlyInGym.length }}</p>
-                  <p class="mt-1 text-xs text-gray-400">In the gym right now</p>
-                </div>
-                <div class="rounded-full bg-green-500 p-3 text-white"><Users class="h-5 w-5" aria-hidden="true" /></div>
-              </div>
-              <div class="flex items-center justify-between rounded-lg bg-[#2A3042] p-6 shadow">
-                <div>
-                  <p class="text-sm text-gray-400">Active Members</p>
-                  <p class="text-xl font-bold text-white">{{ reportAttendance?.active_members ?? 0 }}</p>
-                  <p class="mt-1 text-xs text-gray-400">Approved member accounts</p>
-                </div>
-                <div class="rounded-full bg-green-500 p-3 text-white"><UserCheck class="h-5 w-5" aria-hidden="true" /></div>
-              </div>
-              <div class="flex items-center justify-between rounded-lg bg-[#2A3042] p-6 shadow">
-                <div>
-                  <p class="text-sm text-gray-400">Expiring Soon</p>
-                  <p class="text-xl font-bold text-white">{{ expiringMembers.length }}</p>
-                  <p class="mt-1 text-xs text-gray-400">{{ expiringRows[0] ? `Next: ${expiringRows[0].name}, ${expiringRows[0].date}` : 'None in the next 30 days' }}</p>
-                </div>
-                <div class="rounded-full bg-green-500 p-3 text-white"><Clock class="h-5 w-5" aria-hidden="true" /></div>
+              <div class="fg-dash-actions">
+                <button type="button" class="fg-dash-btn fg-dash-btn--primary" @click="openCheckinModal">
+                  <QrCode aria-hidden="true" />
+                  Record Check-in
+                </button>
+                <button type="button" class="fg-dash-btn" @click="openAddMemberModal">
+                  <UserPlus aria-hidden="true" />
+                  Add Member
+                </button>
+                <button type="button" class="fg-dash-btn" @click="currentView = 'attendance'">
+                  <ClipboardList aria-hidden="true" />
+                  Attendance Logs
+                </button>
               </div>
             </div>
 
-            <div class="rounded-lg bg-[#2A3042] p-6 shadow">
-              <div class="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-                <h4 class="text-lg font-semibold text-white">Check-ins, Last 7 Days</h4>
-                <span class="text-sm text-gray-400">{{ staffWeekTotal }} visit{{ staffWeekTotal === 1 ? '' : 's' }} this week</span>
+            <div class="fg-dash-kpis">
+              <div class="fg-dash-kpi">
+                <div class="fg-dash-kpi-head">
+                  <span>Check-ins Today</span>
+                  <span class="fg-dash-kpi-icon"><CheckCircle2 aria-hidden="true" /></span>
+                </div>
+                <div class="fg-dash-kpi-value">{{ dataLoading ? '-' : trainerCheckinsToday }}</div>
+                <div class="fg-dash-kpi-sub">{{ staffWeekTotal }} this week</div>
               </div>
-              <div class="relative h-60 sm:h-72">
-                <canvas ref="dashboardChartCanvas"></canvas>
-                <p v-if="staffWeekTotal === 0 && !dataLoading" class="pointer-events-none absolute inset-0 grid place-items-center px-4 text-center text-sm text-gray-400">
-                  No check-ins in the last 7 days. Visits show here as members scan in at the front desk.
-                </p>
+              <div class="fg-dash-kpi">
+                <div class="fg-dash-kpi-head">
+                  <span>Members Inside</span>
+                  <span class="fg-dash-kpi-icon"><Users aria-hidden="true" /></span>
+                </div>
+                <div class="fg-dash-kpi-value">{{ dataLoading ? '-' : currentlyInGym.length }}</div>
+                <div class="fg-dash-kpi-sub">In the gym right now</div>
+              </div>
+              <div class="fg-dash-kpi">
+                <div class="fg-dash-kpi-head">
+                  <span>Active Members</span>
+                  <span class="fg-dash-kpi-icon"><UserCheck aria-hidden="true" /></span>
+                </div>
+                <div class="fg-dash-kpi-value">{{ reportAttendance?.active_members ?? 0 }}</div>
+                <div class="fg-dash-kpi-sub">Approved member accounts</div>
+              </div>
+              <div class="fg-dash-kpi">
+                <div class="fg-dash-kpi-head">
+                  <span>Expiring Soon</span>
+                  <span class="fg-dash-kpi-icon"><Clock aria-hidden="true" /></span>
+                </div>
+                <div class="fg-dash-kpi-value">{{ expiringMembers.length }}</div>
+                <div :class="['fg-dash-kpi-sub', { 'is-alert': expiringRows[0]?.urgent }]">
+                  {{ expiringRows[0] ? `Next: ${expiringRows[0].name}, ${expiringRows[0].date}` : 'None in the next 30 days' }}
+                </div>
               </div>
             </div>
 
-            <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
-              <div class="rounded-lg bg-[#2A3042] p-6 shadow">
-                <h4 class="mb-4 text-lg font-semibold text-white">Quick Actions</h4>
-                <div class="space-y-3">
-                  <button type="button" class="w-full rounded-lg bg-purple-600 px-4 py-3 text-left font-medium text-white hover:opacity-90" @click="openCheckinModal">
-                    Record Check-in
-                  </button>
-                  <button type="button" class="w-full rounded-lg bg-blue-500 px-4 py-3 text-left font-medium text-white hover:opacity-90" @click="openAddMemberModal">
-                    Add New Member
-                  </button>
-                  <button type="button" class="w-full rounded-lg bg-blue-500 px-4 py-3 text-left font-medium text-white hover:opacity-90" @click="currentView = 'attendance'">
-                    View Attendance Logs
-                  </button>
+            <div class="fg-dash-row">
+              <div class="fg-dash-card fg-dash-span-2">
+                <div class="fg-dash-card-head">
+                  <div>
+                    <h3>Check-ins, Last 7 Days</h3>
+                    <p>{{ staffWeekTotal }} visit{{ staffWeekTotal === 1 ? '' : 's' }} this week</p>
+                  </div>
+                </div>
+                <div class="fg-dash-chart">
+                  <canvas ref="dashboardChartCanvas" aria-label="Check-ins per day for the last 7 days" role="img"></canvas>
+                  <p v-if="staffWeekTotal === 0 && !dataLoading" class="fg-dash-empty">
+                    No check-ins in the last 7 days. Visits show here as members scan in at the front desk.
+                  </p>
                 </div>
               </div>
-              <div class="lg:col-span-2 rounded-lg bg-[#2A3042] p-6 shadow">
-                <h4 class="mb-4 text-lg font-semibold text-white">Recent Check-ins</h4>
-                <div class="divide-y divide-gray-700">
-                  <div v-for="c in recentCheckins.slice(0, 8)" :key="String((c as Record<string, unknown>).id)" class="flex items-center justify-between py-3">
-                    <div class="flex items-center gap-3">
-                      <div class="flex h-10 w-10 items-center justify-center rounded-full bg-gray-600 text-sm font-bold text-white">
-                        {{ initialsOf((c as Record<string, unknown>).member_name) }}
-                      </div>
-                      <div>
-                        <p class="font-medium text-white">{{ (c as Record<string, unknown>).member_name }}</p>
-                        <p class="text-xs text-gray-400">Checked in at {{ to12Hour((c as Record<string, unknown>).check_in_time) }}</p>
-                      </div>
+
+              <div class="fg-dash-card">
+                <div class="fg-dash-card-head">
+                  <div>
+                    <h3>Today at the Gym</h3>
+                    <p>Who is in and who has left</p>
+                  </div>
+                </div>
+                <template v-if="todaySplit.total > 0">
+                  <div class="fg-dash-donut">
+                    <canvas ref="todayCanvas" aria-label="Members in the gym now and checked out today" role="img"></canvas>
+                    <div class="fg-dash-donut-center">
+                      <strong>{{ todaySplit.total }}</strong>
+                      <span>visits today</span>
                     </div>
-                    <span :class="['rounded px-2 py-1 text-xs font-medium', (c as Record<string, unknown>).status === 'Inside' ? 'bg-green-500/20 text-green-300' : 'bg-gray-500/20 text-gray-300']">
+                  </div>
+                  <ul class="fg-dash-legend">
+                    <li>
+                      <span class="fg-dash-swatch" style="background: var(--fg-accent)"></span>
+                      <span class="fg-dash-legend-name">In the gym now</span>
+                      <span class="fg-dash-legend-value">{{ todaySplit.inside }}</span>
+                    </li>
+                    <li>
+                      <span class="fg-dash-swatch" style="background: rgba(var(--fg-neutral-rgb), 0.45)"></span>
+                      <span class="fg-dash-legend-name">Checked out</span>
+                      <span class="fg-dash-legend-value">{{ todaySplit.done }}</span>
+                    </li>
+                  </ul>
+                </template>
+                <p v-else-if="!dataLoading" class="fg-dash-placeholder">No visits yet today. Use Record Check-in when a member arrives.</p>
+              </div>
+            </div>
+
+            <div class="fg-dash-row">
+              <div class="fg-dash-card fg-dash-span-2">
+                <div class="fg-dash-card-head">
+                  <div>
+                    <h3>Recent Check-ins</h3>
+                    <p>Today, newest first</p>
+                  </div>
+                  <button type="button" class="fg-dash-link" @click="currentView = 'attendance'">View all</button>
+                </div>
+                <ul v-if="recentCheckins.length > 0" class="fg-dash-list">
+                  <li v-for="c in recentCheckins.slice(0, 8)" :key="String((c as Record<string, unknown>).id)">
+                    <span class="fg-dash-avatar">{{ initialsOf((c as Record<string, unknown>).member_name) }}</span>
+                    <div class="fg-dash-person">
+                      <p>{{ (c as Record<string, unknown>).member_name }}</p>
+                      <p>Checked in at {{ to12Hour((c as Record<string, unknown>).check_in_time) }}</p>
+                    </div>
+                    <span :class="['fg-dash-tag', { 'fg-dash-tag--gold': (c as Record<string, unknown>).status === 'Inside' }]">
                       {{ (c as Record<string, unknown>).status === 'Inside' ? 'In gym' : 'Done' }}
                     </span>
-                  </div>
-                  <p v-if="recentCheckins.length === 0 && !dataLoading" class="py-4 text-center text-gray-400">No check-ins yet today.</p>
-                </div>
+                  </li>
+                </ul>
+                <p v-else-if="!dataLoading" class="fg-dash-placeholder">No check-ins yet today.</p>
               </div>
-            </div>
 
-            <div class="rounded-lg bg-[#2A3042] p-6 shadow">
-              <h4 class="mb-4 text-lg font-semibold text-white">Upcoming Membership Expirations</h4>
-              <div class="space-y-3">
-                <div v-for="m in expiringRows.slice(0, 5)" :key="m.id" class="flex items-center justify-between gap-3 rounded-lg bg-gray-900/50 p-4">
-                  <div class="flex items-center gap-4">
-                    <div :class="['flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white', m.urgent ? 'bg-red-500' : 'bg-yellow-500']">
-                      {{ m.initials }}
-                    </div>
-                    <div>
-                      <p class="font-medium text-white">{{ m.name }}</p>
-                      <p class="text-sm text-gray-400">Membership ends {{ m.date }}</p>
-                    </div>
-                  </div>
-                  <span :class="['shrink-0 rounded px-2 py-1 text-xs font-medium', m.urgent ? 'bg-red-500/20 text-red-300' : 'bg-yellow-500/20 text-yellow-300']">{{ m.when }}</span>
-                </div>
-                <p v-if="expiringMembers.length === 0 && !dataLoading" class="py-2 text-gray-400">No memberships end in the next 30 days.</p>
-              </div>
-            </div>
-
-            <div class="rounded-lg bg-[#2A3042] p-6 shadow">
-              <h4 class="mb-4 text-lg font-semibold text-white">Pending Payments</h4>
-              <div class="space-y-3">
-                <div v-for="p in pendingPayments()" :key="String((p as Record<string, unknown>).id)" class="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-gray-900/50 p-4">
+              <div class="fg-dash-card">
+                <div class="fg-dash-card-head">
                   <div>
-                    <p class="font-medium text-white">{{ (p as Record<string, unknown>).member_name }} — &#8369;{{ (p as Record<string, unknown>).amount }}</p>
-                    <p class="text-sm text-gray-400">{{ (p as Record<string, unknown>).invoice_number }} · {{ (p as Record<string, unknown>).payment_method }} · {{ (p as Record<string, unknown>).payment_date }}</p>
+                    <h3>Expiring Memberships</h3>
+                    <p>Ending in the next 30 days</p>
                   </div>
-                  <div class="flex gap-2">
-                    <button type="button" class="rounded bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700" :disabled="processingPaymentId === Number((p as Record<string, unknown>).id)" @click="verifyPaymentStatus(p as Record<string, unknown>, 'Paid')">Approve</button>
-                    <button type="button" class="rounded bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700" :disabled="processingPaymentId === Number((p as Record<string, unknown>).id)" @click="verifyPaymentStatus(p as Record<string, unknown>, 'Cancelled')">Reject</button>
-                  </div>
+                  <button v-if="expiringMembers.length > 5" type="button" class="fg-dash-link" @click="currentView = 'members'">View all</button>
                 </div>
-                <p v-if="pendingPayments().length === 0 && !dataLoading" class="py-2 text-gray-400">No pending payments.</p>
+                <ul v-if="expiringRows.length > 0" class="fg-dash-list">
+                  <li v-for="m in expiringRows.slice(0, 5)" :key="m.id">
+                    <span class="fg-dash-avatar">{{ m.initials }}</span>
+                    <div class="fg-dash-person">
+                      <p>{{ m.name }}</p>
+                      <p>Ends {{ m.date }}</p>
+                    </div>
+                    <span :class="['fg-dash-tag', m.urgent ? 'fg-dash-tag--danger' : 'fg-dash-tag--gold']">{{ m.when }}</span>
+                  </li>
+                </ul>
+                <p v-else-if="!dataLoading" class="fg-dash-placeholder">No memberships end in the next 30 days.</p>
               </div>
+            </div>
+
+            <div class="fg-dash-card">
+              <div class="fg-dash-card-head">
+                <div>
+                  <h3>Pending Payments</h3>
+                  <p>Check the receipt, then approve or reject</p>
+                </div>
+              </div>
+              <ul v-if="pendingPayments().length > 0" class="fg-dash-list">
+                <li v-for="p in pendingPayments()" :key="String((p as Record<string, unknown>).id)" class="fg-dash-pay">
+                  <span class="fg-dash-avatar">{{ initialsOf((p as Record<string, unknown>).member_name) }}</span>
+                  <div class="fg-dash-person">
+                    <p>{{ (p as Record<string, unknown>).member_name }} · &#8369;{{ (p as Record<string, unknown>).amount }}</p>
+                    <p>{{ (p as Record<string, unknown>).invoice_number }} · {{ (p as Record<string, unknown>).payment_method }} · {{ (p as Record<string, unknown>).payment_date }}</p>
+                  </div>
+                  <div class="fg-dash-pay-actions">
+                    <button type="button" class="fg-dash-btn fg-dash-btn--primary fg-dash-btn--sm" :disabled="processingPaymentId === Number((p as Record<string, unknown>).id)" @click="verifyPaymentStatus(p as Record<string, unknown>, 'Paid')">Approve</button>
+                    <button type="button" class="fg-dash-btn fg-dash-btn--danger fg-dash-btn--sm" :disabled="processingPaymentId === Number((p as Record<string, unknown>).id)" @click="verifyPaymentStatus(p as Record<string, unknown>, 'Cancelled')">Reject</button>
+                  </div>
+                </li>
+              </ul>
+              <p v-else-if="!dataLoading" class="fg-dash-placeholder">No pending payments.</p>
             </div>
           </div>
 
@@ -1942,13 +2065,11 @@ onUnmounted(() => {
               </button>
             </div>
             <div class="table-container">
-              <table class="data-table">
+              <table class="data-table members-table">
                 <thead>
                   <tr>
                     <th>Member</th>
-                    <th>ID</th>
                     <th>Contact</th>
-                    <th>Address</th>
                     <th>Plan</th>
                     <th>Status</th>
                     <th>Expiry</th>
@@ -1962,14 +2083,17 @@ onUnmounted(() => {
                       <div class="member-cell">
                         <div class="member-avatar">{{ String((m as Record<string, unknown>).full_name || '').slice(0, 2).toUpperCase() }}</div>
                         <div>
-                          <p>{{ (m as Record<string, unknown>).full_name }}</p>
-                          <span>{{ (m as Record<string, unknown>).email }}</span>
+                          <p :title="String((m as Record<string, unknown>).full_name || '')">{{ (m as Record<string, unknown>).full_name }}</p>
+                          <span :title="String((m as Record<string, unknown>).email || '')">ID {{ (m as Record<string, unknown>).member_id }} · {{ (m as Record<string, unknown>).email }}</span>
                         </div>
                       </div>
                     </td>
-                    <td>{{ (m as Record<string, unknown>).member_id }}</td>
-                    <td>{{ (m as Record<string, unknown>).phone || '-' }}</td>
-                    <td>{{ memberStreetAddress((m as Record<string, unknown>).address) || '-' }}</td>
+                    <td>
+                      <div class="members-table-stack">
+                        <p>{{ (m as Record<string, unknown>).phone || '-' }}</p>
+                        <span :title="memberStreetAddress((m as Record<string, unknown>).address) || '-'">{{ memberStreetAddress((m as Record<string, unknown>).address) || '-' }}</span>
+                      </div>
+                    </td>
                     <td>{{ (m as Record<string, unknown>).membership_plan }}</td>
                     <td>
                       <span :class="['status-badge', staffStatusBadge((m as Record<string, unknown>).status, (m as Record<string, unknown>).expiry_date as string)]">
@@ -1990,7 +2114,7 @@ onUnmounted(() => {
                     </td>
                   </tr>
                   <tr v-if="filteredMembers().length === 0">
-                    <td colspan="9" class="empty-row">{{ dataLoading ? 'Loading...' : 'No members found.' }}</td>
+                    <td colspan="7" class="empty-row">{{ dataLoading ? 'Loading...' : 'No members found.' }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -2054,7 +2178,7 @@ onUnmounted(() => {
                 :class="['plan-card', (p as Record<string, unknown>).is_popular ? 'popular' : '', (p as Record<string, unknown>).is_deactivated ? 'deactivated' : '']"
               >
                 <span v-if="(p as Record<string, unknown>).is_popular" class="popular-badge">POPULAR</span>
-                <span v-if="(p as Record<string, unknown>).is_deactivated" class="popular-badge" style="right: auto; left: 1rem; background: #C4544C; color: #fff;">DEACTIVATED</span>
+                <span v-if="(p as Record<string, unknown>).is_deactivated" class="popular-badge" style="right: auto; left: 1rem; background: var(--fg-danger); color: #fff;">DEACTIVATED</span>
                 <h3>{{ (p as Record<string, unknown>).name }}</h3>
                 <div class="plan-price">
                   <span class="price">{{ formatCurrency((p as Record<string, unknown>).price) }}</span>
@@ -2085,14 +2209,14 @@ onUnmounted(() => {
           <div v-if="currentView === 'schedule'" class="space-y-6">
             <div class="flex flex-wrap justify-between items-center gap-4">
               <h2 class="sr-only">Schedule Calendar</h2>
-              <button type="button" class="rounded bg-purple-600 px-4 py-2 font-medium text-white hover:opacity-90" @click="openAddClassModal">
+              <button type="button" class="fg-btn rounded bg-purple-600 px-4 py-2 font-medium text-white hover:opacity-90" @click="openAddClassModal">
                 Add Class
               </button>
             </div>
             <div class="flex flex-wrap items-center gap-2 mb-6 text-sm">
-              <button type="button" :class="['px-4 py-2 font-medium rounded-md transition-colors', scheduleViewTab === 'Calendar' ? 'bg-blue-600 text-white' : 'bg-[#2A3042] text-gray-300 hover:bg-gray-700']" @click="scheduleViewTab = 'Calendar'">Calendar View</button>
-              <button type="button" :class="['px-4 py-2 font-medium rounded-md transition-colors', scheduleViewTab === 'TrainerAvailability' ? 'bg-blue-600 text-white' : 'bg-[#2A3042] text-gray-300 hover:bg-gray-700']" @click="scheduleViewTab = 'TrainerAvailability'">Staff Availability</button>
-              <button type="button" :class="['px-4 py-2 font-medium rounded-md transition-colors', scheduleViewTab === 'ClassManagement' ? 'bg-blue-600 text-white' : 'bg-[#2A3042] text-gray-300 hover:bg-gray-700']" @click="scheduleViewTab = 'ClassManagement'">Class Management</button>
+              <button type="button" :class="['px-4 py-2 font-medium rounded-md transition-colors', scheduleViewTab === 'Calendar' ? 'fg-tab-active' : 'bg-[#2A3042] text-gray-300 hover:bg-gray-700']" @click="scheduleViewTab = 'Calendar'">Calendar View</button>
+              <button type="button" :class="['px-4 py-2 font-medium rounded-md transition-colors', scheduleViewTab === 'TrainerAvailability' ? 'fg-tab-active' : 'bg-[#2A3042] text-gray-300 hover:bg-gray-700']" @click="scheduleViewTab = 'TrainerAvailability'">Staff Availability</button>
+              <button type="button" :class="['px-4 py-2 font-medium rounded-md transition-colors', scheduleViewTab === 'ClassManagement' ? 'fg-tab-active' : 'bg-[#2A3042] text-gray-300 hover:bg-gray-700']" @click="scheduleViewTab = 'ClassManagement'">Class Management</button>
               <label class="relative ml-auto flex items-center gap-2 text-gray-300">
                 <span class="text-xs font-semibold text-[var(--fg-ink-soft)]">Week of</span>
                 <input v-model="scheduleDate" type="date" class="rounded border border-gray-600 bg-[#2A3042] text-white px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500" />
@@ -2103,7 +2227,7 @@ onUnmounted(() => {
               <p v-if="scheduleLoading && scheduleClasses.length === 0" class="py-6 text-center text-gray-400">Loading classes...</p>
               <div v-else-if="scheduleClasses.length === 0" class="py-8 text-center text-gray-400">
                 <p class="mb-3">No classes scheduled yet. Add one so members can book it.</p>
-                <button type="button" class="rounded bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:opacity-90" @click="openAddClassModal">Add Class</button>
+                <button type="button" class="fg-btn rounded bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:opacity-90" @click="openAddClassModal">Add Class</button>
               </div>
               <template v-else>
                 <!-- Calendar View -->
@@ -2199,8 +2323,8 @@ onUnmounted(() => {
                         </td>
                         <td class="py-4 px-4">
                           <div class="flex justify-center gap-2">
-                            <button type="button" class="px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700" @click="openEditClassModal(cls)">Edit</button>
-                            <button type="button" class="px-3 py-1 text-xs font-medium text-white bg-red-600 rounded-md hover:bg-red-700" @click="deleteManagedClass(cls)">Delete</button>
+                            <button type="button" class="fg-btn-sm px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700" @click="openEditClassModal(cls)">Edit</button>
+                            <button type="button" class="fg-btn-sm px-3 py-1 text-xs font-medium text-white bg-red-600 rounded-md hover:bg-red-700" @click="deleteManagedClass(cls)">Delete</button>
                           </div>
                         </td>
                       </tr>
@@ -2240,13 +2364,13 @@ onUnmounted(() => {
                   <p v-if="formError" class="mt-2 text-sm text-red-400">{{ formError }}</p>
                   <p v-else-if="profileNotice" class="mt-2 text-sm text-green-300" role="status">{{ profileNotice }}</p>
                   <div class="mt-6 flex flex-wrap gap-3 sm:gap-4">
-                    <button type="button" class="rounded bg-purple-600 px-4 py-2 font-medium text-white hover:opacity-90" :disabled="formLoading" @click="saveProfile">
+                    <button type="button" class="fg-btn rounded bg-purple-600 px-4 py-2 font-medium text-white hover:opacity-90" :disabled="formLoading" @click="saveProfile">
                       {{ formLoading ? 'Saving...' : 'Save Profile' }}
                     </button>
-                    <button type="button" class="rounded bg-gray-600 px-4 py-2 font-medium text-white hover:bg-gray-500" @click="showPasswordModal = true">
+                    <button type="button" class="fg-btn rounded bg-gray-600 px-4 py-2 font-medium text-white hover:bg-gray-500" @click="showPasswordModal = true">
                       Change Password
                     </button>
-                    <button type="button" class="rounded bg-red-600 px-4 py-2 font-medium text-white hover:bg-red-700" @click="handleLogout">
+                    <button type="button" class="fg-btn rounded bg-red-600 px-4 py-2 font-medium text-white hover:bg-red-700" @click="handleLogout">
                       Logout
                     </button>
                   </div>
@@ -2269,7 +2393,7 @@ onUnmounted(() => {
             <p class="text-sm font-semibold text-white">Option 1 · Scan the member's QR</p>
             <button
               type="button"
-              class="rounded px-3 py-1 text-sm font-medium"
+              class="fg-btn-sm rounded px-3 py-1 text-sm font-medium"
               :class="trainerQrScannerActive ? 'bg-red-400 text-white' : 'bg-[#A3E635] text-[var(--fg-accent-ink)]'"
               :disabled="formLoading || trainerQrScannerBusy"
               @click="trainerQrScannerActive ? stopTrainerQrScanner() : startTrainerQrScanner()"
@@ -2290,7 +2414,7 @@ onUnmounted(() => {
           />
           <button
             type="button"
-            class="mt-2 w-full rounded bg-blue-500 py-2 text-sm font-medium text-white hover:opacity-90"
+            class="fg-btn mt-2 w-full rounded bg-blue-500 py-2 text-sm font-medium text-white hover:opacity-90"
             :disabled="formLoading || trainerQrScannerBusy"
             @click="submitTrainerQrPayload()"
           >
@@ -2308,8 +2432,8 @@ onUnmounted(() => {
         </div>
         <p v-if="formError" class="mb-2 text-sm text-red-400">{{ formError }}</p>
         <div class="flex gap-2">
-          <button type="button" class="flex-1 rounded bg-gray-600 py-2 text-white hover:bg-gray-500" @click="stopTrainerQrScanner(); showCheckinModal = false">Cancel</button>
-          <button type="button" class="flex-1 rounded bg-[#A3E635] py-2 font-semibold text-[var(--fg-accent-ink)] hover:opacity-90" :disabled="formLoading" @click="submitCheckin()">
+          <button type="button" class="fg-btn flex-1 rounded bg-gray-600 py-2 text-white hover:bg-gray-500" @click="stopTrainerQrScanner(); showCheckinModal = false">Cancel</button>
+          <button type="button" class="fg-btn flex-1 rounded bg-[#A3E635] py-2 font-semibold text-[var(--fg-accent-ink)] hover:opacity-90" :disabled="formLoading" @click="submitCheckin()">
             {{ formLoading ? 'Saving...' : 'Check-in' }}
           </button>
         </div>
@@ -2349,8 +2473,8 @@ onUnmounted(() => {
           </div>
         </div>
         <div class="mt-6 flex gap-2">
-          <button type="button" class="flex-1 rounded bg-gray-600 py-2 text-white hover:bg-gray-500" @click="showViewMemberModal = false">Close</button>
-          <button type="button" class="flex-1 rounded bg-gray-300 py-2 font-medium text-gray-800 hover:bg-gray-400" @click="editMember(selectedMemberForView); showViewMemberModal = false">Edit</button>
+          <button type="button" class="fg-btn flex-1 rounded bg-gray-600 py-2 text-white hover:bg-gray-500" @click="showViewMemberModal = false">Close</button>
+          <button type="button" class="fg-btn flex-1 rounded bg-gray-300 py-2 font-medium text-gray-800 hover:bg-gray-400" @click="editMember(selectedMemberForView); showViewMemberModal = false">Edit</button>
         </div>
       </div>
     </div>
@@ -2388,8 +2512,8 @@ onUnmounted(() => {
         </div>
         <p v-if="formError" class="mt-2 text-sm text-red-400">{{ formError }}</p>
         <div class="mt-4 flex gap-2">
-          <button type="button" class="flex-1 rounded bg-gray-600 py-2 text-white hover:bg-gray-500" @click="showAddMemberModal = false">Cancel</button>
-          <button type="button" class="flex-1 rounded bg-[#A3E635] py-2 font-semibold text-[var(--fg-accent-ink)] hover:opacity-90" :disabled="formLoading" @click="submitAddMember">
+          <button type="button" class="fg-btn flex-1 rounded bg-gray-600 py-2 text-white hover:bg-gray-500" @click="showAddMemberModal = false">Cancel</button>
+          <button type="button" class="fg-btn flex-1 rounded bg-[#A3E635] py-2 font-semibold text-[var(--fg-accent-ink)] hover:opacity-90" :disabled="formLoading" @click="submitAddMember">
             {{ formLoading ? 'Saving...' : (selectedMemberForEdit ? 'Update' : 'Add Member') }}
           </button>
         </div>
@@ -2449,8 +2573,8 @@ onUnmounted(() => {
         </div>
         <p v-if="formError" class="mt-2 text-sm text-red-400">{{ formError }}</p>
         <div class="mt-4 flex gap-2">
-          <button type="button" class="flex-1 rounded bg-gray-600 py-2 text-white hover:bg-gray-500" @click="showAddPlanModal = false">Cancel</button>
-          <button type="button" class="flex-1 rounded bg-[#A3E635] py-2 font-semibold text-[var(--fg-accent-ink)] hover:opacity-90" :disabled="formLoading" @click="submitAddPlan">
+          <button type="button" class="fg-btn flex-1 rounded bg-gray-600 py-2 text-white hover:bg-gray-500" @click="showAddPlanModal = false">Cancel</button>
+          <button type="button" class="fg-btn flex-1 rounded bg-[#A3E635] py-2 font-semibold text-[var(--fg-accent-ink)] hover:opacity-90" :disabled="formLoading" @click="submitAddPlan">
             {{ formLoading ? (selectedPlanForEdit ? 'Updating...' : 'Creating...') : (selectedPlanForEdit ? 'Update' : 'Create Plan') }}
           </button>
         </div>
@@ -2493,8 +2617,8 @@ onUnmounted(() => {
         <p class="mt-2 text-xs text-gray-400">{{ selectedPaymentForEdit ? 'Status changes only through Approve/Reject on the payments list.' : 'New payments start as Pending — approve or reject them from the payments list once recorded.' }}</p>
         <p v-if="formError" class="mt-2 text-sm text-red-400">{{ formError }}</p>
         <div class="mt-4 flex gap-2">
-          <button type="button" class="flex-1 rounded bg-gray-600 py-2 text-white hover:bg-gray-500" @click="showAddPaymentModal = false; selectedPaymentForEdit = null">Cancel</button>
-          <button type="button" class="flex-1 rounded bg-[#A3E635] py-2 font-semibold text-[var(--fg-accent-ink)] hover:opacity-90" :disabled="formLoading" @click="submitAddPayment">
+          <button type="button" class="fg-btn flex-1 rounded bg-gray-600 py-2 text-white hover:bg-gray-500" @click="showAddPaymentModal = false; selectedPaymentForEdit = null">Cancel</button>
+          <button type="button" class="fg-btn flex-1 rounded bg-[#A3E635] py-2 font-semibold text-[var(--fg-accent-ink)] hover:opacity-90" :disabled="formLoading" @click="submitAddPayment">
             {{ formLoading ? 'Saving...' : (selectedPaymentForEdit ? 'Update' : 'Add Payment') }}
           </button>
         </div>
@@ -2515,8 +2639,8 @@ onUnmounted(() => {
           <div class="flex justify-between gap-4"><span class="shrink-0 text-gray-400">Status</span><span :class="['rounded px-2 py-1 text-xs font-medium', String(selectedPaymentForView.status).toLowerCase() === 'paid' ? 'bg-green-500/20 text-green-300' : 'bg-yellow-500/20 text-yellow-300']">{{ selectedPaymentForView.status }}</span></div>
         </div>
         <div class="mt-4 flex gap-2">
-          <button type="button" class="flex-1 rounded bg-gray-600 py-2 text-white hover:bg-gray-500" @click="showViewPaymentModal = false">Close</button>
-          <button type="button" class="flex-1 rounded bg-green-600 py-2 text-white hover:bg-green-700" @click="showViewPaymentModal = false; selectedPaymentForView && editPayment(selectedPaymentForView)">Edit</button>
+          <button type="button" class="fg-btn flex-1 rounded bg-gray-600 py-2 text-white hover:bg-gray-500" @click="showViewPaymentModal = false">Close</button>
+          <button type="button" class="fg-btn flex-1 rounded bg-green-600 py-2 text-white hover:bg-green-700" @click="showViewPaymentModal = false; selectedPaymentForView && editPayment(selectedPaymentForView)">Edit</button>
         </div>
       </div>
     </div>
@@ -2570,8 +2694,8 @@ onUnmounted(() => {
         </div>
         <p v-if="formError" class="mt-2 text-sm text-red-400" role="alert">{{ formError }}</p>
         <div class="mt-4 flex gap-2">
-          <button type="button" class="flex-1 rounded bg-gray-600 py-2 text-white hover:bg-gray-500" @click="showScheduleModal = false">Cancel</button>
-          <button type="button" class="flex-1 rounded bg-[#A3E635] py-2 font-semibold text-[var(--fg-accent-ink)] hover:opacity-90 disabled:opacity-50" :disabled="formLoading" @click="submitManagedClass">
+          <button type="button" class="fg-btn flex-1 rounded bg-gray-600 py-2 text-white hover:bg-gray-500" @click="showScheduleModal = false">Cancel</button>
+          <button type="button" class="fg-btn flex-1 rounded bg-[#A3E635] py-2 font-semibold text-[var(--fg-accent-ink)] hover:opacity-90 disabled:opacity-50" :disabled="formLoading" @click="submitManagedClass">
             {{ formLoading ? 'Saving...' : selectedManagedClassForEdit !== null ? 'Update Class' : 'Add Class' }}
           </button>
         </div>
@@ -2607,8 +2731,8 @@ onUnmounted(() => {
         </div>
         <p v-if="formError" class="mt-2 text-sm text-red-400">{{ formError }}</p>
         <div class="mt-4 flex gap-2">
-          <button type="button" class="flex-1 rounded bg-gray-600 py-2 text-white hover:bg-gray-500" @click="showPasswordModal = false">Cancel</button>
-          <button type="button" class="flex-1 rounded bg-[#A3E635] py-2 font-semibold text-[var(--fg-accent-ink)] hover:opacity-90" :disabled="formLoading" @click="submitChangePassword">
+          <button type="button" class="fg-btn flex-1 rounded bg-gray-600 py-2 text-white hover:bg-gray-500" @click="showPasswordModal = false">Cancel</button>
+          <button type="button" class="fg-btn flex-1 rounded bg-[#A3E635] py-2 font-semibold text-[var(--fg-accent-ink)] hover:opacity-90" :disabled="formLoading" @click="submitChangePassword">
             {{ formLoading ? 'Changing...' : 'Change Password' }}
           </button>
         </div>
@@ -2631,7 +2755,7 @@ onUnmounted(() => {
   --accent-blue: var(--fg-secondary);
   --accent-purple: var(--fg-accent);
   --accent-purple-light: var(--fg-accent);
-  --accent-pink: #C4544C;
+  --accent-pink: var(--fg-danger);
   --accent-yellow: var(--fg-accent);
   /* the page background is the shared .fg-marble-bg */
 }
@@ -2639,14 +2763,14 @@ onUnmounted(() => {
 .trainer-auth-shell {
   background:
     radial-gradient(circle at top, rgba(var(--fg-accent-rgb), 0.18), transparent 28%),
-    radial-gradient(circle at bottom right, rgba(255, 107, 107, 0.1), transparent 26%),
+    radial-gradient(circle at bottom right, rgba(var(--fg-accent-dark-rgb), 0.1), transparent 26%),
     transparent;
 }
 
 .trainer-auth-card {
   background: var(--bg-card);
   border-color: var(--border-color);
-  box-shadow: 0 28px 80px rgba(2, 6, 23, 0.45);
+  box-shadow: none;
 }
 
 .trainer-auth-eyebrow {
@@ -2689,10 +2813,10 @@ onUnmounted(() => {
 }
 
 .trainer-auth-error {
-  background: rgba(255, 107, 107, 0.12);
-  border: 1px solid rgba(255, 107, 107, 0.3);
+  background: rgba(var(--fg-danger-rgb), 0.12);
+  border: 1px solid rgba(var(--fg-danger-rgb), 0.45);
   border-radius: 0.75rem;
-  color: #b42318;
+  color: var(--fg-danger-text);
   padding: 0.75rem 0.9rem;
 }
 
@@ -2710,13 +2834,6 @@ onUnmounted(() => {
   border-color: rgba(var(--fg-accent-deep-rgb), 0.35);
 }
 
-/* backdrop-filter would trap the fixed-position mobile drawer inside the shell */
-@media (min-width: 1024px) {
-  .trainer-shell {
-    backdrop-filter: blur(12px);
-  }
-}
-
 .trainer-sidebar {
   background:
     linear-gradient(180deg, rgba(var(--fg-accent-rgb), 0.07) 0%, rgba(var(--fg-accent-rgb), 0) 45%),
@@ -2727,7 +2844,7 @@ onUnmounted(() => {
 .trainer-profile-card,
 .trainer-header-card {
   background: var(--bg-card);
-  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
+  box-shadow: 0 0 0 1px var(--border-color);
   border-color: var(--border-color);
 }
 
@@ -2749,7 +2866,7 @@ onUnmounted(() => {
 
 .trainer-nav-item.active {
   background: rgba(var(--fg-accent-rgb), 0.92);
-  box-shadow: 0 14px 28px rgba(var(--fg-accent-rgb), 0.28);
+  box-shadow: none;
   color: var(--fg-accent-ink);
 }
 
@@ -2787,7 +2904,7 @@ onUnmounted(() => {
 /* light cards get a hairline ring and soft shadow so they stand off the marble */
 .trainer-portal .bg-\[\#2A3042\].rounded-lg,
 .trainer-portal .bg-\[\#2A3042\].rounded-xl {
-  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
+  box-shadow: 0 0 0 1px var(--border-color);
 }
 
 .trainer-portal .text-gray-300,
@@ -2840,7 +2957,7 @@ onUnmounted(() => {
 }
 
 .trainer-portal .bg-green-500\/20 {
-  background: color-mix(in srgb, var(--accent-green) 20%, transparent) !important;
+  background: rgba(var(--fg-success-rgb), 0.18) !important;
 }
 
 .trainer-portal .bg-red-400,
@@ -2852,19 +2969,28 @@ onUnmounted(() => {
 }
 
 .trainer-portal .bg-red-500\/20 {
-  background: color-mix(in srgb, var(--accent-pink) 20%, transparent) !important;
+  background: rgba(var(--fg-danger-rgb), 0.2) !important;
 }
 
+.trainer-portal .bg-red-500\/10 {
+  background: rgba(var(--fg-danger-rgb), 0.12) !important;
+}
+
+.trainer-portal .border-red-500\/40 {
+  border-color: rgba(var(--fg-danger-rgb), 0.45) !important;
+}
+
+/* amber / yellow fills mark "full" or "ending soon": the warning color */
 .trainer-portal .bg-amber-400,
 .trainer-portal .bg-amber-600,
 .trainer-portal .bg-amber-700,
 .trainer-portal .bg-yellow-500 {
-  background: var(--accent-yellow) !important;
+  background: var(--fg-warning) !important;
   color: var(--fg-accent-ink) !important;
 }
 
 .trainer-portal .bg-yellow-500\/20 {
-  background: color-mix(in srgb, var(--text-secondary) 20%, transparent) !important;
+  background: rgba(var(--fg-warning-rgb), 0.2) !important;
 }
 
 .trainer-portal .bg-purple-500\/40 {
@@ -2876,7 +3002,7 @@ onUnmounted(() => {
 }
 
 .trainer-portal .text-green-300 {
-  color: var(--fg-card-gold) !important;
+  color: var(--fg-success-text) !important;
 }
 
 .trainer-portal .text-blue-300 {
@@ -2884,12 +3010,13 @@ onUnmounted(() => {
 }
 
 .trainer-portal .text-red-300,
-.trainer-portal .text-red-400 {
-  color: var(--accent-pink) !important;
+.trainer-portal .text-red-400,
+.trainer-portal .hover\:text-red-400:hover {
+  color: var(--fg-danger-text) !important;
 }
 
 .trainer-portal .text-yellow-300 {
-  color: var(--text-primary) !important;
+  color: var(--fg-warning-text) !important;
 }
 
 .trainer-portal .bg-gray-300 {
@@ -2903,7 +3030,7 @@ onUnmounted(() => {
 }
 
 .trainer-portal .bg-gray-500\/20 {
-  background: color-mix(in srgb, var(--text-secondary) 20%, transparent) !important;
+  background: rgba(var(--fg-neutral-rgb), 0.18) !important;
 }
 
 .trainer-portal .ring-purple-500,
@@ -3000,30 +3127,33 @@ onUnmounted(() => {
   font-weight: 700;
 }
 
+/* Sizes come from the shared UI standard in app.css (--ui-* tokens) */
 .trainer-portal table:not(.data-table) th {
-  font-size: clamp(0.7rem, 1.2vw, 0.875rem) !important;
+  height: var(--ui-th-h) !important;
+  font-size: var(--ui-fs-table-head) !important;
   font-weight: 600 !important;
-  padding: clamp(0.75rem, 1.5vw, 0.9375rem) !important;
+  padding: var(--ui-space-sm) var(--ui-cell-px) !important;
 }
 
 .trainer-portal table:not(.data-table) td {
-  font-size: clamp(0.7rem, 1.2vw, 0.875rem) !important;
-  padding: clamp(0.75rem, 1.5vw, 0.9375rem) !important;
+  height: var(--ui-tr-h) !important;
+  font-size: var(--ui-fs-table) !important;
+  padding: var(--ui-space-sm) var(--ui-cell-px) !important;
 }
 
 .trainer-portal .bg-\[\#2A3042\].p-6 {
-  padding: 0.875rem !important;
-  border-radius: 0.5rem !important;
+  padding: var(--ui-card-pad) !important;
+  border-radius: var(--ui-card-radius) !important;
 }
 
 .trainer-portal .text-lg.font-semibold.text-white {
-  font-size: clamp(0.9375rem, 1.5vw, 1.125rem) !important;
+  font-size: var(--ui-fs-card-title) !important;
 }
 
 .trainer-portal .w-full.rounded-lg.bg-blue-500,
 .trainer-portal .w-full.rounded-lg.bg-purple-600,
 .trainer-portal .w-full.rounded-lg.bg-gray-600 {
-  font-size: clamp(0.75rem, 1vw, 0.875rem) !important;
+  font-size: var(--ui-fs-button) !important;
 }
 
 @media (max-width: 1023.98px) {
@@ -3045,7 +3175,7 @@ onUnmounted(() => {
 
 /* Same typeface as the Admin portal for the shared Members / Plans views */
 .trainer-portal .staff-admin-view {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: var(--fg-font);
 }
 
 /* ===== Members / Membership Plans: copied from Admin.vue so both portals look the same.
@@ -3117,7 +3247,7 @@ onUnmounted(() => {
   border-radius: 0.75rem;
   overflow-x: auto;
   width: 100%;
-  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
+  box-shadow: 0 0 0 1px var(--border-color);
 }
 
 .trainer-portal .staff-admin-view .data-table {
@@ -3219,7 +3349,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 0.9375rem;
-  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
+  box-shadow: 0 0 0 1px var(--border-color);
 }
 
 .trainer-portal .staff-admin-view .summary-card i {
@@ -3264,12 +3394,12 @@ onUnmounted(() => {
   padding: 1.5625rem;
   border-radius: 0.75rem;
   position: relative;
-  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
+  box-shadow: 0 0 0 1px var(--border-color);
 }
 
 .trainer-portal .staff-admin-view .plan-card.deactivated {
   opacity: 0.85;
-  border: 1px dashed #C4544C;
+  border: 1px dashed var(--fg-danger);
 }
 
 .trainer-portal .staff-admin-view .plan-card.popular .popular-badge {
@@ -3382,7 +3512,7 @@ onUnmounted(() => {
 .trainer-portal .staff-admin-view .plan-actions :is(.btn-edit, .btn-deactivate, .btn-delete) {
   flex: 1;
   padding: 0.625rem;
-  background: linear-gradient(135deg, var(--fg-accent-light) 0%, var(--fg-accent) 55%, var(--fg-accent-dark) 100%);
+  background: var(--fg-accent);
   color: var(--fg-accent-ink);
   border: 1px solid var(--fg-accent-light);
   border-radius: 0.375rem;
@@ -3412,7 +3542,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  box-shadow: 0 0 12px rgba(var(--fg-accent-rgb), 0.3);
+  box-shadow: none;
 }
 
 .trainer-portal .staff-admin-view .btn-add-member:hover {
@@ -3645,7 +3775,7 @@ onUnmounted(() => {
   height: 2rem;
   place-items: center;
   border-radius: 9999px;
-  background: linear-gradient(135deg, var(--fg-accent-light), var(--fg-accent-dark));
+  background: var(--fg-accent);
   color: var(--fg-accent-ink);
   font-weight: 700;
 }
@@ -3653,14 +3783,14 @@ onUnmounted(() => {
 .trainer-portal .staff-attendance .attendance-step-title {
   margin: 0;
   font-weight: 700;
-  color: #2b2418;
+  color: var(--fg-card-ink);
 }
 
 .trainer-portal .staff-attendance .attendance-step-text {
   margin: 0.2rem 0 0;
   font-size: 0.85rem;
   line-height: 1.45;
-  color: #6b5d45;
+  color: var(--fg-card-ink-soft);
 }
 
 .trainer-portal .staff-attendance .attendance-panel {
@@ -3752,23 +3882,23 @@ onUnmounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 600;
-  color: #2b2418;
+  color: var(--fg-card-ink);
 }
 
 .trainer-portal .staff-attendance .attendance-inside-info span {
   font-size: 0.8rem;
-  color: #6b5d45;
+  color: var(--fg-card-ink-soft);
 }
 
 .trainer-portal .staff-attendance .attendance-checkout-btn {
   flex-shrink: 0;
   border: 0;
   border-radius: 0.5rem;
-  background: #C4544C;
+  background: var(--fg-danger);
   padding: 0.45rem 0.8rem;
   font-size: 0.8rem;
   font-weight: 600;
-  color: #fff;
+  color: var(--fg-status-ink);
   cursor: pointer;
 }
 
@@ -3786,7 +3916,7 @@ onUnmounted(() => {
 
 .trainer-portal .staff-attendance .attendance-error {
   margin: 0.75rem 0 0;
-  color: #f08a8e;
+  color: var(--fg-danger-text);
   font-size: 0.85rem;
 }
 
@@ -3801,13 +3931,13 @@ onUnmounted(() => {
 .trainer-portal .availability-slot--open {
   border: 1px solid rgba(var(--fg-accent-rgb), 0.45);
   background: rgba(20, 17, 12, 0.72);
-  box-shadow: inset 0 2px 0 var(--fg-accent);
+  box-shadow: none;
   color: var(--fg-accent-light);
 }
 
 .trainer-portal .availability-slot--busy {
   border: 1px solid var(--fg-accent-light);
-  background: linear-gradient(135deg, var(--fg-accent-light) 0%, var(--fg-accent) 55%, var(--fg-accent-dark) 100%);
+  background: var(--fg-accent);
   color: var(--fg-accent-ink);
 }
 </style>

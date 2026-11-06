@@ -25,8 +25,6 @@ createInertiaApp({
     },
 });
 
-// Glass look on every FitGym page. Delete the next line to go back to the solid black-marble boxes.
-document.documentElement.classList.add('fg-glass');
 
 // White-and-gold light mode, if this person picked it with the sun / moon button.
 initializeFgTheme();

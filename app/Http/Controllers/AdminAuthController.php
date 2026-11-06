@@ -44,6 +44,15 @@ class AdminAuthController extends Controller
                     'message' => 'Access denied. Admin privileges required.'
                 ], 403);
             }
+            // A gym owner who signed up on the website must confirm their email first
+            if (! $user->email_verified_at) {
+                Auth::logout();
+                return response()->json([
+                    'success' => false,
+                    'needs_verification' => true,
+                    'message' => "Confirm your email first. Open the link we sent to {$user->email} (check spam too), then sign in again.",
+                ], 403);
+            }
             if ($blocked = $this->blockedGymResponse($user)) {
                 Auth::logout();
                 return $blocked;

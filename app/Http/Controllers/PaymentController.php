@@ -40,7 +40,7 @@ class PaymentController extends Controller
                     'payment_date' => $p->payment_date?->format('Y-m-d'),
                     'payment_date_formatted' => $p->payment_date?->format('M j, Y'),
                     'status' => $p->status,
-                    'receipt_proof_url' => $p->receipt_proof_path ? Storage::url($p->receipt_proof_path) : null,
+                    'receipt_proof_url' => $p->receipt_proof_path ? '/storage/' . ltrim($p->receipt_proof_path, '/') : null,
                 ]);
             return response()->json(['success' => true, 'payments' => $payments]);
         } catch (\Exception $e) {
@@ -131,7 +131,7 @@ class PaymentController extends Controller
                     'payment_method' => $payment->payment_method,
                     'payment_date' => $payment->payment_date?->format('Y-m-d'),
                     'status' => $payment->status,
-                    'receipt_proof_url' => $payment->receipt_proof_path ? Storage::url($payment->receipt_proof_path) : null,
+                    'receipt_proof_url' => $payment->receipt_proof_path ? '/storage/' . ltrim($payment->receipt_proof_path, '/') : null,
                 ]
             ], 201);
         } catch (\Exception $e) {
@@ -176,7 +176,7 @@ class PaymentController extends Controller
                     'payment_date' => $p->payment_date?->format('Y-m-d'),
                     'status' => $p->status,
                     'notes' => $p->notes,
-                    'receipt_proof_url' => $p->receipt_proof_path ? Storage::url($p->receipt_proof_path) : null,
+                    'receipt_proof_url' => $p->receipt_proof_path ? '/storage/' . ltrim($p->receipt_proof_path, '/') : null,
                     'created_at' => $p->created_at,
                 ]);
             $totalRevenue = Payment::where('is_archived', 0)->where('status', 'Paid')->sum('amount');
@@ -281,7 +281,7 @@ class PaymentController extends Controller
                 'payment_date' => $payment->payment_date?->format('Y-m-d'),
                 'status' => $payment->status,
                 'notes' => $payment->notes,
-                'receipt_proof_url' => $payment->receipt_proof_path ? Storage::url($payment->receipt_proof_path) : null,
+                'receipt_proof_url' => $payment->receipt_proof_path ? '/storage/' . ltrim($payment->receipt_proof_path, '/') : null,
                 'created_at' => $payment->created_at,
             ]
         ]);

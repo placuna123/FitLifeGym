@@ -112,6 +112,10 @@ class PlatformGymController extends Controller
                     'is_archived' => 0,
                 ]);
 
+                // The Super Admin set this account up personally, and its set-password
+                // link goes to the same address, so it does not need the signup confirmation.
+                $admin->forceFill(['email_verified_at' => now()])->save();
+
                 $gym->update(['owner_user_id' => $admin->id]);
 
                 return $gym;

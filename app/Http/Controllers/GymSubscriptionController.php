@@ -130,6 +130,14 @@ class GymSubscriptionController extends Controller
             ['type' => 'SubscriptionPaymentRequest', 'id' => $proof->id]
         );
 
+        \App\Models\PlatformNotification::notify(
+            'payment',
+            "Payment receipt from {$gym->name}",
+            "{$gym->name} sent a PHP " . number_format((float) $proof->amount, 2) . " {$request->payment_method} receipt for {$months} month(s) of " . ucfirst($request->plan) . ". Check it in Billing.",
+            $gym->id,
+            'billing',
+        );
+
         return response()->json([
             'success' => true,
             'message' => 'Payment sent. FitGym will check your receipt, and your plan and end date update once it is approved.',

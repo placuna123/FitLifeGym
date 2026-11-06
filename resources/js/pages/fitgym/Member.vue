@@ -10,6 +10,7 @@ import { useMobileNav } from '@/composables/useMobileNav';
 import { usePasswordVisibility } from '@/composables/usePasswordVisibility';
 import { useSessionGuard } from '@/composables/useSessionGuard';
 import { goToEntry } from '@/lib/portal';
+import { isUserEditing } from '@/lib/editing';
 import QRCode from 'qrcode';
 
 // One palette across the portals: gold for actions and highlights, bronze for secondary
@@ -23,8 +24,12 @@ const portal = {
   border: 'var(--fg-card-border)',
   purple: 'var(--fg-accent)',
   purpleLight: 'var(--fg-card-gold)',
-  pink: '#C4544C',
-  cyan: '#C9B48A',
+  pink: 'var(--fg-danger)',
+  cyan: 'var(--fg-accent-dark)',
+  // status text (green / amber / red from the shared palette in app.css)
+  success: 'var(--fg-success-text)',
+  warning: 'var(--fg-warning-text)',
+  danger: 'var(--fg-danger-text)',
   bronze: 'var(--fg-secondary)',
   lime: 'var(--fg-card-gold)',
   textDim: 'var(--fg-card-ink-soft)',
@@ -454,6 +459,8 @@ function startMemberPortalAutoRefresh() {
   if (!isLoggedIn.value) return;
 
   memberPortalRefreshTimer = window.setInterval(() => {
+    // never refresh under someone who is typing or has a form open
+    if (isUserEditing()) return;
     void refreshMemberPortalViewData();
   }, 15000);
 }
@@ -678,8 +685,11 @@ async function loadProgressData() {
     const { data } = await memberProgress.get();
     if (data.success) {
       progressData.value = data;
-      heightInput.value = data.height_cm != null ? String(data.height_cm) : '';
-      goalWeightInput.value = data.goal_weight_kg != null ? String(data.goal_weight_kg) : '';
+      // leave the height / goal fields alone while the member is editing them
+      if (!showGoalEditor.value) {
+        heightInput.value = data.height_cm != null ? String(data.height_cm) : '';
+        goalWeightInput.value = data.goal_weight_kg != null ? String(data.goal_weight_kg) : '';
+      }
     }
   } catch {
     // Keep whatever was already loaded.
@@ -1094,7 +1104,7 @@ onUnmounted(() => {
             <button
               type="button"
               class="member-logout-btn w-full rounded-xl px-4 py-3 text-sm font-semibold transition-opacity hover:opacity-90"
-              :style="{ backgroundColor: portal.pink, color: '#fff' }"
+              :style="{ backgroundColor: portal.pink, color: 'var(--fg-status-ink)' }"
               @click="handleLogout"
             >
               Logout
@@ -1137,7 +1147,7 @@ onUnmounted(() => {
               </div>
               <button
                 type="button"
-                class="flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition-opacity hover:opacity-90"
+                class="fg-btn flex items-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition-opacity hover:opacity-90"
                 :style="{ backgroundColor: portal.dark3, color: 'var(--fg-card-ink)', border: `1px solid ${portal.border}` }"
                 @click="showNotificationsPanel = !showNotificationsPanel"
               >
@@ -1148,7 +1158,7 @@ onUnmounted(() => {
               </button>
               <div class="rounded-xl border px-4 py-3" :style="{ backgroundColor: portal.dark3, borderColor: portal.border }">
                 <p class="text-xs uppercase tracking-[0.2em]" :style="{ color: portal.textDim }">Status</p>
-                <p class="mt-1 text-sm font-semibold" :style="{ color: membershipIsActive ? portal.lime : portal.pink }">{{ membershipStatusLabel }}</p>
+                <p class="mt-1 text-sm font-semibold" :style="{ color: membershipIsActive ? portal.success : portal.danger }">{{ membershipStatusLabel }}</p>
               </div>
 
               <div
@@ -1191,18 +1201,18 @@ onUnmounted(() => {
           <div
             v-if="hasPendingPayment"
             class="mx-4 mt-5 flex flex-col items-start justify-between gap-3 rounded-xl border px-5 py-4 sm:mx-6 sm:mt-6 sm:flex-row sm:items-center lg:mx-10"
-            :style="{ backgroundColor: 'rgba(255, 107, 107, 0.12)', borderColor: portal.pink }"
+            :style="{ backgroundColor: 'rgba(var(--fg-danger-rgb), 0.12)', borderColor: portal.pink }"
           >
             <div>
-              <p class="text-sm font-semibold" :style="{ color: portal.pink }">Payment Pending</p>
+              <p class="text-sm font-semibold" :style="{ color: portal.danger }">Payment Pending</p>
               <p class="mt-1 text-sm" :style="{ color: portal.textDim }">
                 Complete your GCash payment below, or pay in person at the front desk, to activate your membership.
               </p>
             </div>
             <button
               type="button"
-              class="shrink-0 rounded-lg px-4 py-2 text-sm font-semibold transition-opacity hover:opacity-90"
-              :style="{ backgroundColor: portal.pink, color: '#fff' }"
+              class="fg-btn shrink-0 rounded-lg px-4 py-2 text-sm font-semibold transition-opacity hover:opacity-90"
+              :style="{ backgroundColor: portal.pink, color: 'var(--fg-status-ink)' }"
               @click="currentPage = 'Payments'"
             >
               Go to Payments
@@ -1214,17 +1224,17 @@ onUnmounted(() => {
             class="mx-4 mt-5 flex flex-col items-start justify-between gap-3 rounded-xl border px-5 py-4 sm:mx-6 sm:mt-6 sm:flex-row sm:items-center lg:mx-10"
             role="status"
             :style="membershipNotice.expired
-              ? { backgroundColor: 'rgba(255, 107, 107, 0.12)', borderColor: portal.pink }
-              : { backgroundColor: 'rgba(var(--fg-accent-rgb), 0.16)', borderColor: 'var(--fg-accent)' }"
+              ? { backgroundColor: 'rgba(var(--fg-danger-rgb), 0.12)', borderColor: portal.pink }
+              : { backgroundColor: 'rgba(var(--fg-warning-rgb), 0.14)', borderColor: 'var(--fg-warning)' }"
           >
             <div>
-              <p class="text-sm font-semibold" :style="{ color: membershipNotice.expired ? portal.pink : 'var(--fg-accent-deep)' }">{{ membershipNotice.title }}</p>
+              <p class="text-sm font-semibold" :style="{ color: membershipNotice.expired ? portal.danger : portal.warning }">{{ membershipNotice.title }}</p>
               <p class="mt-1 text-sm" :style="{ color: portal.textDim }">{{ membershipNotice.text }}</p>
             </div>
             <button
               type="button"
-              class="shrink-0 rounded-lg px-4 py-2 text-sm font-semibold transition-opacity hover:opacity-90"
-              :style="membershipNotice.expired ? { backgroundColor: portal.pink, color: '#fff' } : { backgroundColor: 'var(--fg-accent)', color: 'var(--fg-accent-ink)' }"
+              class="fg-btn shrink-0 rounded-lg px-4 py-2 text-sm font-semibold transition-opacity hover:opacity-90"
+              :style="membershipNotice.expired ? { backgroundColor: portal.pink, color: 'var(--fg-status-ink)' } : { backgroundColor: 'var(--fg-accent)', color: 'var(--fg-accent-ink)' }"
               @click="currentPage = 'Payments'"
             >
               Renew Membership
@@ -1253,9 +1263,9 @@ onUnmounted(() => {
                 </div>
               </div>
               <div class="flex flex-col space-y-3 sm:flex-row sm:space-x-3 sm:space-y-0">
-                <button type="button" class="flex-1 rounded-lg py-3 font-semibold transition-opacity hover:opacity-90" :style="{ backgroundColor: portal.purple, color: portal.primaryText }" @click="currentPage = 'Attendance'">Check Attendance</button>
-                <button type="button" class="flex-1 rounded-lg py-3 font-semibold transition-opacity hover:opacity-90" :style="{ backgroundColor: portal.bronze, color: '#F5F1E8' }" @click="currentPage = 'Membership'">Renew Membership</button>
-                <button type="button" class="fg-tile flex-1 rounded-lg py-3 font-semibold text-[var(--fg-card-ink)] transition-opacity hover:opacity-90" :style="{ backgroundColor: portal.dark2, border: `1px solid ${portal.border}` }" @click="currentPage = 'Schedule'">View Schedule</button>
+                <button type="button" class="fg-btn flex-1 rounded-lg py-3 font-semibold transition-opacity hover:opacity-90" :style="{ backgroundColor: portal.purple, color: portal.primaryText }" @click="currentPage = 'Attendance'">Check Attendance</button>
+                <button type="button" class="fg-btn flex-1 rounded-lg py-3 font-semibold transition-opacity hover:opacity-90" :style="{ backgroundColor: portal.bronze, color: '#F5F1E8' }" @click="currentPage = 'Membership'">Renew Membership</button>
+                <button type="button" class="fg-btn fg-tile flex-1 rounded-lg py-3 font-semibold text-[var(--fg-card-ink)] transition-opacity hover:opacity-90" :style="{ backgroundColor: portal.dark2, border: `1px solid ${portal.border}` }" @click="currentPage = 'Schedule'">View Schedule</button>
               </div>
             </div>
             <div class="rounded-xl border p-4 sm:p-6" :style="{ backgroundColor: portal.dark3, borderColor: portal.border }">
@@ -1264,8 +1274,8 @@ onUnmounted(() => {
                 <div
                   class="mb-3 rounded-full p-4"
                   :style="membershipIsActive
-                    ? { backgroundColor: 'rgba(var(--fg-accent-rgb), 0.16)', color: portal.lime }
-                    : { backgroundColor: 'rgba(255, 107, 107, 0.16)', color: portal.pink }"
+                    ? { backgroundColor: 'rgba(var(--fg-success-rgb), 0.18)', color: portal.success }
+                    : { backgroundColor: 'rgba(var(--fg-danger-rgb), 0.18)', color: portal.danger }"
                 >
                   {{ membershipIsActive ? '✓' : '✕' }}
                 </div>
@@ -1276,7 +1286,7 @@ onUnmounted(() => {
                     <span>Days Remaining</span>
                     <span>{{ daysRemaining(member.expiry_date) }} days</span>
                   </div>
-                  <button type="button" class="mt-6 w-full rounded-lg py-3 font-semibold transition-opacity hover:opacity-90" :style="{ backgroundColor: portal.purple, color: portal.primaryText }" @click="currentPage = 'Membership'">Renew Membership</button>
+                  <button type="button" class="fg-btn mt-6 w-full rounded-lg py-3 font-semibold transition-opacity hover:opacity-90" :style="{ backgroundColor: portal.purple, color: portal.primaryText }" @click="currentPage = 'Membership'">Renew Membership</button>
                 </div>
               </div>
             </div>
@@ -1289,13 +1299,13 @@ onUnmounted(() => {
               <div
                 class="mb-3 inline-block rounded-full p-4"
                 :style="membershipIsActive
-                  ? { backgroundColor: 'rgba(var(--fg-accent-rgb), 0.16)', color: portal.lime }
-                  : { backgroundColor: 'rgba(255, 107, 107, 0.16)', color: portal.pink }"
+                  ? { backgroundColor: 'rgba(var(--fg-success-rgb), 0.18)', color: portal.success }
+                  : { backgroundColor: 'rgba(var(--fg-danger-rgb), 0.18)', color: portal.danger }"
               >
                 {{ membershipIsActive ? '✓' : '✕' }}
               </div>
               <p class="text-2xl font-bold text-[var(--fg-card-ink)]">{{ member?.membership_plan || 'No Plan' }}</p>
-              <p class="mb-6 font-semibold" :style="membershipIsActive ? { color: portal.lime } : { color: portal.pink }">{{ membershipStatusLabel }} Membership</p>
+              <p class="mb-6 font-semibold" :style="membershipIsActive ? { color: portal.success } : { color: portal.danger }">{{ membershipStatusLabel }} Membership</p>
               <div class="member-detail-list my-6 border-t border-b py-6 text-left" :style="{ borderColor: portal.border }">
                 <div class="flex justify-between text-sm">
                   <span :style="{ color: portal.textDim }">Plan Type:</span>
@@ -1303,7 +1313,7 @@ onUnmounted(() => {
                 </div>
                 <div class="mt-3 flex justify-between text-sm">
                   <span :style="{ color: portal.textDim }">Status:</span>
-                  <span class="font-medium" :style="membershipIsActive ? { color: portal.lime } : { color: portal.pink }">{{ membershipStatusLabel }}</span>
+                  <span class="font-medium" :style="membershipIsActive ? { color: portal.success } : { color: portal.danger }">{{ membershipStatusLabel }}</span>
                 </div>
                 <div class="mt-3 flex justify-between text-sm">
                   <span :style="{ color: portal.textDim }">Payment Status:</span>
@@ -1323,7 +1333,7 @@ onUnmounted(() => {
                   Your membership starts on the day your first payment is approved. Pay by GCash, or in cash at the front desk.
                 </p>
               </div>
-              <button type="button" class="w-full rounded-lg py-3 font-semibold transition-opacity hover:opacity-90" :style="{ backgroundColor: portal.purple, color: portal.primaryText }" @click="currentPage = 'Payments'">Renew Membership</button>
+              <button type="button" class="fg-btn w-full rounded-lg py-3 font-semibold transition-opacity hover:opacity-90" :style="{ backgroundColor: portal.purple, color: portal.primaryText }" @click="currentPage = 'Payments'">Renew Membership</button>
             </div>
             <div class="rounded-xl border p-4 sm:p-6 lg:col-span-3" :style="{ backgroundColor: portal.dark3, borderColor: portal.border }">
               <h2 class="mb-4 text-xl font-bold text-[var(--fg-card-ink)]">Membership Benefits</h2>
@@ -1359,8 +1369,8 @@ onUnmounted(() => {
                 <button
                   type="button"
                   :disabled="attendanceActionLoading || attendanceQrLoading"
-                  class="mb-6 w-full rounded-lg py-3 text-lg font-semibold transition-all duration-200 hover:opacity-90 disabled:opacity-50"
-                  :style="isCheckedIn ? { backgroundColor: portal.pink, color: '#fff' } : { backgroundColor: portal.purple, color: portal.primaryText }"
+                  class="fg-btn-lg mb-6 w-full rounded-lg py-3 text-lg font-semibold transition-all duration-200 hover:opacity-90 disabled:opacity-50"
+                  :style="isCheckedIn ? { backgroundColor: portal.pink, color: 'var(--fg-status-ink)' } : { backgroundColor: portal.purple, color: portal.primaryText }"
                   @click="handleCheckInToggle"
                 >
                   {{
@@ -1394,7 +1404,7 @@ onUnmounted(() => {
                   <div class="flex flex-col gap-2 sm:flex-row">
                     <button
                       type="button"
-                      class="w-full rounded-lg py-2 text-sm font-semibold transition-opacity hover:opacity-90"
+                      class="fg-btn w-full rounded-lg py-2 text-sm font-semibold transition-opacity hover:opacity-90"
                       :style="{ backgroundColor: portal.dark3, color: 'var(--fg-card-ink)', border: `1px solid ${portal.border}` }"
                       @click="generateAttendanceQr"
                     >
@@ -1402,7 +1412,7 @@ onUnmounted(() => {
                     </button>
                     <button
                       type="button"
-                      class="w-full rounded-lg py-2 text-sm font-semibold transition-opacity hover:opacity-90"
+                      class="fg-btn w-full rounded-lg py-2 text-sm font-semibold transition-opacity hover:opacity-90"
                       :style="{ backgroundColor: portal.purple, color: portal.primaryText }"
                       :disabled="!attendanceQrRawText"
                       @click="copyAttendanceQrText"
@@ -1448,7 +1458,7 @@ onUnmounted(() => {
                             Time-In: {{ act.time_in }} • Time-Out: {{ act.time_out }}
                           </p>
                         </div>
-                        <p :style="{ color: act.status === 'Inside' ? portal.lime : portal.cyan }">{{ act.status }}</p>
+                        <p :style="{ color: act.status === 'Inside' ? portal.success : portal.textDim }">{{ act.status }}</p>
                       </div>
                     </template>
                   </div>
@@ -1584,7 +1594,7 @@ onUnmounted(() => {
               <button
                 type="button"
                 :disabled="paymentProcessing || !selectedPlanId"
-                class="mt-6 w-full rounded-lg py-3 font-semibold transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
+                class="fg-btn mt-6 w-full rounded-lg py-3 font-semibold transition-opacity disabled:cursor-not-allowed disabled:opacity-50"
                 :style="paymentProcessing
                   ? { backgroundColor: portal.dark2, color: portal.textDim, border: `1px solid ${portal.border}` }
                   : { backgroundColor: portal.purple, color: portal.primaryText }"
@@ -1617,7 +1627,7 @@ onUnmounted(() => {
                     </div>
                     <div class="text-right">
                       <p class="text-lg font-bold text-[var(--fg-card-ink)]">₱{{ item.amount }}</p>
-                      <p class="text-xs font-semibold" :style="{ color: String(item.status).toLowerCase() === 'paid' ? portal.lime : String(item.status).toLowerCase() === 'pending' ? portal.textDim : portal.pink }">{{ item.status }}</p>
+                      <p class="text-xs font-semibold" :style="{ color: String(item.status).toLowerCase() === 'paid' ? portal.success : String(item.status).toLowerCase() === 'pending' ? portal.warning : portal.danger }">{{ item.status }}</p>
                     </div>
                   </div>
                 </template>
@@ -1678,7 +1688,7 @@ onUnmounted(() => {
                     />
                     <button
                       type="button"
-                      class="shrink-0 rounded-lg px-4 py-2 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50"
+                      class="fg-btn shrink-0 rounded-lg px-4 py-2 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50"
                       :style="{ backgroundColor: portal.purple, color: portal.primaryText }"
                       :disabled="progressActionLoading || !weightInput"
                       @click="submitWeightLog"
@@ -1701,7 +1711,7 @@ onUnmounted(() => {
                     </div>
                     <button
                       type="button"
-                      class="w-full rounded-lg py-2 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50"
+                      class="fg-btn w-full rounded-lg py-2 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50"
                       :style="{ backgroundColor: portal.dark3, color: 'var(--fg-card-ink)', border: `1px solid ${portal.border}` }"
                       :disabled="progressActionLoading"
                       @click="submitGoal"
@@ -1739,8 +1749,8 @@ onUnmounted(() => {
                 <p class="mt-1 text-sm" :style="{ color: portal.textDim }">Pick a day to see its classes, then tap Book Class to reserve your spot.</p>
               </div>
               <div class="flex items-center gap-2">
-                <button type="button" class="fg-tile rounded-md px-3 py-1.5 text-sm font-semibold disabled:opacity-40" :style="{ backgroundColor: portal.dark2, color: 'var(--fg-card-ink)' }" :disabled="scheduleIsThisWeek || scheduleLoading" @click="shiftScheduleWeek(-1)">‹ Previous week</button>
-                <button type="button" class="fg-tile rounded-md px-3 py-1.5 text-sm font-semibold disabled:opacity-40" :style="{ backgroundColor: portal.dark2, color: 'var(--fg-card-ink)' }" :disabled="scheduleLoading" @click="shiftScheduleWeek(1)">Next week ›</button>
+                <button type="button" class="fg-btn-sm fg-tile rounded-md px-3 py-1.5 text-sm font-semibold disabled:opacity-40" :style="{ backgroundColor: portal.dark2, color: 'var(--fg-card-ink)' }" :disabled="scheduleIsThisWeek || scheduleLoading" @click="shiftScheduleWeek(-1)">‹ Previous week</button>
+                <button type="button" class="fg-btn-sm fg-tile rounded-md px-3 py-1.5 text-sm font-semibold disabled:opacity-40" :style="{ backgroundColor: portal.dark2, color: 'var(--fg-card-ink)' }" :disabled="scheduleLoading" @click="shiftScheduleWeek(1)">Next week ›</button>
               </div>
             </div>
 
@@ -1797,7 +1807,7 @@ onUnmounted(() => {
                   <button
                     v-if="cls.booked_by_me"
                     type="button"
-                    class="inline-flex items-center gap-1.5 rounded-md border px-4 py-1.5 text-sm font-semibold transition-opacity hover:opacity-90"
+                    class="fg-btn-sm inline-flex items-center gap-1.5 rounded-md border px-4 py-1.5 text-sm font-semibold transition-opacity hover:opacity-90"
                     :style="{ borderColor: portal.lime, color: portal.lime, backgroundColor: 'rgba(var(--fg-accent-rgb), 0.16)' }"
                     :disabled="scheduleActionLoading"
                     @click="cancelBooking(cls)"
@@ -1814,7 +1824,7 @@ onUnmounted(() => {
                   <button
                     v-else
                     type="button"
-                    class="rounded-md px-4 py-1.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50"
+                    class="fg-btn-sm rounded-md px-4 py-1.5 text-sm font-semibold transition-opacity hover:opacity-90 disabled:opacity-50"
                     :style="{ backgroundColor: portal.purple, color: portal.primaryText }"
                     :disabled="scheduleActionLoading"
                     @click="bookClass(cls)"
@@ -1859,7 +1869,7 @@ onUnmounted(() => {
               </div>
               <button
                 type="button"
-                class="w-full rounded-lg py-3 font-semibold transition-opacity hover:opacity-90"
+                class="fg-btn w-full rounded-lg py-3 font-semibold transition-opacity hover:opacity-90"
                 :style="{ backgroundColor: portal.purple, color: portal.primaryText }"
                 @click="openEditProfile"
               >
@@ -1909,7 +1919,7 @@ onUnmounted(() => {
               <p class="mb-6 text-sm" :style="{ color: portal.textDim }">The gym has received your message and will get back to you if needed.</p>
               <button
                 type="button"
-                class="rounded-lg py-2 px-6 font-semibold text-[var(--fg-card-ink)] transition-opacity hover:opacity-90"
+                class="fg-btn rounded-lg py-2 px-6 font-semibold text-[var(--fg-card-ink)] transition-opacity hover:opacity-90"
                 :style="{ backgroundColor: portal.purple, color: portal.primaryText }"
                 @click="supportSubmitted = false"
               >
@@ -1946,10 +1956,10 @@ onUnmounted(() => {
                     :style="{ backgroundColor: portal.dark2, borderColor: portal.border }"
                   />
                 </div>
-                <p v-if="supportError" class="rounded-lg border px-3 py-2 text-sm text-red-300" role="alert" :style="{ borderColor: portal.pink, backgroundColor: 'rgba(255, 107, 107, 0.12)' }">{{ supportError }}</p>
+                <p v-if="supportError" class="rounded-lg border px-3 py-2 text-sm fg-alert--danger" role="alert">{{ supportError }}</p>
                 <button
                   type="submit"
-                  class="w-full rounded-lg py-3 font-semibold transition-opacity hover:opacity-90 disabled:opacity-50"
+                  class="fg-btn w-full rounded-lg py-3 font-semibold transition-opacity hover:opacity-90 disabled:opacity-50"
                   :style="{ backgroundColor: portal.purple, color: portal.primaryText }"
                   :disabled="supportSending"
                 >
@@ -2021,10 +2031,10 @@ onUnmounted(() => {
                   <input name="weight" type="number" step="0.1" min="20" max="400" placeholder="e.g. 65" :value="progressData.current_weight_kg ?? ''" class="w-full rounded-lg border p-3 text-[var(--fg-card-ink)]" :style="{ backgroundColor: portal.dark2, borderColor: portal.border }" />
                   <p class="mt-1 text-xs" :style="{ color: portal.textDim }">A new value is logged as today's weight in Progress.</p>
                 </div>
-                <p v-if="profileError" class="rounded-lg border px-3 py-2 text-sm text-red-300" role="alert" :style="{ borderColor: portal.pink, backgroundColor: 'rgba(255, 107, 107, 0.12)' }">{{ profileError }}</p>
+                <p v-if="profileError" class="rounded-lg border px-3 py-2 text-sm fg-alert--danger" role="alert">{{ profileError }}</p>
                 <div class="flex space-x-3 pt-4">
-                  <button type="submit" class="flex-1 rounded-lg py-3 font-semibold transition-opacity hover:opacity-90 disabled:opacity-50" :style="{ backgroundColor: portal.purple, color: portal.primaryText }" :disabled="profileSaving">{{ profileSaving ? 'Saving...' : 'Save Changes' }}</button>
-                  <button type="button" class="fg-tile flex-1 rounded-lg py-3 font-semibold text-[var(--fg-card-ink)] transition-opacity hover:opacity-90" :style="{ backgroundColor: portal.dark2 }" @click="showEditProfile = false">Cancel</button>
+                  <button type="submit" class="fg-btn flex-1 rounded-lg py-3 font-semibold transition-opacity hover:opacity-90 disabled:opacity-50" :style="{ backgroundColor: portal.purple, color: portal.primaryText }" :disabled="profileSaving">{{ profileSaving ? 'Saving...' : 'Save Changes' }}</button>
+                  <button type="button" class="fg-btn fg-tile flex-1 rounded-lg py-3 font-semibold text-[var(--fg-card-ink)] transition-opacity hover:opacity-90" :style="{ backgroundColor: portal.dark2 }" @click="showEditProfile = false">Cancel</button>
                 </div>
               </form>
             </div>
@@ -2066,10 +2076,10 @@ onUnmounted(() => {
                     <PasswordToggle :shown="pw.isShown('confirm')" @toggle="pw.toggle('confirm')" />
                   </div>
                 </div>
-                <p v-if="passwordError" class="rounded-lg border px-3 py-2 text-sm text-red-300" role="alert" :style="{ borderColor: portal.pink, backgroundColor: 'rgba(255, 107, 107, 0.12)' }">{{ passwordError }}</p>
+                <p v-if="passwordError" class="rounded-lg border px-3 py-2 text-sm fg-alert--danger" role="alert">{{ passwordError }}</p>
                 <div class="flex space-x-3 pt-2">
-                  <button type="submit" class="flex-1 rounded-lg py-3 font-semibold transition-opacity hover:opacity-90 disabled:opacity-50" :style="{ backgroundColor: portal.purple, color: portal.primaryText }" :disabled="passwordSaving">{{ passwordSaving ? 'Saving...' : 'Change Password' }}</button>
-                  <button type="button" class="fg-tile flex-1 rounded-lg py-3 font-semibold text-[var(--fg-card-ink)] transition-opacity hover:opacity-90" :style="{ backgroundColor: portal.dark2 }" @click="showChangePassword = false">Cancel</button>
+                  <button type="submit" class="fg-btn flex-1 rounded-lg py-3 font-semibold transition-opacity hover:opacity-90 disabled:opacity-50" :style="{ backgroundColor: portal.purple, color: portal.primaryText }" :disabled="passwordSaving">{{ passwordSaving ? 'Saving...' : 'Change Password' }}</button>
+                  <button type="button" class="fg-btn fg-tile flex-1 rounded-lg py-3 font-semibold text-[var(--fg-card-ink)] transition-opacity hover:opacity-90" :style="{ backgroundColor: portal.dark2 }" @click="showChangePassword = false">Cancel</button>
                 </div>
               </form>
             </div>
@@ -2082,13 +2092,6 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-/* backdrop-filter would trap the fixed-position mobile drawer inside the shell */
-@media (min-width: 1024px) {
-  .member-shell {
-    backdrop-filter: blur(12px);
-  }
-}
-
 .member-detail-list > div {
   gap: 1rem;
 }
@@ -2117,7 +2120,7 @@ onUnmounted(() => {
 }
 
 .member-nav-item.active {
-  box-shadow: 0 14px 28px rgba(var(--fg-accent-rgb), 0.28);
+  box-shadow: none;
 }
 
 .member-header {
@@ -2126,7 +2129,7 @@ onUnmounted(() => {
 
 /* light cards get a soft shadow so they stand off the marble */
 .member-portal main .rounded-xl.border {
-  box-shadow: 0 10px 28px rgba(92, 70, 30, 0.08);
+  box-shadow: none;
 }
 
 .member-portal input,

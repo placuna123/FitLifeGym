@@ -1,12 +1,16 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
-import { Menu, X } from 'lucide-vue-next';
-import { computed, onMounted, ref } from 'vue';
-import { platformAnalytics, platformAnnouncements, platformAuditLogs, platformAuth, platformBilling, platformGyms } from '@/api/fitgym';
+import { Chart, type ChartConfiguration } from 'chart.js/auto';
+import { Bell, Building2, Clock, CreditCard, Megaphone, Receipt, Users, X, Menu } from 'lucide-vue-next';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { platformAnalytics, platformAnnouncements, platformAuditLogs, platformAuth, platformBilling, platformDashboard, platformGyms } from '@/api/fitgym';
 import FgThemeToggle from '@/components/FgThemeToggle.vue';
 import PasswordToggle from '@/components/PasswordToggle.vue';
+import { useFgTheme } from '@/composables/useFgTheme';
 import { useMobileNav } from '@/composables/useMobileNav';
 import { usePasswordVisibility } from '@/composables/usePasswordVisibility';
+import { chartPalette } from '@/lib/chartPalette';
+import { isUserEditing } from '@/lib/editing';
 
 const pw = usePasswordVisibility();
 const { mobileNavOpen, closeMobileNav } = useMobileNav();
@@ -21,9 +25,9 @@ const portal = {
   border: 'var(--fg-card-border)',
   purple: 'var(--fg-accent)',
   purpleLight: 'var(--fg-accent-soft)',
-  pink: '#E0565B',
-  cyan: '#1E88C8',
-  lime: '#5FA82E',
+  pink: 'var(--fg-danger)',
+  cyan: 'var(--fg-info)',
+  lime: 'var(--fg-success)',
   textDim: 'var(--fg-card-ink-soft)',
 };
 
@@ -35,9 +39,10 @@ const loginForm = ref({ email: '', password: '', remember: false });
 const loginLoading = ref(false);
 const loginError = ref('');
 
-type Tab = 'branches' | 'billing' | 'analytics' | 'announcements' | 'audit';
-const currentTab = ref<Tab>('branches');
+type Tab = 'dashboard' | 'branches' | 'billing' | 'analytics' | 'announcements' | 'audit';
+const currentTab = ref<Tab>('dashboard');
 const tabs: { id: Tab; label: string; description: string }[] = [
+  { id: 'dashboard', label: 'Dashboard', description: 'How the whole platform is doing, and what needs your attention.' },
   { id: 'branches', label: 'Branches', description: 'Every gym branch with its admin, plan and end date.' },
   { id: 'billing', label: 'Billing', description: 'What branches pay FitGym, receipts to check, and where they pay.' },
   { id: 'analytics', label: 'Analytics', description: 'Members, income and check-ins for each branch.' },
@@ -363,6 +368,8 @@ async function checkAuth() {
       isLoggedIn.value = true;
       await loadGyms();
       void loadBilling(); // for the "receipts waiting" count on the Billing tab
+      void loadDashboard();
+      startNotificationPolling();
     } else {
       isLoggedIn.value = false;
     }
@@ -425,6 +432,7 @@ async function switchTab(tab: Tab) {
   currentTab.value = tab;
   actionNotice.value = '';
   closeMobileNav();
+  if (tab === 'dashboard') await loadDashboard();
   if (tab === 'analytics') await loadAnalytics();
   if (tab === 'billing') await loadBilling();
   if (tab === 'audit') await loadAuditLogs();
@@ -441,6 +449,8 @@ async function handleLogin() {
       isLoggedIn.value = true;
       await loadGyms();
       void loadBilling(); // for the "receipts waiting" count on the Billing tab
+      void loadDashboard();
+      startNotificationPolling();
     } else {
       loginError.value = (data as { message?: string }).message || 'Login failed.';
     }
@@ -461,6 +471,8 @@ async function handleLogout() {
   isLoggedIn.value = false;
   user.value = null;
   loginForm.value = { email: '', password: '', remember: false };
+  stopNotificationPolling();
+  destroyDashboardCharts();
 }
 
 function usage(count: unknown, limit: unknown): string {
@@ -585,6 +597,316 @@ function formatCurrency(value: unknown): string {
   return '₱' + Number(value ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// ---------------------------------------------------------------------------
+// Dashboard: platform totals, branches per status, the last 6 months, and
+// what needs the Super Admin's attention (receipts, branches about to end).
+// ---------------------------------------------------------------------------
+type DashboardData = {
+  totals: { branches: number; new_this_month: number; members: number; income_this_month: number; income_all_time: number; pending_proofs: number };
+  status_counts: Record<string, number>;
+  months: { label: string; month: string; new_branches: number; income: number }[];
+  expiring: { id: number; name: string; status: string; expires_at: string; days_left: number }[];
+  recent_branches: { id: number; name: string; admin_name: string | null; plan: string; status: string; created_at: string | null }[];
+  pending_proofs: { id: number; gym_name: string; plan: string; months: number; amount: number; payment_method: string; sent_on: string | null }[];
+};
+const dashboard = ref<DashboardData | null>(null);
+const dashboardLoading = ref(false);
+const dashboardToday = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+
+async function loadDashboard() {
+  dashboardLoading.value = true;
+  try {
+    const { data } = await platformDashboard.get();
+    if (data.success) dashboard.value = data as DashboardData;
+  } catch {
+    // keep the last numbers on screen
+  } finally {
+    dashboardLoading.value = false;
+  }
+}
+
+const statusLabels: Record<string, string> = {
+  trial: 'Trial',
+  active: 'Active (paid)',
+  pending: 'Pending',
+  expired: 'Expired',
+  suspended: 'Suspended',
+  cancelled: 'Cancelled',
+};
+// branches per status for the doughnut, only the statuses that have branches
+const statusSlices = computed(() =>
+  Object.entries(dashboard.value?.status_counts ?? {})
+    .filter(([, n]) => n > 0)
+    .map(([status, count]) => ({ status, label: statusLabels[status] ?? status, count })),
+);
+const statusColors = ref<string[]>([]);
+const sixMonthIncome = computed(() => (dashboard.value?.months ?? []).reduce((n, m) => n + m.income, 0));
+const sixMonthSignups = computed(() => (dashboard.value?.months ?? []).reduce((n, m) => n + m.new_branches, 0));
+const accessCount = computed(() => {
+  const s = dashboard.value?.status_counts ?? {};
+  return (s.trial ?? 0) + (s.active ?? 0) + (s.pending ?? 0);
+});
+
+function shortDate(value: string | null | undefined): string {
+  if (!value) return '-';
+  return new Date(`${value}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function initialsOf(name: unknown): string {
+  return String(name || '').trim().split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '-';
+}
+
+function daysLeftLabel(days: number): string {
+  if (days <= 0) return 'ends today';
+  if (days === 1) return 'ends tomorrow';
+  return `in ${days} days`;
+}
+
+const incomeCanvas = ref<HTMLCanvasElement | null>(null);
+const signupCanvas = ref<HTMLCanvasElement | null>(null);
+const statusCanvas = ref<HTMLCanvasElement | null>(null);
+let incomeChart: InstanceType<typeof Chart> | null = null;
+let signupChart: InstanceType<typeof Chart> | null = null;
+let statusChart: InstanceType<typeof Chart> | null = null;
+
+function destroyDashboardCharts() {
+  incomeChart?.destroy();
+  incomeChart = null;
+  signupChart?.destroy();
+  signupChart = null;
+  statusChart?.destroy();
+  statusChart = null;
+}
+
+function buildDashboardCharts() {
+  destroyDashboardCharts();
+  const d = dashboard.value;
+  if (currentTab.value !== 'dashboard' || !d) return;
+  const c = chartPalette();
+  const labels = d.months.map((m) => m.label);
+  const axis = { grid: { color: c.grid }, border: { display: false }, ticks: { color: c.text } };
+
+  if (incomeCanvas.value) {
+    incomeChart = new Chart(incomeCanvas.value, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Subscription income',
+            data: d.months.map((m) => m.income),
+            borderColor: c.accent,
+            // gold fill that fades towards the bottom of the chart
+            backgroundColor: (ctx: { chart: Chart }) => {
+              const { ctx: g, chartArea } = ctx.chart;
+              if (!chartArea) return `rgba(${c.accentRgb}, 0.18)`;
+              const gradient = g.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+              gradient.addColorStop(0, `rgba(${c.accentRgb}, 0.35)`);
+              gradient.addColorStop(1, `rgba(${c.accentRgb}, 0)`);
+              return gradient;
+            },
+            fill: true,
+            tension: 0.35,
+            borderWidth: 2,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            pointBackgroundColor: c.accent,
+            pointBorderColor: c.surface,
+            pointBorderWidth: 2,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => formatCurrency(ctx.parsed.y) } } },
+        scales: {
+          y: { ...axis, beginAtZero: true, ticks: { color: c.text, callback: (v) => `₱${Number(v).toLocaleString()}` } },
+          x: { grid: { display: false }, ticks: { color: c.text } },
+        },
+      } as ChartConfiguration<'line'>['options'],
+    });
+  }
+
+  if (signupCanvas.value) {
+    signupChart = new Chart(signupCanvas.value, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'New branches',
+            data: d.months.map((m) => m.new_branches),
+            // this month in bright gold, earlier months a softer gold
+            backgroundColor: d.months.map((_, i) => (i === d.months.length - 1 ? c.accentLight : c.accentDark)),
+            borderWidth: 0,
+            borderRadius: 6,
+            maxBarThickness: 40,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.y} new branch${ctx.parsed.y === 1 ? '' : 'es'}` } },
+        },
+        scales: {
+          y: { ...axis, beginAtZero: true, ticks: { color: c.text, precision: 0 } },
+          x: { grid: { display: false }, ticks: { color: c.text } },
+        },
+      } as ChartConfiguration<'bar'>['options'],
+    });
+  }
+
+  const slices = statusSlices.value;
+  // gold for branches that can use FitGym, grays and red for those that cannot
+  const colorFor: Record<string, string> = {
+    active: c.accent,
+    trial: c.accentLight,
+    pending: c.accentDeep,
+    expired: c.neutral,
+    suspended: 'rgba(' + c.neutralRgb + ', 0.45)',
+    cancelled: 'rgba(' + c.neutralRgb + ', 0.25)',
+  };
+  statusColors.value = slices.map((s) => colorFor[s.status] ?? c.neutral);
+  if (statusCanvas.value && slices.length > 0) {
+    statusChart = new Chart(statusCanvas.value, {
+      type: 'doughnut',
+      data: {
+        labels: slices.map((s) => s.label),
+        datasets: [{ data: slices.map((s) => s.count), backgroundColor: statusColors.value, borderColor: c.surface, borderWidth: 3, hoverOffset: 4 }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '72%',
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: (ctx) => ` ${ctx.label}: ${ctx.parsed} branch${ctx.parsed === 1 ? '' : 'es'}` } },
+        },
+      } as ChartConfiguration<'doughnut'>['options'],
+    });
+  }
+}
+
+// The canvases appear once the dashboard tab and its data are on screen
+watch([incomeCanvas, signupCanvas, statusCanvas, dashboard, currentTab], () => {
+  if (currentTab.value === 'dashboard') nextTick(buildDashboardCharts);
+  else destroyDashboardCharts();
+});
+
+// Light / dark switch: redraw so the charts pick up the new palette
+const { theme: fgTheme } = useFgTheme();
+watch(fgTheme, () => nextTick(buildDashboardCharts));
+
+// ---------------------------------------------------------------------------
+// Notification bell: new branch signups, payment receipts, branches about to end.
+// Checked every minute while signed in.
+// ---------------------------------------------------------------------------
+type PlatformNotice = { id: number; type: string; title: string; message: string; tab: Tab | null; is_read: boolean; created_at: string | null };
+const notices = ref<PlatformNotice[]>([]);
+const unreadNotices = ref(0);
+const noticesOpen = ref(false);
+const bellWrap = ref<HTMLElement | null>(null);
+let noticeTimer: ReturnType<typeof setInterval> | null = null;
+let newestNoticeId: number | null = null;
+
+async function loadNotifications() {
+  try {
+    const { data } = await platformDashboard.notifications();
+    if (data.success) {
+      notices.value = data.notifications as PlatformNotice[];
+      unreadNotices.value = Number(data.unread ?? 0);
+      const newest = notices.value[0]?.id ?? 0;
+      const isNew = newestNoticeId !== null && newest > newestNoticeId;
+      newestNoticeId = newest;
+      // something new came in since the last check: refresh the numbers it is about,
+      // unless the Super Admin is typing or has a form open
+      if (isNew && !isUserEditing()) {
+        void loadDashboard();
+        void loadBilling();
+        void loadGyms();
+      }
+    }
+  } catch {
+    // try again on the next tick
+  }
+}
+
+function startNotificationPolling() {
+  stopNotificationPolling();
+  void loadNotifications();
+  noticeTimer = setInterval(() => {
+    if (document.visibilityState === 'visible') void loadNotifications();
+  }, 60_000);
+}
+
+function stopNotificationPolling() {
+  if (noticeTimer) clearInterval(noticeTimer);
+  noticeTimer = null;
+  newestNoticeId = null;
+  noticesOpen.value = false;
+}
+
+function toggleNotices() {
+  noticesOpen.value = !noticesOpen.value;
+  if (noticesOpen.value) void loadNotifications();
+}
+
+async function openNotice(n: PlatformNotice) {
+  noticesOpen.value = false;
+  if (!n.is_read) {
+    n.is_read = true;
+    unreadNotices.value = Math.max(0, unreadNotices.value - 1);
+    platformDashboard.markRead(n.id).catch(() => {});
+  }
+  if (n.tab && n.tab !== currentTab.value) await switchTab(n.tab);
+}
+
+async function markAllNoticesRead() {
+  notices.value.forEach((n) => (n.is_read = true));
+  unreadNotices.value = 0;
+  try {
+    await platformDashboard.markAllRead();
+  } catch {
+    void loadNotifications();
+  }
+}
+
+function noticeWhen(iso: string | null): string {
+  if (!iso) return '';
+  const then = new Date(iso);
+  const mins = Math.round((Date.now() - then.getTime()) / 60_000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  return then.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+// close the panel on a click outside it, or on Escape
+function onDocumentClick(e: MouseEvent) {
+  if (noticesOpen.value && bellWrap.value && !bellWrap.value.contains(e.target as Node)) noticesOpen.value = false;
+}
+function onDocumentKey(e: KeyboardEvent) {
+  if (e.key === 'Escape') noticesOpen.value = false;
+}
+
+onMounted(() => {
+  document.addEventListener('click', onDocumentClick);
+  document.addEventListener('keydown', onDocumentKey);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('click', onDocumentClick);
+  document.removeEventListener('keydown', onDocumentKey);
+  stopNotificationPolling();
+  destroyDashboardCharts();
+});
+
 onMounted(checkAuth);
 </script>
 
@@ -611,7 +933,7 @@ onMounted(checkAuth);
         <rect x="88" y="10" width="10" height="20" rx="2" />
       </svg>
       <svg class="entry-deco entry-deco--pulse" viewBox="0 0 200 40" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-        <path d="M0 20h30l10-14 12 28 10-20 8 12 10-6h130" stroke-linecap="round" stroke-linejoin="round" />
+        <path d="M0 20h30l10-14 12 28 10-20 8 12 10-6h130" pathLength="100" stroke-linecap="round" stroke-linejoin="round" />
       </svg>
       <svg class="entry-deco entry-deco--kettlebell" viewBox="0 0 40 46" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M14 10c0-5 3-8 6-8s6 3 6 8" />
@@ -765,6 +1087,44 @@ onMounted(checkAuth);
           </div>
 
           <div class="flex flex-wrap items-center gap-3">
+            <div ref="bellWrap" class="fg-notif">
+              <button
+                type="button"
+                class="fg-notif-bell"
+                :aria-label="unreadNotices ? `Notifications, ${unreadNotices} unread` : 'Notifications'"
+                :aria-expanded="noticesOpen"
+                aria-controls="platform-notifications"
+                @click.stop="toggleNotices"
+              >
+                <Bell aria-hidden="true" />
+                <span v-if="unreadNotices" class="fg-notif-count">{{ unreadNotices > 99 ? '99+' : unreadNotices }}</span>
+              </button>
+              <div v-if="noticesOpen" id="platform-notifications" class="fg-notif-panel" role="dialog" aria-label="Notifications">
+                <div class="fg-notif-head">
+                  <h3>Notifications</h3>
+                  <button v-if="unreadNotices" type="button" class="fg-dash-link" @click="markAllNoticesRead">Mark all as read</button>
+                </div>
+                <ul v-if="notices.length" class="fg-notif-list">
+                  <li v-for="n in notices" :key="n.id">
+                    <button type="button" :class="['fg-notif-item', { 'is-unread': !n.is_read }]" @click="openNotice(n)">
+                      <span :class="['fg-notif-icon', `fg-notif-icon--${n.type}`]">
+                        <Building2 v-if="n.type === 'signup'" aria-hidden="true" />
+                        <Receipt v-else-if="n.type === 'payment'" aria-hidden="true" />
+                        <Clock v-else aria-hidden="true" />
+                      </span>
+                      <span class="fg-notif-text">
+                        <strong>{{ n.title }}</strong>
+                        <span>{{ n.message }}</span>
+                        <small>{{ noticeWhen(n.created_at) }}</small>
+                      </span>
+                    </button>
+                  </li>
+                </ul>
+                <p v-else class="fg-dash-placeholder fg-notif-empty">
+                  No notifications yet. You will be told here when a branch signs up, sends a payment receipt, or is about to end.
+                </p>
+              </div>
+            </div>
             <FgThemeToggle class="admin-header-button rounded-xl px-4 py-3 text-sm" />
             <div class="admin-header-card rounded-xl border px-4 py-3">
               <p class="text-xs uppercase tracking-[0.2em] text-[var(--text-secondary)]">Super Admin</p>
@@ -784,6 +1144,193 @@ onMounted(checkAuth);
       <p v-if="accountNotice" class="account-notice" role="status">{{ accountNotice }}</p>
       <div v-if="actionError" class="entry-error">{{ actionError }}</div>
       <p v-if="actionNotice" class="account-notice" role="status">{{ actionNotice }}</p>
+
+      <!-- Dashboard tab -->
+      <section v-if="currentTab === 'dashboard'" class="fg-dash">
+        <div class="fg-dash-toolbar">
+          <div class="fg-dash-greeting">
+            <h3>Platform overview</h3>
+            <p>{{ dashboardToday }}</p>
+          </div>
+          <div class="fg-dash-actions">
+            <button type="button" class="fg-dash-btn fg-dash-btn--primary" @click="switchTab('branches').then(openAddGymModal)">
+              <Building2 aria-hidden="true" />
+              Add Branch
+            </button>
+            <button type="button" class="fg-dash-btn" @click="switchTab('billing')">
+              <CreditCard aria-hidden="true" />
+              Billing
+            </button>
+            <button type="button" class="fg-dash-btn" @click="switchTab('announcements')">
+              <Megaphone aria-hidden="true" />
+              Announce
+            </button>
+          </div>
+        </div>
+
+        <p v-if="dashboardLoading && !dashboard" class="fg-dash-placeholder">Loading…</p>
+
+        <template v-if="dashboard">
+          <div class="fg-dash-kpis">
+            <div class="fg-dash-kpi">
+              <div class="fg-dash-kpi-head">
+                <span>Branches</span>
+                <span class="fg-dash-kpi-icon"><Building2 aria-hidden="true" /></span>
+              </div>
+              <div class="fg-dash-kpi-value">{{ dashboard.totals.branches }}</div>
+              <div class="fg-dash-kpi-sub">{{ accessCount }} can use FitGym · {{ dashboard.totals.new_this_month }} new this month</div>
+            </div>
+            <div class="fg-dash-kpi">
+              <div class="fg-dash-kpi-head">
+                <span>Income This Month</span>
+                <span class="fg-dash-kpi-icon"><CreditCard aria-hidden="true" /></span>
+              </div>
+              <div class="fg-dash-kpi-value">{{ formatCurrency(dashboard.totals.income_this_month) }}</div>
+              <div class="fg-dash-kpi-sub">{{ formatCurrency(dashboard.totals.income_all_time) }} all time</div>
+            </div>
+            <div class="fg-dash-kpi">
+              <div class="fg-dash-kpi-head">
+                <span>Members, All Branches</span>
+                <span class="fg-dash-kpi-icon"><Users aria-hidden="true" /></span>
+              </div>
+              <div class="fg-dash-kpi-value">{{ dashboard.totals.members }}</div>
+              <div class="fg-dash-kpi-sub">Active member accounts</div>
+            </div>
+            <div class="fg-dash-kpi">
+              <div class="fg-dash-kpi-head">
+                <span>Needs Attention</span>
+                <span class="fg-dash-kpi-icon"><Receipt aria-hidden="true" /></span>
+              </div>
+              <div class="fg-dash-kpi-value">{{ dashboard.totals.pending_proofs + dashboard.expiring.length }}</div>
+              <div :class="['fg-dash-kpi-sub', { 'is-alert': dashboard.totals.pending_proofs || dashboard.expiring.length }]">
+                {{ dashboard.totals.pending_proofs }} receipt{{ dashboard.totals.pending_proofs === 1 ? '' : 's' }} to check · {{ dashboard.expiring.length }} ending in 7 days
+              </div>
+            </div>
+          </div>
+
+          <div class="fg-dash-row">
+            <div class="fg-dash-card fg-dash-span-2">
+              <div class="fg-dash-card-head">
+                <div>
+                  <h3>Subscription Income, Last 6 Months</h3>
+                  <p>{{ formatCurrency(sixMonthIncome) }} paid to FitGym by branches</p>
+                </div>
+                <button type="button" class="fg-dash-link" @click="switchTab('billing')">Billing</button>
+              </div>
+              <div class="fg-dash-chart">
+                <canvas ref="incomeCanvas" aria-label="Subscription income per month for the last 6 months" role="img"></canvas>
+                <p v-if="sixMonthIncome === 0" class="fg-dash-empty">No subscription payments in the last 6 months yet.</p>
+              </div>
+            </div>
+
+            <div class="fg-dash-card">
+              <div class="fg-dash-card-head">
+                <div>
+                  <h3>Branches by Status</h3>
+                  <p>As it applies today</p>
+                </div>
+                <button type="button" class="fg-dash-link" @click="switchTab('branches')">Branches</button>
+              </div>
+              <template v-if="statusSlices.length > 0">
+                <div class="fg-dash-donut">
+                  <canvas ref="statusCanvas" aria-label="Branches per subscription status" role="img"></canvas>
+                  <div class="fg-dash-donut-center">
+                    <strong>{{ dashboard.totals.branches }}</strong>
+                    <span>branches</span>
+                  </div>
+                </div>
+                <ul class="fg-dash-legend">
+                  <li v-for="(s, i) in statusSlices" :key="s.status">
+                    <span class="fg-dash-swatch" :style="{ background: statusColors[i] }"></span>
+                    <span class="fg-dash-legend-name">{{ s.label }}</span>
+                    <span class="fg-dash-legend-value">{{ s.count }}</span>
+                  </li>
+                </ul>
+              </template>
+              <p v-else class="fg-dash-placeholder">No branches yet.</p>
+            </div>
+          </div>
+
+          <div class="fg-dash-row">
+            <div class="fg-dash-card">
+              <div class="fg-dash-card-head">
+                <div>
+                  <h3>New Branches</h3>
+                  <p>{{ sixMonthSignups }} in the last 6 months</p>
+                </div>
+              </div>
+              <div class="fg-dash-chart">
+                <canvas ref="signupCanvas" aria-label="New branches per month for the last 6 months" role="img"></canvas>
+                <p v-if="sixMonthSignups === 0" class="fg-dash-empty">No new branches in the last 6 months.</p>
+              </div>
+            </div>
+
+            <div class="fg-dash-card">
+              <div class="fg-dash-card-head">
+                <div>
+                  <h3>Latest Branches</h3>
+                  <p>Newest first</p>
+                </div>
+                <button type="button" class="fg-dash-link" @click="switchTab('branches')">View all</button>
+              </div>
+              <ul v-if="dashboard.recent_branches.length" class="fg-dash-list">
+                <li v-for="b in dashboard.recent_branches" :key="b.id">
+                  <span class="fg-dash-avatar">{{ initialsOf(b.name) }}</span>
+                  <div class="fg-dash-person">
+                    <p>{{ b.name }}</p>
+                    <p>{{ b.admin_name || 'No admin' }} · joined {{ shortDate(b.created_at) }}</p>
+                  </div>
+                  <span :class="['fg-dash-tag', { 'fg-dash-tag--gold': ['active', 'trial'].includes(b.status), 'fg-dash-tag--danger': ['suspended', 'cancelled'].includes(b.status) }]">
+                    {{ statusLabels[b.status] ?? b.status }}
+                  </span>
+                </li>
+              </ul>
+              <p v-else class="fg-dash-placeholder">No branches yet.</p>
+            </div>
+
+            <div class="fg-dash-card">
+              <div class="fg-dash-card-head">
+                <div>
+                  <h3>Ending Soon</h3>
+                  <p>Trials and subscriptions, next 7 days</p>
+                </div>
+              </div>
+              <ul v-if="dashboard.expiring.length" class="fg-dash-list">
+                <li v-for="g in dashboard.expiring" :key="g.id">
+                  <span class="fg-dash-avatar">{{ initialsOf(g.name) }}</span>
+                  <div class="fg-dash-person">
+                    <p>{{ g.name }}</p>
+                    <p>{{ g.status === 'trial' ? 'Trial' : 'Subscription' }} ends {{ shortDate(g.expires_at) }}</p>
+                  </div>
+                  <span :class="['fg-dash-tag', g.days_left <= 2 ? 'fg-dash-tag--danger' : 'fg-dash-tag--gold']">{{ daysLeftLabel(g.days_left) }}</span>
+                </li>
+              </ul>
+              <p v-else class="fg-dash-placeholder">No branch ends in the next 7 days.</p>
+            </div>
+          </div>
+
+          <div class="fg-dash-card">
+            <div class="fg-dash-card-head">
+              <div>
+                <h3>Payment Receipts to Check</h3>
+                <p>Sent by branch Admins from Settings → Subscription</p>
+              </div>
+              <button type="button" class="fg-dash-link" @click="switchTab('billing')">Open Billing</button>
+            </div>
+            <ul v-if="dashboard.pending_proofs.length" class="fg-dash-list">
+              <li v-for="p in dashboard.pending_proofs" :key="p.id">
+                <span class="fg-dash-avatar">{{ initialsOf(p.gym_name) }}</span>
+                <div class="fg-dash-person">
+                  <p>{{ p.gym_name }} · {{ formatCurrency(p.amount) }}</p>
+                  <p>{{ p.payment_method }} · {{ p.months }} month{{ p.months === 1 ? '' : 's' }} of {{ p.plan }} · sent {{ shortDate(p.sent_on) }}</p>
+                </div>
+                <span class="fg-dash-tag fg-dash-tag--gold">To check</span>
+              </li>
+            </ul>
+            <p v-else class="fg-dash-placeholder">No receipts waiting.</p>
+          </div>
+        </template>
+      </section>
 
       <!-- Branches tab -->
       <section v-if="currentTab === 'branches'">
@@ -1415,7 +1962,7 @@ onMounted(checkAuth);
 .platform-shell {
   min-height: 100vh;
   color: var(--fg-card-ink);
-  font-family: 'Instrument Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: var(--fg-font);
   padding: 2rem 1.5rem;
 }
 
@@ -1510,13 +2057,14 @@ onMounted(checkAuth);
   height: 3rem;
   border-radius: 0.9rem;
   flex-shrink: 0;
-  background-color: #8a2be2;
+  background: var(--fg-accent);
+  color: var(--fg-accent-ink);
 }
 
 .entry-logo svg {
   width: 1.6rem;
   height: 1.6rem;
-  color: #ffffff;
+  color: var(--fg-accent-ink);
 }
 
 .entry-eyebrow {
@@ -1541,7 +2089,7 @@ onMounted(checkAuth);
   border-width: 1px;
   border-style: solid;
   padding: 1.4rem 1.6rem;
-  box-shadow: 0 18px 44px rgba(92, 70, 30, 0.1);
+  box-shadow: none;
 }
 
 .entry-kicker {
@@ -1717,19 +2265,12 @@ select {
   --text-secondary: var(--fg-card-ink-soft);
   --border-color: var(--fg-card-border);
   min-height: 100vh;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: var(--fg-font);
 }
 
 .admin-shell {
   background: var(--fg-card);
   border-color: rgba(var(--fg-accent-deep-rgb), 0.35);
-}
-
-/* backdrop-filter would trap the fixed-position mobile drawer inside the shell */
-@media (min-width: 1024px) {
-  .admin-shell {
-    backdrop-filter: blur(12px);
-  }
 }
 
 .admin-sidebar {
@@ -1744,7 +2285,7 @@ select {
 .admin-header-button {
   background: var(--fg-card);
   border-color: var(--border-color);
-  box-shadow: 0 0 0 1px var(--border-color), 0 10px 28px rgba(92, 70, 30, 0.08);
+  box-shadow: 0 0 0 1px var(--border-color);
 }
 
 .admin-avatar {
@@ -1766,17 +2307,17 @@ select {
 
 .admin-nav-item.active {
   background: rgba(var(--fg-accent-rgb), 0.92);
-  box-shadow: 0 14px 28px rgba(var(--fg-accent-rgb), 0.28);
+  box-shadow: none;
   color: #fff;
 }
 
 .admin-nav-item .tab-count {
-  background: #1a1407;
+  background: var(--fg-accent-ink);
   color: var(--fg-gold);
 }
 
 .admin-logout-btn {
-  background: #c4544c;
+  background: var(--fg-danger);
   color: #fff;
   cursor: pointer;
 }
@@ -1826,7 +2367,7 @@ select {
   border-radius: 999px;
   background: var(--fg-gold);
   padding: 0.05rem 0.5rem;
-  color: #1a1407;
+  color: var(--fg-accent-ink);
   font-size: 0.72rem;
   font-weight: 700;
   vertical-align: middle;
@@ -1938,7 +2479,7 @@ select {
 }
 
 .ends-info--past {
-  color: #e08c86;
+  color: var(--fg-danger-text);
   font-weight: 600;
 }
 
@@ -1997,14 +2538,15 @@ th, td {
   text-transform: capitalize;
 }
 
-.badge-active { background: rgba(95,168,46,0.2); color: #8fd16a; }
-.badge-trial { background: rgba(30,136,200,0.2); color: #6cc0f0; }
-.badge-pending { background: rgba(168,161,150,0.16); color: #a8a196; }
-.badge-suspended { background: rgba(224,86,91,0.2); color: #f08a8e; }
-.badge-expired { background: rgba(226,181,74,0.2); color: #e2b54a; }
+/* shared status palette (app.css): active green, trial blue, pending amber, locked-out red */
+.badge-active { background: rgba(var(--fg-success-rgb), 0.18); color: var(--fg-success-text); }
+.badge-trial { background: rgba(var(--fg-info-rgb), 0.18); color: var(--fg-info-text); }
+.badge-pending { background: rgba(var(--fg-warning-rgb), 0.2); color: var(--fg-warning-text); }
+.badge-suspended { background: rgba(var(--fg-danger-rgb), 0.2); color: var(--fg-danger-text); }
+.badge-expired { background: rgba(var(--fg-danger-rgb), 0.2); color: var(--fg-danger-text); }
 
 .over-limit {
-  color: #f08a8e;
+  color: var(--fg-danger-text);
   font-weight: 600;
 }
 
@@ -2040,15 +2582,15 @@ th, td {
 }
 
 .action-btn.manage { background: var(--fg-accent); color: var(--fg-accent-ink); font-weight: 600; }
-.action-btn.suspend { background: #c4544c; }
+.action-btn.suspend { background: var(--fg-danger); color: var(--fg-status-ink); }
 .action-btn.activate { background: transparent; border: 1px solid var(--fg-accent); color: var(--fg-card-gold); }
-.action-btn.delete { background: transparent; border: 1px solid #c4544c; color: #e08c86; }
+.action-btn.delete { background: transparent; border: 1px solid var(--fg-danger); color: var(--fg-danger-text); }
 
 /* light cards get a soft shadow so they stand off the marble */
 .table-container,
 .stat-card,
 .modal-card {
-  box-shadow: 0 10px 28px rgba(92, 70, 30, 0.08);
+  box-shadow: none;
 }
 
 .stat-grid {
@@ -2078,9 +2620,9 @@ th, td {
 }
 
 .entry-error {
-  background: rgba(255, 107, 107, 0.12);
-  border: 1px solid #ff6b6b;
-  color: #d9474c;
+  background: rgba(var(--fg-danger-rgb), 0.12);
+  border: 1px solid rgba(var(--fg-danger-rgb), 0.45);
+  color: var(--fg-danger-text);
   border-radius: 0.6rem;
   padding: 0.6rem 0.85rem;
   font-size: 0.85rem;
